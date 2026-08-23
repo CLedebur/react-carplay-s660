@@ -16,7 +16,7 @@ const scope = self as unknown as Worker
 type HostType = Window & typeof globalThis
 
 export class RenderWorker {
-  constructor(private host: HostType) {}
+  constructor(_host: HostType) {}
 
   private renderer: FrameRenderer | null = null
   private videoPort: MessagePort | null = null

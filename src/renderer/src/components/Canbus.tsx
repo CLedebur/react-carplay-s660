@@ -1,23 +1,13 @@
 import { CanConfig, CanMessage, ExtraConfig } from "../../../main/Globals";
-import { Box, Button, Modal, Paper, styled, TextField, Typography } from '@mui/material'
+import { Button, TextField, Typography } from '@mui/material'
 import Grid from '@mui/material/Unstable_Grid2'
 import React, { useEffect, useState } from "react";
-import { InfinitySpin } from "react-loader-spinner";
 
 interface KeyBindingsProps {
   settings: ExtraConfig,
   setOpenCan: React.Dispatch<React.SetStateAction<boolean>>,
   setSettings: (key: any, value: any) => void
 }
-
-const Item = styled(Paper)(({ theme }) => ({
-  backgroundColor: theme.palette.mode === 'dark' ? '#1A2027' : '#fff',
-  ...theme.typography.body2,
-  padding: theme.spacing(1),
-  textAlign: 'center',
-  flexDirection: 'row',
-  color: theme.palette.text.secondary,
-}));
 
 export function Canbus({ settings, setOpenCan, setSettings }: KeyBindingsProps) {
   const [reverse, setReverse] = useState<CanMessage>({canId: 0x00, mask: 0x00, byte: 0})

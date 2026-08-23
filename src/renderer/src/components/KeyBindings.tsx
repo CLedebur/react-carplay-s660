@@ -40,6 +40,7 @@ export function KeyBindings({ settings, updateKey }: KeyBindingsProps) {
       return () => document.removeEventListener('keydown', setKey)
     }
 
+    return undefined
   }, [openWaiting, keyToBind]);
 
   const awaitKeyPress = (keyName) => {

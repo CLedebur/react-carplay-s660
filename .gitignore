@@ -1,22 +1,13 @@
-<<<<<<< HEAD
-#directories
-bower_components
+# dependencies
 node_modules
-dist
-build
-assets
-.idea
 
-#files
-*.tgz
-*.log
-*.apk
-.idea/workspace.xml
-*.xml
-
-=======
-node_modules
+# build output (electron-vite → out/, electron-builder → dist/)
 dist
 out
+
+# logs
 *.log*
->>>>>>> origin/v4
+
+# editor / OS cruft
+.idea
+.DS_Store

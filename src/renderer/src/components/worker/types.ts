@@ -38,7 +38,7 @@ export type Command =
   | { type: 'start'; payload: StartPayload }
   | { type: 'touch'; payload: { x: number; y: number; action: TouchAction } }
   | { type: 'initialise'; payload: InitialisePayload }
-  | { type: 'audioBuffer'; payload: AudioPlayerPayload }
+  | { type: 'audioPlayer'; payload: AudioPlayerPayload }
   | { type: 'microphoneInput'; payload: Int16Array }
   | { type: 'frame'}
   | { type: 'keyCommand', command: KeyCommand}

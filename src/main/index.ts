@@ -38,6 +38,7 @@ const EXTRA_CONFIG: ExtraConfig = {
   piMost: false,
   canbus: false,
   bindings: DEFAULT_BINDINGS,
+  renderer: 'webgl2',
   most: {},
   canConfig: {}
 }
@@ -85,9 +86,42 @@ const handleSettingsReq = (_: IpcMainEvent ) => {
 }
 
 
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-app.commandLine.appendSwitch('disable-webusb-security', 'true')
-console.log(app.commandLine.hasSwitch('disable-webusb-security'))
+// ---------------------------------------------------------------------------
+// Chromium / GPU command-line switches.
+//
+// IMPORTANT: every switch below MUST be appended BEFORE app.whenReady().
+// Switches appended later (e.g. from inside createWindow, which runs after the
+// app is ready) are silently ignored by Chromium.
+// ---------------------------------------------------------------------------
+
+// Media + WebUSB behaviour (needed on every platform).
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+app.commandLine.appendSwitch('disable-webusb-security')
+// Exposes the newer WebCodecs / WebGPU surface used by the render worker.
+app.commandLine.appendSwitch('enable-experimental-web-platform-features')
+
+// GPU acceleration.
+// On the Pi 4 / CM4 (VideoCore VI / V3D) Chromium is usually on the GPU
+// blocklist and silently falls back to SwiftShader (software GL) -- which makes
+// the WebGL/WebGPU render path run on the CPU. These force the V3D GPU to drive
+// rasterisation and canvas compositing.
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-zero-copy')
+// Ask Chromium to use hardware video decode where a backend exists.
+// NOTE: stock Electron on the Pi has no V4L2 decode backend compiled in, so
+// H264 decode still runs in software here; this only helps on a patched/custom
+// Electron build or on desktop hosts with a real HW decoder. Harmless otherwise.
+app.commandLine.appendSwitch('enable-accelerated-video-decode')
+
+if (process.platform === 'linux') {
+  // Route ANGLE over the native Mesa GLES driver (V3D) via EGL. If you get a
+  // black screen or GL init errors on your board, try 'egl' for --use-gl, or
+  // comment these two lines out to let Chromium auto-detect the GL backend.
+  app.commandLine.appendSwitch('use-gl', 'angle')
+  app.commandLine.appendSwitch('use-angle', 'gles-egl')
+}
+
 function createWindow(): void {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -105,7 +139,6 @@ function createWindow(): void {
       webSecurity: false
     }
   })
-  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
   // mainWindow.webContents.session.setDevicePermissionHandler((details) => {
   //   if (true) {
@@ -159,7 +192,6 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
-  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   systemPreferences.askForMediaAccess("microphone")
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     details.responseHeaders!['Cross-Origin-Opener-Policy'] = ['same-origin'];
@@ -171,8 +203,6 @@ function createWindow(): void {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.commandLine.appendSwitch('enable-experimental-web-platform-features');
-app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
 app.whenReady().then(() => {
 
   // Set app user model id for windows

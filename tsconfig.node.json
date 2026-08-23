@@ -15,6 +15,6 @@
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "target": "es5"
+    "target": "ES2020"
   }
 }
