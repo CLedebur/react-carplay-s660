@@ -369,6 +369,10 @@ compiled in.
 - `--ignore-gpu-blocklist` (NOT the older `--ignore-gpu-blacklist`).
 
 ### 8.5 Conclusion — Option 2 chosen and validated
+> **Update 2026-08-23:** a from-source **Electron 33** build was tested on the CM4 and
+> hits this exact `dma_buf` failure too — and `--ozone-platform=drm` isn't compiled into
+> stock Electron. So a newer Electron does NOT clear this wall. Full retest in §17.
+
 Option 1 (finding the right flags for the bundled Electron) is exhausted. No flag
 combination gives working, stable GPU acceleration with the bundled Electron 27 /
 Chrome 118. Path A's shipped config is `--disable-gpu` — software rendering, stable,
@@ -846,8 +850,58 @@ sudo reboot
 
 ---
 
-*Last updated: 2026-08-23. Status: Option 2 (system Chromium + carplay-web-app) validated
-— GPU compositing hardware-accelerated, web app reaches ready state on the Pi.
-Path A (Electron, software render) remains a working fallback. Open: video decode
-(needs dongle). Power-safety design set (graceful shutdown + OverlayFS, UPS dropped).
-carplay.service ready in 4.465s (microSD). Dongle + NVMe arriving next session.*
+## 17. 2026-08-23 — Electron-33 fork built from source + GPU retest on the CM4
+
+Forked react-carplay (CLedebur/react-carplay-s660), bumped Electron 27→33, and built it
+**from source on the CM4** (the §15 primary track). Then retested GPU under `cage`.
+
+**Build-from-source gotchas (Trixie / Node 20 / Python 3.13):**
+- The `github:` git-dependencies (`node-carplay`, `pcm-ringbuf-player`) fail their `tsc`
+  `prepare` build on modern TypeScript (5.7 typed-array generics — the §11.3 class of
+  bug, for real). **Fix: switched both to the prebuilt npm releases** —
+  `node-carplay@^4.1.0` (same repo, ≥ the main branch's 4.0.0) and
+  `pcm-ringbuf-player@^0.1.0` (gozmanyoni's canonical package, which rhys's was forked
+  from). *This is committed, and supersedes §7b's "track main via github" choice: npm
+  4.1.0 is newer than main's 4.0.0, so no regression, and the build stops depending on a
+  fragile source build.*
+- Native modules need node-gyp ≥10 (Python 3.13 removed `distutils`; the ancient bundled
+  `node-gyp@9.4.1` dies with `No module named 'distutils'`). node-gyp 13 needs Node 22;
+  **node-gyp 11 is the match for Node 20** (`overrides: {"node-gyp":"^11"}`).
+- `electron-builder install-app-deps` / `@electron/rebuild` **HANGS** on this Pi
+  (deadlocks in its own orchestration — node-gyp itself is fine). Workaround: rebuild each
+  native module directly: `cd node_modules/<m> && node-gyp rebuild --runtime=electron
+  --target=33.4.11 --arch=arm64 --dist-url=https://www.electronjs.org/headers`
+  (`usb` is N-API and needs no rebuild).
+- Bug: `src/main/index.ts` calls `systemPreferences.askForMediaAccess` unconditionally —
+  it's a macOS-only API and throws an UnhandledPromiseRejection on Linux. Needs a
+  `process.platform === 'darwin'` guard.
+
+**GPU retest result — the version bump does NOT help.** The built app under `cage` throws
+**16× the same `dma_buf` scanout failure** as Electron 27 (`gbm_wrapper.cc: Failed to
+export buffer to dma_buf` / `Failed to get fd for plane`). No GPU-process crash, no
+SwiftShader — but per-frame `dma_buf` fallback (the "renders, poor framerate" state).
+Also tried `--ozone-platform=drm` (direct-KMS, no cage, to skip the compositor handoff) →
+`FATAL: Invalid ozone platform: drm`: stock Electron ships only x11/wayland/headless
+Ozone backends (`drm` needs `ozone_platform_drm=true` at build time).
+
+**Conclusion (confirms §8.5, now for a modern Electron too):** stock Electron cannot
+cleanly GPU-composite on the CM4 at **any** version — the missing pieces (GBM scanout
+patch, `ozone_platform_drm`, V4L2 decode) live only in a **custom build** or in **system
+Chromium / Path B**. A bare Electron bump gives react-carplay's features on a modern stack
+but the same software-ish compositing as before.
+
+**Committed for now:** the git-deps→npm switch + this section. **Deferred** (pending an
+architecture decision — a move to Path B would run react-carplay's *renderer* in system
+Chromium behind a headless Node backend, which retires the Electron shell and its native-
+ABI machinery): the node-gyp override, the direct-rebuild script, and the
+`askForMediaAccess` guard.
+
+---
+
+*Last updated: 2026-08-23. Status: Electron-33 fork now builds from source on the CM4, but
+a GPU retest shows it hits the SAME `dma_buf` wall as Electron 27 (see §17) — a version
+bump does not fix Pi GPU compositing. Path B (system Chromium + carplay-web-app) remains
+the validated GPU path. Path A (Electron, `--disable-gpu` software render) remains a
+working fallback. Open: video decode (needs dongle); architecture decision (Path B refactor
+vs custom-patched Electron). Power-safety design set. carplay.service ready in 4.465s
+(microSD). Dongle + NVMe arriving next session.*
