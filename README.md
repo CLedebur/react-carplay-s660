@@ -1,3 +1,7 @@
+# React-Carplay for the Honda S660
+
+This fork optimizes the react-carplay frontend for a Raspberry Pi CM4 + Oratek TOFU board, as well as customization for the unique environment of a Honda S660. This is a work in progress and as such, at the moment it is not workable.
+
 # React-Carplay
 
 <a href="https://www.buymeacoffee.com/rhysm" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
