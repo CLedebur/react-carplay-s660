@@ -150,6 +150,22 @@ function Settings({ settings }: SettingsProps) {
           </FormControl>
         </Grid>
       )
+    },
+    renderer: () => {
+      return (
+        <Grid key={"renderer"} xs={4}>
+          <FormControl>
+            <FormLabel id={"renderer"}>RENDERER</FormLabel>
+            <RadioGroup row value={activeSettings.renderer} onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+              settingsChange('renderer', (event.target as HTMLInputElement).value)
+            }}>
+              <FormControlLabel value={'webgl'} control={<Radio />} label={'WEBGL'} />
+              <FormControlLabel value={'webgl2'} control={<Radio />} label={'WEBGL2'} />
+              <FormControlLabel value={'webgpu'} control={<Radio />} label={'WEBGPU'} />
+            </RadioGroup>
+          </FormControl>
+        </Grid>
+      )
     }
   }
   const renderCameras = () => {

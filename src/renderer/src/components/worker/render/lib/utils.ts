@@ -46,7 +46,14 @@ function getDecoderConfig(frameData: Uint8Array): VideoDecoderConfig | null {
       codec: sps.MIME,
       codedHeight: sps.picHeight,
       codedWidth: sps.picWidth,
-      hardwareAcceleration: 'prefer-software',
+      // Prefer hardware decode when a backend is available, and hint the
+      // decoder to minimise latency (this is a live mirror, not a media file).
+      // On stock Electron on the Pi there is no HW H264 backend, so this
+      // gracefully falls back to software -- but it no longer *forbids* HW on
+      // hosts / patched builds that do have it (the previous value was
+      // 'prefer-software', which opted out of hardware decode everywhere).
+      hardwareAcceleration: 'prefer-hardware',
+      optimizeForLatency: true,
     }
     return decoderConfig
   }

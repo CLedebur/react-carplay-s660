@@ -6,7 +6,7 @@ import {
   requestDevice,
   CommandMapping,
 } from 'node-carplay/web'
-import { CarPlayWorker } from './worker/types'
+import { CarPlayWorker, KeyCommand } from './worker/types'
 import useCarplayAudio from './useCarplayAudio'
 import { useCarplayTouch } from './useCarplayTouch'
 import { useLocation, useNavigate } from "react-router-dom";
@@ -33,7 +33,7 @@ interface CarplayProps {
   commandCounter: number
 }
 
-function Carplay({ receivingVideo, setReceivingVideo, settings, command, commandCounter }: CarplayProps) {
+function Carplay({ setReceivingVideo, settings, command, commandCounter }: CarplayProps) {
   const [isPlugged, setPlugged] = useStatusStore(state => [state.isPlugged, state.setPlugged])
   const [deviceFound, setDeviceFound] = useState(false)
   const navigate = useNavigate()
@@ -62,12 +62,17 @@ function Carplay({ receivingVideo, setReceivingVideo, settings, command, command
       new URL('./worker/render/Render.worker.ts', import.meta.url), {type: 'module'},
     )
     const canvas = canvasElement.transferControlToOffscreen()
-    worker.postMessage(new InitEvent(canvas, videoChannel.port2), [
+    // Renderer backend is chosen in Settings (Globals.RendererType). 'webgl2'
+    // is a good default on the Pi 4 / CM4 (V3D, GLES 3.1); 'webgpu' tries the
+    // Vulkan-backed path, 'webgl' is the most conservative fallback. The `??`
+    // guards configs written before this setting existed.
+    const renderer = settings.renderer ?? 'webgl2'
+    worker.postMessage(new InitEvent(canvas, videoChannel.port2, renderer), [
       canvas,
       videoChannel.port2,
     ])
     return worker
-  }, [canvasElement])
+  }, [canvasElement, settings.renderer])
 
   useLayoutEffect(() => {
     if (canvasRef.current) {
@@ -170,7 +175,7 @@ function Carplay({ receivingVideo, setReceivingVideo, settings, command, command
   }, []);
 
   useEffect(() => {
-    carplayWorker.postMessage({type: 'keyCommand', command: command})
+    carplayWorker.postMessage({type: 'keyCommand', command: command as KeyCommand})
   }, [commandCounter]);
 
   const checkDevice = useCallback(

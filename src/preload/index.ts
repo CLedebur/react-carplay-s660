@@ -22,7 +22,7 @@ const api: Api = {
   reverse: (callback: ApiCallback) => ipcRenderer.on('reverse', callback),
   getSettings: () => ipcRenderer.send('getSettings'),
   saveSettings: (settings: ExtraConfig) => ipcRenderer.send('saveSettings', settings),
-  // stream: (stream: Stream) => ipcRenderer.send('startStream', stream),
+  stream: (stream: Stream) => ipcRenderer.send('stream', stream),
   quit: () => ipcRenderer.send('quit')
 }
 

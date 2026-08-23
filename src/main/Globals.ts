@@ -5,6 +5,10 @@ export type Most = {
   stream?: Stream
 }
 
+// Render backend used by the video pipeline (see Carplay.tsx / Render.worker).
+// 'webgl2' is a good default on the Pi 4 / CM4 (V3D, GLES 3.1).
+export type RendererType = 'webgl' | 'webgl2' | 'webgpu'
+
 export type ExtraConfig = DongleConfig & {
   kiosk: boolean,
   camera: string,
@@ -12,6 +16,7 @@ export type ExtraConfig = DongleConfig & {
   piMost: boolean,
   canbus: boolean,
   bindings: KeyBindings,
+  renderer: RendererType,
   most?: Most,
   canConfig?: CanConfig
 }
