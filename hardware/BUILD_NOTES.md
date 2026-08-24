@@ -938,12 +938,58 @@ AppImage download, and an `ERR` trap. See the script header.
 
 ---
 
-*Last updated: 2026-08-24. Status: NVMe SSD in service — Pi OS Lite reinstalled fresh on
-the NVMe, boots from it, microSD removed, system stable (§18). First live CarPlay runs via
-the Carlinkit dongle on **Path A** (Electron, `--disable-gpu`), so it renders in software —
+## 19. 2026-08-24 — Stable/dev channel toggle: `carplay.service` + `carplay-dev-chromium.service`
+
+Realises the §14 dual-environment idea and the §11.7 "Path B service" TODO **without ever
+clobbering the working Electron install.** `provision.sh` now provisions two independent
+channels; both can coexist and you toggle at runtime:
+
+- **`carplay.service`** — Path A, Electron `--disable-gpu` (software). ENABLED, autostarts.
+  The stable channel; unchanged.
+- **`carplay-dev-chromium.service`** — Path B, system Chromium + carplay-web-app (GPU
+  compositing). Installed **DISABLED** — start it by hand to experiment. A launch wrapper
+  (`~/carplay-dev/run-chromium-kiosk.sh`) serves the web app (`npm start`, §11.4), waits for
+  `localhost:3000`, then execs `cage -- chromium … --kiosk`.
+- **`carplay-dev-electron.service`** — reserved name for a future custom-patched-Electron
+  channel (§8.5), if that route is taken. Not built yet.
+
+**Mutual exclusion.** Only one may own tty1 at a time. The dev unit declares
+`Conflicts=carplay.service` (systemd `Conflicts=` is symmetric), so starting either stops
+the other. `getty@tty1` stays disabled — SSH in for a shell.
+
+**Toggling:**
+```bash
+# live (fast; VT/PAM handoff between two tty1 kiosks is UNVERIFIED — see §18/§9):
+sudo systemctl start carplay-dev-chromium.service   # -> Chromium/GPU (stops stable)
+sudo systemctl start carplay.service                # -> Electron    (stops dev)
+# reliable (a clean boot always sets up the VT/PAM session):
+sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chromium.service && sudo reboot
+sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot
+```
+
+**`provision.sh` shape change.** The one-shot `TARGET_PATH="a|b"` selector is replaced by two
+independent flags — `INSTALL_STABLE_A` and `INSTALL_DEV_CHROMIUM` (yes/no) — because a single
+selector cannot express "both present, toggle between them." Common phases still run once. To
+add the dev channel to the existing NVMe box **without touching the stable install**, set
+`INSTALL_STABLE_A=no` + `INSTALL_DEV_CHROMIUM=yes`.
+
+**Not yet run on hardware** — the dev channel (web-app build + the toggle) is provisioned in
+the script but has not been exercised on the CM4. First run is the test.
+
+**Expectations (important).** Path B fixes *compositing* (GPU), not *decode* — the CarPlay
+H.264 stream stays software-decoded until the V4L2 / custom-Electron work (§8.5). So the dev
+channel should smooth the UI and give a real `chrome://gpu` readout, but may not by itself fix
+the CarPlay video framerate.
+
+---
+
+*Last updated: 2026-08-24. Status: NVMe SSD in service — Pi OS Lite reinstalled fresh on the
+NVMe, boots from it, microSD removed, system stable (§18). First live CarPlay runs via the
+Carlinkit dongle on **Path A** (Electron, `--disable-gpu`), so it renders in software —
 framerate is poor, the EXPECTED Path A trade (§8.5), not the §17 `dma_buf` fallback. Path B
-(system Chromium + carplay-web-app) remains the validated GPU-compositing candidate, not yet
-exercised on this NVMe build. `provision.sh` reworked to a single `TARGET_PATH`-selected
-script (not yet run end-to-end on the NVMe). Open: hardware video decode (V4L2 flag / custom
-Electron); the Path A → Path B / custom-Electron architecture decision; a GPU + decode
-readout via `chrome://gpu` once Path B is booted.*
+(system Chromium + carplay-web-app) is now provisioned as a toggleable dev channel —
+`carplay-dev-chromium.service`, installed DISABLED alongside the stable `carplay.service`
+(§19) — but not yet exercised on the CM4. `provision.sh` provisions the two channels via the
+`INSTALL_STABLE_A` / `INSTALL_DEV_CHROMIUM` flags. Open: hardware video decode (V4L2 flag /
+custom Electron → a future `carplay-dev-electron.service`); confirm GPU + decode via
+`chrome://gpu` once the dev channel is booted; verify the stable/dev toggle on hardware.*
