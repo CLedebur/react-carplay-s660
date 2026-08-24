@@ -788,8 +788,9 @@ persistent-writable on a locked image.
      version with Pi GPU support and rebuild.
 
 1. **Video-decode test (with the dongle).** ⏳ PARTLY DONE 2026-08-24 (§18) — live CarPlay
-   runs but at poor framerate (software decode); the formal `chrome://gpu` Video-Decode
-   reading is still to be recorded. Whichever app path, plug in the dongle,
+   runs on **Path A** (Electron, `--disable-gpu`) at poor framerate (software compositing +
+   decode, by design); a `chrome://gpu` reading awaits a Path B boot (no address bar under
+   the kiosk Electron). Whichever app path, plug in the dongle,
    connect the phone by cable, watch live CarPlay, and check `chrome://gpu` (or the
    Electron equivalent) for **Video Decode**: hardware (V4L2) or software. If software,
    try a V4L2 decode feature flag on the launch line. This is the last piece of the GPU
@@ -911,11 +912,14 @@ been removed. The system is stable and in normal working order. (This diverges f
 §15.2 `rpi-clone` plan — a clean reinstall instead — which also sets up the first real
 end-to-end `provision.sh` run, still to be done with the reworked script.)
 
-**First live CarPlay.** With the Carlinkit dongle + phone (wired), CarPlay comes up and
-renders on the dash — the first full end-to-end run of the stack. **Framerate is poor**,
-which is the EXPECTED result and NOT a regression: it is the predicted software-decode /
-per-frame `dma_buf` fallback state described in §17 and §8.5. Hardware (V4L2) decode is
-still unwired — that remains THE open item.
+**First live CarPlay — on Path A (Electron).** With the Carlinkit dongle + phone (wired),
+CarPlay comes up and renders on the dash — the first full end-to-end run of the stack. The
+running app is **Path A**: the Electron AppImage launched with `--disable-gpu`, so **both
+compositing and H.264 decode are in software by design**. **Framerate is poor**, which is
+the EXPECTED Path A trade (§8.5) — the stable "software everything" state, *not* the
+per-frame `dma_buf` fallback of §17 (the `--disable-gpu` flag exists precisely to avoid
+those GPU errors) and *not* the Path B GPU-composite path. Hardware (V4L2) decode is still
+unwired — that remains THE open item.
 
 **`provision.sh` reworked this session** (same PR; not yet run against the fresh NVMe
 install): a single script selected by `TARGET_PATH` (a = Electron/software, b = system
@@ -923,8 +927,10 @@ Chromium/GPU), common phases run once, `node-CarPlay` pinned to a fixed ref, a h
 AppImage download, and an `ERR` trap. See the script header.
 
 **Still open (focus unchanged):**
-- Record the decode mode of the live stream — `chrome://gpu` → Video Decode (hardware vs
-  software) — and note which app path is in use (A Electron / B system Chromium). *(TBD.)*
+- Decode-mode measurement is **moot on Path A** (GPU is disabled, so it is software by
+  construction), and `chrome://gpu` is not reachable under the kiosk Electron (no address
+  bar). The meaningful readout comes when Path B is tried — `TARGET_PATH="b"` boots system
+  Chromium, where `chrome://gpu` → Video Decode and GPU compositing are both visible.
 - The HW-decode route (a V4L2 decode feature flag on the launch line, or the
   custom-patched Electron of §8.5) is what turns "renders, poor framerate" into smooth video.
 - Then: finalize the shipped service (§11.7); re-test thermals in the enclosure; enable
@@ -934,10 +940,10 @@ AppImage download, and an `ERR` trap. See the script header.
 
 *Last updated: 2026-08-24. Status: NVMe SSD in service — Pi OS Lite reinstalled fresh on
 the NVMe, boots from it, microSD removed, system stable (§18). First live CarPlay runs via
-the Carlinkit dongle, but framerate is poor — the EXPECTED software-decode / `dma_buf`
-fallback (§17, §8.5), not hardware (V4L2) decode. Path B (system Chromium + carplay-web-app)
-remains the validated GPU-compositing path; Path A (Electron, `--disable-gpu`) the software
-fallback. `provision.sh` reworked to a single `TARGET_PATH`-selected script (not yet run
-end-to-end on the NVMe). Open: hardware video decode (V4L2 flag / custom Electron);
-architecture decision (Path B refactor vs custom-patched Electron); confirm the live decode
-mode via `chrome://gpu`.*
+the Carlinkit dongle on **Path A** (Electron, `--disable-gpu`), so it renders in software —
+framerate is poor, the EXPECTED Path A trade (§8.5), not the §17 `dma_buf` fallback. Path B
+(system Chromium + carplay-web-app) remains the validated GPU-compositing candidate, not yet
+exercised on this NVMe build. `provision.sh` reworked to a single `TARGET_PATH`-selected
+script (not yet run end-to-end on the NVMe). Open: hardware video decode (V4L2 flag / custom
+Electron); the Path A → Path B / custom-Electron architecture decision; a GPU + decode
+readout via `chrome://gpu` once Path B is booted.*
