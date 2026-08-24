@@ -12,12 +12,16 @@
 #   Path A (STABLE)  = Electron AppImage, software rendering (--disable-gpu). Proven.
 #                      Installed as carplay.service, ENABLED (autostarts at boot).
 #   Path B (DEV)     = system Chromium + carplay-web-app, GPU-accelerated compositing.
-#                      Installed as carplay-dev-chromium.service, DISABLED (start by hand).
+#                      Installed as carplay-dev-chromium.service, DISABLED. Switch to it by
+#                      enabling it and rebooting (see PHASE 5) — verified on the CM4 2026-08-24.
 #
-# Both service files can live on the machine at once; only ONE may run at a time (both own
-# tty1). The dev unit declares Conflicts=carplay.service, so starting one stops the other.
-# This is the §14 stable/dev channel toggle: the stable react-carplay install is never
-# clobbered, even while you experiment with the (faster-compositing) Chromium channel.
+# Both service files can live on the machine at once, but only ONE may run at a time (both
+# own tty1). SWITCH by enabling one + rebooting — NOT by `systemctl start` while the other is
+# up: the live cage->cage handoff drops the HDMI output (screen goes blank until reboot;
+# confirmed on the CM4, BUILD_NOTES §20). The dev unit's Conflicts=carplay.service is kept
+# only as a safety net so both can never run at once. This is the §14 stable/dev channel
+# toggle: the stable react-carplay install is never clobbered, even while you experiment
+# with the (faster-compositing) Chromium channel.
 #
 #   Fresh machine (default):   INSTALL_STABLE_A=yes  INSTALL_DEV_CHROMIUM=no
 #   Add the dev channel to an  INSTALL_STABLE_A=no   INSTALL_DEV_CHROMIUM=yes
@@ -360,12 +364,13 @@ fi
 if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   echo ""
   echo "Path B is installed as carplay-dev-chromium.service but DISABLED (no autostart)."
-  echo "Toggle channels — only ONE owns the display at a time (Conflicts= enforces it):"
-  echo "    sudo systemctl start carplay-dev-chromium.service   # -> Chromium/GPU (stops carplay.service)"
-  echo "    sudo systemctl start carplay.service                # -> Electron/stable (stops the dev one)"
-  echo "If a live switch misbehaves (VT/PAM handoff between two tty1 kiosks is unverified),"
-  echo "use the reliable way — enable the one you want and reboot:"
+  echo "Switch channels by enabling ONE and rebooting (verified on the CM4 2026-08-24):"
+  echo "    # -> dev Chromium/GPU:"
   echo "    sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chromium.service && sudo reboot"
+  echo "    # -> stable Electron:"
   echo "    sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot"
-  echo "First switch to dev is slow: it runs 'npm start' (CRA dev server) before Chromium opens."
+  echo "Do NOT hot-switch with 'systemctl start' while the other kiosk is up: the live"
+  echo "cage->cage handoff drops the HDMI output (screen blank until reboot). Conflicts= is"
+  echo "kept only as a safety net so both can never run at once."
+  echo "First dev boot is slow: it runs 'npm start' (CRA dev server) before Chromium opens."
 fi

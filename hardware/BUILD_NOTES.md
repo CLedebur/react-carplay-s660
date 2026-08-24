@@ -957,13 +957,12 @@ channels; both can coexist and you toggle at runtime:
 `Conflicts=carplay.service` (systemd `Conflicts=` is symmetric), so starting either stops
 the other. `getty@tty1` stays disabled — SSH in for a shell.
 
-**Toggling:**
+**Toggling — enable ONE + reboot.** The live `systemctl start` hot-switch is **CONFIRMED
+BROKEN** on the CM4 (the cage→cage handoff drops HDMI; screen blank until reboot — see §20):
 ```bash
-# live (fast; VT/PAM handoff between two tty1 kiosks is UNVERIFIED — see §18/§9):
-sudo systemctl start carplay-dev-chromium.service   # -> Chromium/GPU (stops stable)
-sudo systemctl start carplay.service                # -> Electron    (stops dev)
-# reliable (a clean boot always sets up the VT/PAM session):
+# -> dev Chromium/GPU:
 sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chromium.service && sudo reboot
+# -> stable Electron:
 sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot
 ```
 
@@ -975,8 +974,9 @@ add the dev channel to the existing NVMe box **without touching the stable insta
 so `NODE_CARPLAY_REF` now targets the commit SHA `670f19e` (= package.json 4.3.0, master HEAD
 2025-06-08) — the earlier `"v4.3.0"` was only the package version and was not checkout-able.
 
-**Not yet run on hardware** — the dev channel (web-app build + the toggle) is provisioned in
-the script but has not been exercised on the CM4. First run is the test.
+**Verified on hardware 2026-08-24 (§20)** — provisioned and booted the dev channel on the CM4;
+`cage` + system Chromium come up and load the web app. The live hot-switch does NOT work
+(§20); switch via enable+reboot as above.
 
 **Expectations (important).** Path B fixes *compositing* (GPU), not *decode* — the CarPlay
 H.264 stream stays software-decoded until the V4L2 / custom-Electron work (§8.5). So the dev
@@ -985,13 +985,40 @@ the CarPlay video framerate.
 
 ---
 
-*Last updated: 2026-08-24. Status: NVMe SSD in service — Pi OS Lite reinstalled fresh on the
-NVMe, boots from it, microSD removed, system stable (§18). First live CarPlay runs via the
-Carlinkit dongle on **Path A** (Electron, `--disable-gpu`), so it renders in software —
-framerate is poor, the EXPECTED Path A trade (§8.5), not the §17 `dma_buf` fallback. Path B
-(system Chromium + carplay-web-app) is now provisioned as a toggleable dev channel —
-`carplay-dev-chromium.service`, installed DISABLED alongside the stable `carplay.service`
-(§19) — but not yet exercised on the CM4. `provision.sh` provisions the two channels via the
-`INSTALL_STABLE_A` / `INSTALL_DEV_CHROMIUM` flags. Open: hardware video decode (V4L2 flag /
-custom Electron → a future `carplay-dev-electron.service`); confirm GPU + decode via
-`chrome://gpu` once the dev channel is booted; verify the stable/dev toggle on hardware.*
+## 20. 2026-08-24 — Dev Chromium channel VERIFIED on hardware; live hot-switch is not viable
+
+Provisioned the dev channel on the CM4 (`INSTALL_STABLE_A=no INSTALL_DEV_CHROMIUM=yes`, over
+SSH — note the Pi's sudo needs a password, so the run is done by hand and the log read back).
+Result: **the Path B dev channel works.** After enabling `carplay-dev-chromium.service` and
+rebooting, `cage` + system Chromium come up and load the web app. **Performance is still
+limited** — GPU compositing is active but H.264 decode stays software (exactly the §19
+expectation); smoothing the CarPlay video is deferred to the V4L2 / custom-Electron work.
+
+**Live hot-switch is BROKEN — use enable+reboot.** Starting the dev service while the stable
+Electron kiosk was up (`systemctl start carplay-dev-chromium.service`) left a blank screen: the
+service and Chromium ran fine (`Result=success`, web server 200, `cage`+`chromium` up), but the
+**HDMI output went `disconnected`**. The journal showed the outgoing cage die with `failed to
+read Wayland events: Broken pipe` at the switch, then `HDMI: Unknown ELD version 0`. The
+cage→cage / DRM handoff does not re-modeset the display. The reliable switch is enable-one +
+reboot (clean modeset), now the only documented method (§19); `Conflicts=` is retained purely
+as a safety net. (WebUSB still needs a click to authorise the dongle — a USB keyboard/mouse on
+the Pi is enough.)
+
+**Deploy finding — the on-disk stable unit is stale.** The `carplay.service` currently on the
+NVMe predates this fork's fixes: its first line is corrupted (`4[Unit]`, so the entire `[Unit]`
+section — `After=`/`Wants=seatd`, `Description=` — is silently ignored), and its `ExecStart`
+lacks `--disable-gpu` (so stable Electron does GPU work and throws the §17 `dma_buf` errors at
+boot — the poor framerate seen in §18). `provision.sh` emits the correct unit; regenerate it
+with `INSTALL_STABLE_A=yes` to fix both. **TODO on the box.**
+
+---
+
+*Last updated: 2026-08-24. Status: NVMe SSD in service (§18). Path B **dev Chromium channel
+verified on the CM4** (§20): `carplay-dev-chromium.service` boots `cage` + system Chromium +
+the web app; switch stable⇄dev by enabling one and rebooting — the live hot-switch drops HDMI
+and is not used. Performance still limited by software H.264 decode (GPU compositing only),
+deferred to V4L2 / custom Electron. `provision.sh` provisions both channels via
+`INSTALL_STABLE_A` / `INSTALL_DEV_CHROMIUM`. Open TODOs: regenerate the stale on-disk
+`carplay.service` (`INSTALL_STABLE_A=yes` — it has a `4[Unit]` typo and no `--disable-gpu`,
+§20); hardware video decode (V4L2 / custom Electron → future `carplay-dev-electron.service`);
+`chrome://gpu` decode readout.*
