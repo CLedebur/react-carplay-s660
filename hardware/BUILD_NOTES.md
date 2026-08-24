@@ -770,7 +770,9 @@ persistent-writable on a locked image.
 
 ## 15. Open questions / next session
 
-Arriving next session: the **Carlinkit dongle** and the **M.2 NVMe SSD**.
+> **Update 2026-08-24 (§18):** the **Carlinkit dongle** and the **M.2 NVMe SSD** have both
+> arrived and are installed — the Pi now boots from NVMe and runs live CarPlay. Items 1 and
+> 2 below are done or partly done (see §18); the rest of this plan still stands.
 
 **PRIMARY TRACK — fork react-carplay and build from source (see Section 7b):**
 
@@ -785,14 +787,18 @@ Arriving next session: the **Carlinkit dongle** and the **M.2 NVMe SSD**.
    - If it's still on an old Electron, bump the Electron devDependency to a current
      version with Pi GPU support and rebuild.
 
-1. **Video-decode test (with the dongle).** Whichever app path, plug in the dongle,
+1. **Video-decode test (with the dongle).** ⏳ PARTLY DONE 2026-08-24 (§18) — live CarPlay
+   runs on **Path A** (Electron, `--disable-gpu`) at poor framerate (software compositing +
+   decode, by design); a `chrome://gpu` reading awaits a Path B boot (no address bar under
+   the kiosk Electron). Whichever app path, plug in the dongle,
    connect the phone by cable, watch live CarPlay, and check `chrome://gpu` (or the
    Electron equivalent) for **Video Decode**: hardware (V4L2) or software. If software,
    try a V4L2 decode feature flag on the launch line. This is the last piece of the GPU
    story. (Path B / `carplay-web-app` in system Chromium remains the proven fallback.)
-2. **Re-image to NVMe.** Clone the working microSD to the NVMe (`rpi-clone`), then set
-   the boot order (`rpi-eeprom-config`) to prefer the NVMe. Keep the microSD as a
-   backup until the NVMe boot is proven over several days.
+2. **Re-image to NVMe.** ✅ DONE 2026-08-24 (§18) — done as a **fresh Pi OS Lite reinstall
+   onto the NVMe** rather than an `rpi-clone`; boot order set to the NVMe and the microSD
+   removed. (Original plan kept for reference: clone the working microSD to the NVMe with
+   `rpi-clone`, set `rpi-eeprom-config` to prefer the NVMe, keep the microSD as a backup.)
    - Confirm the NVMe fits the TOFU: 2242 size, B-M key. (M.2 Key M adapter is on hand.)
    - A fresh NVMe install is also the right moment to test `provision.sh` end-to-end.
 3. **Finalize the shipped service** for whichever app path wins (Section 9.1 / 11.7):
@@ -898,10 +904,46 @@ ABI machinery): the node-gyp override, the direct-rebuild script, and the
 
 ---
 
-*Last updated: 2026-08-23. Status: Electron-33 fork now builds from source on the CM4, but
-a GPU retest shows it hits the SAME `dma_buf` wall as Electron 27 (see §17) — a version
-bump does not fix Pi GPU compositing. Path B (system Chromium + carplay-web-app) remains
-the validated GPU path. Path A (Electron, `--disable-gpu` software render) remains a
-working fallback. Open: video decode (needs dongle); architecture decision (Path B refactor
-vs custom-patched Electron). Power-safety design set. carplay.service ready in 4.465s
-(microSD). Dongle + NVMe arriving next session.*
+## 18. 2026-08-24 — NVMe SSD in service; first live CarPlay on the CM4
+
+**Storage.** The M.2 NVMe SSD is installed on the TOFU. Raspberry Pi OS Lite was
+reinstalled **fresh onto the NVMe**; the build now boots from NVMe and the microSD has
+been removed. The system is stable and in normal working order. (This diverges from the
+§15.2 `rpi-clone` plan — a clean reinstall instead — which also sets up the first real
+end-to-end `provision.sh` run, still to be done with the reworked script.)
+
+**First live CarPlay — on Path A (Electron).** With the Carlinkit dongle + phone (wired),
+CarPlay comes up and renders on the dash — the first full end-to-end run of the stack. The
+running app is **Path A**: the Electron AppImage launched with `--disable-gpu`, so **both
+compositing and H.264 decode are in software by design**. **Framerate is poor**, which is
+the EXPECTED Path A trade (§8.5) — the stable "software everything" state, *not* the
+per-frame `dma_buf` fallback of §17 (the `--disable-gpu` flag exists precisely to avoid
+those GPU errors) and *not* the Path B GPU-composite path. Hardware (V4L2) decode is still
+unwired — that remains THE open item.
+
+**`provision.sh` reworked this session** (same PR; not yet run against the fresh NVMe
+install): a single script selected by `TARGET_PATH` (a = Electron/software, b = system
+Chromium/GPU), common phases run once, `node-CarPlay` pinned to a fixed ref, a hardened
+AppImage download, and an `ERR` trap. See the script header.
+
+**Still open (focus unchanged):**
+- Decode-mode measurement is **moot on Path A** (GPU is disabled, so it is software by
+  construction), and `chrome://gpu` is not reachable under the kiosk Electron (no address
+  bar). The meaningful readout comes when Path B is tried — `TARGET_PATH="b"` boots system
+  Chromium, where `chrome://gpu` → Video Decode and GPU compositing are both visible.
+- The HW-decode route (a V4L2 decode feature flag on the launch line, or the
+  custom-patched Electron of §8.5) is what turns "renders, poor framerate" into smooth video.
+- Then: finalize the shipped service (§11.7); re-test thermals in the enclosure; enable
+  OverlayFS read-only root LAST (§12 / §14).
+
+---
+
+*Last updated: 2026-08-24. Status: NVMe SSD in service — Pi OS Lite reinstalled fresh on
+the NVMe, boots from it, microSD removed, system stable (§18). First live CarPlay runs via
+the Carlinkit dongle on **Path A** (Electron, `--disable-gpu`), so it renders in software —
+framerate is poor, the EXPECTED Path A trade (§8.5), not the §17 `dma_buf` fallback. Path B
+(system Chromium + carplay-web-app) remains the validated GPU-compositing candidate, not yet
+exercised on this NVMe build. `provision.sh` reworked to a single `TARGET_PATH`-selected
+script (not yet run end-to-end on the NVMe). Open: hardware video decode (V4L2 flag / custom
+Electron); the Path A → Path B / custom-Electron architecture decision; a GPU + decode
+readout via `chrome://gpu` once Path B is booted.*
