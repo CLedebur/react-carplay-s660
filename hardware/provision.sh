@@ -8,18 +8,26 @@
 # Read BUILD_NOTES.md alongside this. Every non-obvious line here has a "WHY" comment,
 # but the notes carry the full reasoning and the debugging history.
 #
-# ONE SCRIPT, TWO PATHS (see BUILD_NOTES Section 8.5) — pick ONE via TARGET_PATH in CONFIG:
-#   Path A = Electron AppImage, software rendering (--disable-gpu). Stable, no GPU.
-#            Autostarts as a systemd service; proven.
-#   Path B = system Chromium + carplay-web-app, GPU-accelerated compositing. CHOSEN long
-#            term, but its autostart service is still TODO (video-decode test pending —
-#            BUILD_NOTES 11.7), so Path B provisions the stack and you launch it by hand.
+# TWO CHANNELS (see BUILD_NOTES §8.5 and §14) — install either or BOTH; toggle at runtime:
+#   Path A (STABLE)  = Electron AppImage, software rendering (--disable-gpu). Proven.
+#                      Installed as carplay.service, ENABLED (autostarts at boot).
+#   Path B (DEV)     = system Chromium + carplay-web-app, GPU-accelerated compositing.
+#                      Installed as carplay-dev-chromium.service, DISABLED (start by hand).
 #
-# The COMMON phases (0, 1, 2) run for BOTH paths. Only PHASE 3 (app stack) and PHASE 4
-# (service) branch on TARGET_PATH — so there is a single file and nothing to keep in sync.
+# Both service files can live on the machine at once; only ONE may run at a time (both own
+# tty1). The dev unit declares Conflicts=carplay.service, so starting one stops the other.
+# This is the §14 stable/dev channel toggle: the stable react-carplay install is never
+# clobbered, even while you experiment with the (faster-compositing) Chromium channel.
+#
+#   Fresh machine (default):   INSTALL_STABLE_A=yes  INSTALL_DEV_CHROMIUM=no
+#   Add the dev channel to an  INSTALL_STABLE_A=no   INSTALL_DEV_CHROMIUM=yes
+#     already-working box:       (skips re-provisioning + rewriting the stable install)
+#
+# The COMMON phases (0, 1, 2) run every time. Only PHASE 3 (app stacks) and PHASE 4
+# (services) branch on the flags — one file, no duplication.
 #
 # USAGE:
-#   Set TARGET_PATH (and the rest of CONFIG) below, then:
+#   Set the CONFIG flags below, then:
 #     chmod +x provision.sh
 #     ./provision.sh
 #   Then REBOOT (a clean boot is required — see PHASE 5).
@@ -31,14 +39,14 @@
 set -euo pipefail
 
 # ============================ CONFIG — EDIT THESE ============================
-TARGET_PATH="a"                              # which kiosk stack to provision: "a" or "b"
-                                             #   a = Electron AppImage  (software; autostarts)
-                                             #   b = Chromium + web app (GPU; launch by hand)
-CARPLAY_USER="${USER}"                       # the user the kiosk runs as            (COMMON)
-# --- Path A only ---
+INSTALL_STABLE_A="yes"                        # Path A stable channel  -> carplay.service (ENABLED)
+INSTALL_DEV_CHROMIUM="no"                     # Path B dev channel     -> carplay-dev-chromium.service (DISABLED)
+
+CARPLAY_USER="${USER}"                        # the user the kiosk runs as             (COMMON)
+# --- Path A (stable) only ---
 RC_VERSION="4.0.5"                            # react-carplay AppImage version
 ARCH_SUFFIX="arm64"                           # AppImage arch (arm64 for 64-bit OS)
-# --- Path B only ---
+# --- Path B (dev) only ---
 NODE_CARPLAY_REF="v4.3.0"                     # PIN the node-CarPlay checkout. HEAD moves
                                              # upstream, but the @types/node + typescript pins
                                              # in PHASE 3B are matched to THIS ref. Best value
@@ -46,17 +54,28 @@ NODE_CARPLAY_REF="v4.3.0"                     # PIN the node-CarPlay checkout. H
                                              #   git -C ~/node-CarPlay rev-parse HEAD
 # ============================================================================
 
-# Normalise + validate the path selector before doing any work.
-case "${TARGET_PATH}" in
-  a|A) TARGET_PATH="a" ;;
-  b|B) TARGET_PATH="b" ;;
-  *) echo "!!! TARGET_PATH must be 'a' or 'b' (got: '${TARGET_PATH}')." >&2; exit 1 ;;
-esac
+DEV_DIR="/home/${CARPLAY_USER}/carplay-dev"   # holds the Path B launch wrapper
+
+# Truthy test for the yes/no flags (accepts y/yes/true/1, any case). Written without the
+# bash-4 ${x,,} lowercase so it also runs on older bashes.
+is_yes() {
+  case "$1" in
+    y|Y|yes|Yes|YES|true|True|TRUE|1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Validate: at least one channel must be selected.
+if ! is_yes "${INSTALL_STABLE_A}" && ! is_yes "${INSTALL_DEV_CHROMIUM}"; then
+  echo "!!! Nothing to do: set INSTALL_STABLE_A and/or INSTALL_DEV_CHROMIUM to 'yes'." >&2
+  exit 1
+fi
 
 # Report where we died and reassure that a re-run is safe (the script is idempotent).
 trap 'echo "!!! provision.sh failed at line ${LINENO} — fix the cause and re-run; the script is re-run safe." >&2' ERR
 
-echo "=== S660 CarPlay provisioning — user: ${CARPLAY_USER}, path: ${TARGET_PATH} ==="
+echo "=== S660 CarPlay provisioning — user: ${CARPLAY_USER} ==="
+echo "=== channels: stable A=${INSTALL_STABLE_A}, dev Chromium B=${INSTALL_DEV_CHROMIUM} ==="
 echo "=== NOTE: reboot required at the end. See PHASE 5. ==="
 
 
@@ -127,12 +146,12 @@ sudo udevadm trigger
 
 
 # ============================================================================
-# PHASE 3 — App stack  [branches on TARGET_PATH]
+# PHASE 3 — App stacks  [branches on the flags]
 # ============================================================================
-if [ "${TARGET_PATH}" = "a" ]; then
+if is_yes "${INSTALL_STABLE_A}"; then
 
   # -------- PHASE 3A: Path A — react-carplay Electron AppImage (software) --------
-  echo ">>> PHASE 3A: Path A (Electron AppImage)"
+  echo ">>> PHASE 3A: Path A stable (Electron AppImage)"
 
   # FUSE compat library for AppImages on Trixie.
   sudo apt install -y libfuse2t64 || sudo apt install -y libfuse2
@@ -161,10 +180,12 @@ if [ "${TARGET_PATH}" = "a" ]; then
     ./carplay.AppImage --appimage-extract
   fi
 
-else
+fi
+
+if is_yes "${INSTALL_DEV_CHROMIUM}"; then
 
   # -------- PHASE 3B: Path B — system Chromium + carplay-web-app (GPU) --------
-  echo ">>> PHASE 3B: Path B (system Chromium + web app)"
+  echo ">>> PHASE 3B: Path B dev (system Chromium + web app)"
 
   # System Chromium HAS the Raspberry Pi GBM/V4L2 patches upstream Electron lacks, so it
   # composites on the GPU where Electron crashed. Package is "chromium" on Trixie.
@@ -203,23 +224,22 @@ else
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
-  echo ">>> Path B stack ready. Launch by hand ON THE PI:"
-  echo ">>>   Terminal 1:  cd ~/node-CarPlay/examples/carplay-web-app && npm start"
-  echo ">>>   Terminal 2:  cage -- chromium --ozone-platform=wayland --kiosk --no-sandbox http://localhost:3000"
-  echo ">>> WebUSB only works on localhost/HTTPS ON THE PI — a remote browser shows blank."
-
 fi
 
 
 # ============================================================================
-# PHASE 4 — Autostart service  [branches on TARGET_PATH]
+# PHASE 4 — Services  [branches on the flags]
 # ============================================================================
-if [ "${TARGET_PATH}" = "a" ]; then
+echo ">>> PHASE 4: services"
 
-  echo ">>> PHASE 4: systemd service (Path A)"
-
-  # Frees tty1 so our service can claim it.
+# The kiosk owns tty1; you SSH in for a shell. Free tty1 if we install ANY kiosk service.
+if is_yes "${INSTALL_STABLE_A}" || is_yes "${INSTALL_DEV_CHROMIUM}"; then
   sudo systemctl disable getty@tty1.service 2>/dev/null || true
+fi
+
+# ----- Path A: carplay.service (Electron, software) — ENABLED (autostarts) -----
+if is_yes "${INSTALL_STABLE_A}"; then
+  echo ">>> PHASE 4A: carplay.service (stable, enabled)"
 
   # --disable-gpu is INTENTIONAL for Path A: real GPU accel crashes on this board's v3d/vc4
   # dma_buf scanout bug, then falls back to software anyway. This flag gets the same stable
@@ -251,45 +271,99 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-  sudo systemctl daemon-reload
   sudo systemctl enable carplay.service
-
-else
-
-  echo ">>> PHASE 4: Path B has NO autostart service yet (video-decode test pending; BUILD_NOTES 11.7)."
-  echo ">>> tty1 login is left ENABLED so you can log in after boot and launch Path B by hand,"
-  echo ">>> using the two commands printed in PHASE 3B above."
-  # ----- Path B service (Chromium, GPU) — TEMPLATE, do NOT enable blind -----
-  # Enable a unit like this ONLY once video decode is confirmed. It needs the web app served
-  # locally first (dev server, or better a static production build + a tiny static server).
-  # See BUILD_NOTES 11.7. It reuses Path A's tty/PAM block verbatim; only ExecStart changes:
-  #
-  #   ExecStart=/usr/bin/cage -- /usr/bin/chromium --ozone-platform=wayland --kiosk \
-  #     --no-sandbox http://localhost:3000
-  #
-  # When you build it, also disable getty@tty1 (as Path A does) so the service can claim tty1.
-
 fi
+
+# ----- Path B: carplay-dev-chromium.service (Chromium, GPU) — INSTALLED, DISABLED -----
+if is_yes "${INSTALL_DEV_CHROMIUM}"; then
+  echo ">>> PHASE 4B: carplay-dev-chromium.service (dev, installed but DISABLED)"
+
+  # Launch wrapper: the dev service needs the web app served on localhost first, THEN the
+  # Chromium kiosk. Both live in this unit's cgroup, so a `systemctl stop` (or the Conflicts=
+  # switch back to carplay.service) tears the web server down too. Quoted heredoc: $HOME and
+  # the loop vars are resolved at RUNTIME (systemd sets $HOME from User=), not now.
+  mkdir -p "${DEV_DIR}"
+  cat > "${DEV_DIR}/run-chromium-kiosk.sh" << 'WRAP'
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="$HOME/node-CarPlay/examples/carplay-web-app"
+
+# Serve the web app locally (dev server; proven in BUILD_NOTES 11.4). BROWSER=none stops
+# react-scripts trying to open a browser.
+cd "$APP_DIR"
+BROWSER=none npm start &
+
+# Wait for the dev server to answer before handing the display to Chromium (the first CRA
+# start on the Pi is slow; allow up to ~90s). If it never comes up, launch anyway and let
+# Restart=always retry.
+for _ in $(seq 1 90); do
+  if curl -sf http://localhost:3000 >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+
+# WebUSB requires a localhost origin — which this is. Full-screen kiosk, GPU compositing.
+exec cage -- chromium --ozone-platform=wayland --kiosk --no-sandbox http://localhost:3000
+WRAP
+  chmod +x "${DEV_DIR}/run-chromium-kiosk.sh"
+
+  # The unit. Conflicts=carplay.service makes the two mutually exclusive (systemd Conflicts=
+  # is symmetric: starting EITHER stops the other), so they never fight over tty1. It is
+  # deliberately NOT enabled — you start it by hand to toggle channels (see PHASE 5).
+  sudo tee /etc/systemd/system/carplay-dev-chromium.service > /dev/null << EOF
+[Unit]
+Description=S660 CarPlay DEV kiosk (cage + system Chromium, Path B / GPU) — toggles vs carplay.service
+After=local-fs.target seatd.service
+Wants=seatd.service
+Conflicts=carplay.service
+
+[Service]
+User=${CARPLAY_USER}
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+ExecStart=${DEV_DIR}/run-chromium-kiosk.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
+sudo systemctl daemon-reload
 
 
 # ============================================================================
 # PHASE 5 — DONE
 # ============================================================================
 echo ""
-echo "=== Provisioning complete (path ${TARGET_PATH}) ==="
+echo "=== Provisioning complete (stable A=${INSTALL_STABLE_A}, dev Chromium B=${INSTALL_DEV_CHROMIUM}) ==="
 echo ""
-if [ "${TARGET_PATH}" = "a" ]; then
-  echo "CRITICAL: you must REBOOT now. Starting/stopping the service live does NOT reliably"
-  echo "set up the VT/PAM session (it loops every ~2s). A clean boot fixes it:"
+echo "CRITICAL: REBOOT now. Starting a kiosk service live does NOT reliably set up the"
+echo "VT/PAM session on first setup (it loops every ~2s); a clean boot fixes it:"
+echo ""
+echo "    sudo reboot"
+echo ""
+
+if is_yes "${INSTALL_STABLE_A}"; then
+  echo "After reboot, Path A (Electron/software) autostarts via carplay.service."
+fi
+
+if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   echo ""
-  echo "    sudo reboot"
-  echo ""
-  echo "After reboot, Path A (Electron/software) autostarts."
-else
-  echo "REBOOT to apply the group changes and boot trims:"
-  echo ""
-  echo "    sudo reboot"
-  echo ""
-  echo "Path B does NOT autostart yet. After reboot, log in on the Pi and run the two"
-  echo "by-hand commands from PHASE 3B to bring up Chromium + the web app."
+  echo "Path B is installed as carplay-dev-chromium.service but DISABLED (no autostart)."
+  echo "Toggle channels — only ONE owns the display at a time (Conflicts= enforces it):"
+  echo "    sudo systemctl start carplay-dev-chromium.service   # -> Chromium/GPU (stops carplay.service)"
+  echo "    sudo systemctl start carplay.service                # -> Electron/stable (stops the dev one)"
+  echo "If a live switch misbehaves (VT/PAM handoff between two tty1 kiosks is unverified),"
+  echo "use the reliable way — enable the one you want and reboot:"
+  echo "    sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chromium.service && sudo reboot"
+  echo "    sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot"
+  echo "First switch to dev is slow: it runs 'npm start' (CRA dev server) before Chromium opens."
 fi
