@@ -39,8 +39,10 @@
 set -euo pipefail
 
 # ============================ CONFIG — EDIT THESE ============================
-INSTALL_STABLE_A="yes"                        # Path A stable channel  -> carplay.service (ENABLED)
-INSTALL_DEV_CHROMIUM="no"                     # Path B dev channel     -> carplay-dev-chromium.service (DISABLED)
+INSTALL_STABLE_A="${INSTALL_STABLE_A:-yes}"          # Path A stable -> carplay.service (ENABLED)
+INSTALL_DEV_CHROMIUM="${INSTALL_DEV_CHROMIUM:-no}"   # Path B dev    -> carplay-dev-chromium.service (DISABLED)
+# ^ Both honour an environment override, so you can pick channels without editing this file:
+#     INSTALL_STABLE_A=no INSTALL_DEV_CHROMIUM=yes ./provision.sh
 
 CARPLAY_USER="${USER}"                        # the user the kiosk runs as             (COMMON)
 # --- Path A (stable) only ---
