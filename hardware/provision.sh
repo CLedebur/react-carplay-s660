@@ -230,6 +230,81 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
+  # ---- S660 perf patch: hardcode 800x480 @ 30fps in the DongleConfig (BUILD_NOTES §21) ----
+  # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
+  # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
+  # the CM4 must then software-decode that (§17). On the S660's real 800x480 screen this is a
+  # no-op (innerWidth/Height already equal 800x480), but a bench monitor (e.g. this one, up to
+  # 3840x2160) silently inflates the decode workload 5-10x. Confirmed on hardware 2026-08-24:
+  # pinning to 800x480 @ 30fps measurably smoothed the dev-Chromium channel. The container's
+  # CSS box is resized to match (800x480, centered) IN THE SAME EDIT, because touch-coordinate
+  # normalization (useCarplayTouch) divides by these same width/height constants — changing
+  # one without the other breaks touch mapping.
+  # Idempotent: the grep guard skips sources already carrying this patch.
+  APP_TSX="src/App.tsx"
+  if ! grep -q "S660 native screen is 800x480" "${APP_TSX}"; then
+    python3 - "${APP_TSX}" << 'PY'
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    src = f.read()
+
+replacements = [
+    (
+        "const width = window.innerWidth\nconst height = window.innerHeight",
+        "// S660 native screen is 800x480. The bench monitor on this Pi negotiates up to\n"
+        "// 3840x2160 -- window.innerWidth/innerHeight would ask the dongle for THAT resolution,\n"
+        "// which the CM4 has to software-decode. Hardcode to the real car screen so decode load\n"
+        "// (and this perf test) matches production regardless of what's plugged in on the bench.\n"
+        "// In the car this is a no-op: the kiosk window IS 800x480, so innerWidth/Height would\n"
+        "// already equal these values.\n"
+        "const width = 800\nconst height = 480",
+    ),
+    (
+        "const config: Partial<DongleConfig> = {\n"
+        "  width,\n"
+        "  height,\n"
+        "  fps: 60,\n"
+        "  mediaDelay: 300,\n"
+        "}",
+        "const config: Partial<DongleConfig> = {\n"
+        "  width,\n"
+        "  height,\n"
+        "  fps: 30, // 60 was heavy on top of software decode; 30 halves it again, plenty for a dash\n"
+        "  mediaDelay: 300,\n"
+        "}",
+    ),
+    (
+        "        style={{\n"
+        "          height: '100%',\n"
+        "          width: '100%',\n"
+        "          padding: 0,\n"
+        "          margin: 0,\n"
+        "          display: 'flex',\n"
+        "        }}",
+        "        style={{\n"
+        "          height: `${height}px`,\n"
+        "          width: `${width}px`,\n"
+        "          padding: 0,\n"
+        "          margin: '0 auto',\n"
+        "          display: 'flex',\n"
+        "        }}",
+    ),
+]
+
+for old, new in replacements:
+    count = src.count(old)
+    assert count == 1, f"expected exactly 1 match, got {count}: {old[:50]!r}..."
+    src = src.replace(old, new)
+
+with open(path, "w") as f:
+    f.write(src)
+
+print(f"Patched {path}: DongleConfig -> 800x480 @ 30fps.")
+PY
+  fi
+
 fi
 
 

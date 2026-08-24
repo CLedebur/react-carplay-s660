@@ -1013,12 +1013,56 @@ with `INSTALL_STABLE_A=yes` to fix both. **TODO on the box.**
 
 ---
 
+## 21. 2026-08-24 — Dev-channel perf fix: DongleConfig was requesting bench-monitor resolution
+
+**Root cause found.** `carplay-web-app`'s `App.tsx` builds its `DongleConfig` — the
+resolution + framerate it asks the **dongle** to encode, which the CM4 then has to
+software-decode (§17) — from `window.innerWidth` / `window.innerHeight`, at `fps: 60`. That
+is the *attached display's* size, not the S660's. The bench monitor used for testing
+negotiates up to **3840x2160** (§20), so the dev channel was silently asking for, and
+software-decoding, **5-10x more pixels/sec** than the car's real 800x480 screen will ever
+need. This — not just "decode is software" — was the dominant cause of the poor framerate
+in §20's first test.
+
+**Fix.** Hardcoded the `DongleConfig` to the S660's real screen: `width: 800, height: 480,
+fps: 30` (30fps is standard for a dash and halves the decode load again on top of the
+resolution cut). The `videoContainer` div's CSS box is resized to the same fixed 800x480
+(centered) **in the same edit** — `useCarplayTouch` normalizes touch coordinates by dividing
+the container's rendered pixel size by these same `width`/`height` constants, so the two
+must change together or touch mapping breaks. In the car this whole patch is a no-op: the
+kiosk window IS 800x480, so `innerWidth`/`innerHeight` already equal these values — it only
+matters on an oversized bench display.
+
+**Confirmed on hardware 2026-08-24:** visibly smoother at 800x480. 30fps "makes a lot of
+sense because of the screen itself" (the user's words) — not a compromise, a match to what
+the target hardware actually needs. Touch alignment was not meaningfully verifiable on this
+bench rig (mouse pointer on a non-touch monitor, no ground truth to compare against) —
+deferred to the real 800x480 touchscreen.
+
+**Persisted into `provision.sh`, not a fork.** `node-CarPlay` is upstream, pinned by exact
+commit SHA (§19) — no fork exists for it (unlike `react-carplay`, §7b/§17). Forking the whole
+repo for a 3-block patch was judged disproportionate, so PHASE 3B applies the fix as an
+**idempotent, assertion-guarded source patch** immediately after `npm install --ignore-scripts`
+(a `grep` marker skips already-patched sources; each replacement asserts exactly one match, so
+if `node-CarPlay` is ever re-pinned to a different SHA where this code has changed, the script
+fails loudly via the `ERR` trap instead of silently no-op'ing or corrupting the file).
+**Verified reproducible:** ran the exact embedded patch logic against a scratch copy of the
+pinned pre-patch source and diffed the result against the tested-on-hardware live file — byte
+identical.
+
+**Still open, unaffected by this fix:** hardware video decode (V4L2 / custom Electron, §17)
+remains the way to smooth CarPlay video further — this patch only removes a self-inflicted
+bench-monitor resolution tax, it does not add hardware decode.
+
+---
+
 *Last updated: 2026-08-24. Status: NVMe SSD in service (§18). Path B **dev Chromium channel
-verified on the CM4** (§20): `carplay-dev-chromium.service` boots `cage` + system Chromium +
-the web app; switch stable⇄dev by enabling one and rebooting — the live hot-switch drops HDMI
-and is not used. Performance still limited by software H.264 decode (GPU compositing only),
-deferred to V4L2 / custom Electron. `provision.sh` provisions both channels via
-`INSTALL_STABLE_A` / `INSTALL_DEV_CHROMIUM`. Open TODOs: regenerate the stale on-disk
-`carplay.service` (`INSTALL_STABLE_A=yes` — it has a `4[Unit]` typo and no `--disable-gpu`,
-§20); hardware video decode (V4L2 / custom Electron → future `carplay-dev-electron.service`);
-`chrome://gpu` decode readout.*
+verified on the CM4** (§20) and **perf-patched to the S660's real 800x480 @ 30fps** (§21) —
+confirmed visibly smoother; the fix is persisted as an idempotent source patch in
+`provision.sh` (verified byte-identical against a fresh-clone dry run), not a fork. Switch
+stable⇄dev by enabling one and rebooting — the live hot-switch drops HDMI and is not used.
+`provision.sh` provisions both channels via `INSTALL_STABLE_A` / `INSTALL_DEV_CHROMIUM`. Open
+TODOs: regenerate the stale on-disk `carplay.service` (`INSTALL_STABLE_A=yes` — `4[Unit]` typo,
+no `--disable-gpu`, §20); verify touch calibration on the real touchscreen (§21); hardware
+video decode (V4L2 / custom Electron → future `carplay-dev-electron.service`); `chrome://gpu`
+decode readout.*
