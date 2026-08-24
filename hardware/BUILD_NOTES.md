@@ -971,7 +971,9 @@ sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable car
 independent flags — `INSTALL_STABLE_A` and `INSTALL_DEV_CHROMIUM` (yes/no) — because a single
 selector cannot express "both present, toggle between them." Common phases still run once. To
 add the dev channel to the existing NVMe box **without touching the stable install**, set
-`INSTALL_STABLE_A=no` + `INSTALL_DEV_CHROMIUM=yes`.
+`INSTALL_STABLE_A=no` + `INSTALL_DEV_CHROMIUM=yes`. Pin fix: node-CarPlay has **no git tags**,
+so `NODE_CARPLAY_REF` now targets the commit SHA `670f19e` (= package.json 4.3.0, master HEAD
+2025-06-08) — the earlier `"v4.3.0"` was only the package version and was not checkout-able.
 
 **Not yet run on hardware** — the dev channel (web-app build + the toggle) is provisioned in
 the script but has not been exercised on the CM4. First run is the test.

@@ -47,11 +47,11 @@ CARPLAY_USER="${USER}"                        # the user the kiosk runs as      
 RC_VERSION="4.0.5"                            # react-carplay AppImage version
 ARCH_SUFFIX="arm64"                           # AppImage arch (arm64 for 64-bit OS)
 # --- Path B (dev) only ---
-NODE_CARPLAY_REF="v4.3.0"                     # PIN the node-CarPlay checkout. HEAD moves
-                                             # upstream, but the @types/node + typescript pins
-                                             # in PHASE 3B are matched to THIS ref. Best value
-                                             # is the exact SHA from the known-good microSD:
-                                             #   git -C ~/node-CarPlay rev-parse HEAD
+# PIN node-CarPlay (= package.json 4.3.0). The repo has NO git tags, so pin the COMMIT SHA —
+# "v4.3.0" is only the package.json version and is NOT checkout-able. This SHA is master HEAD
+# as of 2026-08-24 (committed 2025-06-08); it is the exact code the @types/node + typescript
+# pins in PHASE 3B (§11.3) are matched to. Re-pin only if you deliberately move node-CarPlay.
+NODE_CARPLAY_REF="670f19eda2a0b0047a5a538b9602b263f442433a"
 # ============================================================================
 
 DEV_DIR="/home/${CARPLAY_USER}/carplay-dev"   # holds the Path B launch wrapper
