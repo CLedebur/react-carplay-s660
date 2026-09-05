@@ -37,30 +37,87 @@ echo "=== NOTE: reboot required at the end. See PHASE 6. ==="
 
 
 # ============================================================================
-# PHASE 0 — Boot-time trims (optional but recommended; see BUILD_NOTES Section 4)
+# PHASE 0 — Boot-time trims (see BUILD_NOTES Section 4 and Section 18)
 # ============================================================================
+# Section 18 measured every one of these on the CM4 (2026-09-05). Net effect: the Path B
+# kiosk is on screen ~5.7 s after kernel start instead of ~14.5 s. Nothing network-related
+# is allowed on the boot path — Wi-Fi is never guaranteed in the car.
 echo ">>> PHASE 0: boot-time trims"
 
-# cloud-init: first-boot setup tool, not needed every boot (~3s saved).
-sudo systemctl disable cloud-init cloud-init-local cloud-config cloud-final 2>/dev/null || true
-sudo touch /etc/cloud/cloud-init.disabled
+# cloud-init: first-boot tool. Even when "disabled" its generator + units load every boot,
+# so purge it outright. (netplan.io must STAY — RPi's network-manager depends on it.)
+sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y cloud-init rpi-cloud-init-mods 2>/dev/null || true
+sudo apt-get -y autoremove --purge 2>/dev/null || true
 
 # apt-daily: background update check. Disable the TIMERS (not just the services) and mask,
 # so nothing re-triggers them. A dash unit updates on your schedule, not at boot.
 sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 sudo systemctl mask apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
 
-# Optional: disable clearly-unused services. Comment out any you actually use.
-sudo systemctl disable man-db.service avahi-daemon.service 2>/dev/null || true
-# sudo systemctl disable bluetooth.service   # leave enabled if you use Bluetooth
+# Persistent timers all fire in the first minute after the car sat overnight. Drop the
+# ones we never want; keep logrotate/fstrim but stop them catching up at boot.
+sudo systemctl disable man-db.timer dpkg-db-backup.timer e2scrub_all.timer 2>/dev/null || true
+for t in logrotate fstrim; do
+  sudo mkdir -p /etc/systemd/system/$t.timer.d
+  printf '[Timer]\nPersistent=false\n' | sudo tee /etc/systemd/system/$t.timer.d/no-persistent.conf >/dev/null
+done
 
-# config.txt: remove the splash delay and boot pause.
-if ! grep -q "^disable_splash=1" /boot/firmware/config.txt; then
-  echo "disable_splash=1" | sudo tee -a /boot/firmware/config.txt >/dev/null
-fi
-if ! grep -q "^boot_delay=0" /boot/firmware/config.txt; then
-  echo "boot_delay=0" | sudo tee -a /boot/firmware/config.txt >/dev/null
-fi
+# Services a kiosk does not need. bluetooth: the Carlinkit dongle does its own BT.
+# rpi-eeprom-update: with RPI_EEPROM_IMMEDIATE_UPDATE=1 it can FLASH THE BOOTLOADER at
+# boot in the car — a power cut mid-flash means SD-card recovery. Update by hand, on the
+# bench. sshswitch/e2scrub_reap/keyboard-setup/console-setup: nothing for us to do.
+sudo systemctl disable bluetooth.service rpi-eeprom-update.service sshswitch.service \
+  e2scrub_reap.service keyboard-setup.service console-setup.service avahi-daemon.service 2>/dev/null || true
+sudo systemctl --global disable mpris-proxy.service 2>/dev/null || true
+# binfmt sits ON the kiosk's critical chain and only registers python3. upower is only
+# ever D-Bus-activated by Chromium.
+sudo systemctl mask systemd-binfmt.service proc-sys-fs-binfmt_misc.automount \
+  proc-sys-fs-binfmt_misc.mount upower.service 2>/dev/null || true
+
+# Networking OFF the boot path: NetworkManager starts from a timer 20 s after boot
+# (Chromium is long up). Disabling NM removes two D-Bus aliases we still want, so they
+# are re-created, and a drop-in makes NM pull wpa_supplicant with it.
+# CONSEQUENCE: SSH is reachable ~30 s after power-on. Do not "fix" this.
+sudo systemctl disable NetworkManager.service wpa_supplicant.service 2>/dev/null || true
+sudo install -m 644 "$(dirname "$0")/path-b/network-late.timer" /etc/systemd/system/network-late.timer
+sudo mkdir -p /etc/systemd/system/NetworkManager.service.d
+sudo install -m 644 "$(dirname "$0")/path-b/NetworkManager.service.d-wants-wpa.conf" \
+  /etc/systemd/system/NetworkManager.service.d/wants-wpa.conf
+sudo ln -sfn /usr/lib/systemd/system/wpa_supplicant.service /etc/systemd/system/dbus-fi.w1.wpa_supplicant1.service
+sudo systemctl enable NetworkManager-dispatcher.service network-late.timer 2>/dev/null || true
+
+# No swap: 8 GB RAM, and the default 2 GB swap file + 2 GB zram cost ~0.6 s of boot CPU.
+sudo mkdir -p /etc/rpi/swap.conf.d
+sudo install -m 644 "$(dirname "$0")/path-b/rpi-swap.conf.d-90-boot-tuning.conf" /etc/rpi/swap.conf.d/90-boot-tuning.conf
+
+# GPU modules in sysinit. A fast boot lets cage start before udev has loaded vc4; cage
+# then fails with "Found 0 GPUs" and HANGS (Restart=always never fires). See 18.2.
+sudo install -m 644 "$(dirname "$0")/path-b/modules-load.d-carplay-gpu.conf" /etc/modules-load.d/carplay-gpu.conf
+
+# /boot/firmware: automount on first access instead of holding up local-fs.target.
+sudo sed -i -E 's|^(PARTUUID=\S+\s+/boot/firmware\s+vfat\s+)defaults(\s+)0\s+2$|\1defaults,noauto,x-systemd.automount,nofail\20  0|' /etc/fstab
+
+# config.txt: no splash/boot pause; no initramfs (kernel has nvme+ext4+pcie built in);
+# no camera/DSI probing. hdmi_group/hdmi_mode/hdmi_force_hotplug are IGNORED under
+# vc4-kms-v3d + disable_fw_kms_setup=1 — the mode is pinned in cmdline.txt below.
+for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 display_auto_detect=0; do
+  k=${kv%%=*}
+  if grep -q "^$k=" /boot/firmware/config.txt; then
+    sudo sed -i "s/^$k=.*/$kv/" /boot/firmware/config.txt
+  else
+    echo "$kv" | sudo tee -a /boot/firmware/config.txt >/dev/null
+  fi
+done
+
+# cmdline.txt (ONE line): drop the 115200-baud serial console (~2 s of synchronous kernel
+# output), quiet the kernel, pin the car panel's native mode (EDID VIC 18: 720x576@50,
+# 16:9; "D" forces the connector on without waiting for hotplug). For serial debugging,
+# temporarily put "console=serial0,115200" back.
+ROOT_PARTUUID=$(sed -nE 's/.*root=(PARTUUID=[^ ]+).*/\1/p' /boot/firmware/cmdline.txt)
+echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x576@50D" \
+  | sudo tee /boot/firmware/cmdline.txt >/dev/null
+
+sudo systemctl daemon-reload
 
 
 # ============================================================================
@@ -218,7 +275,13 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-# ----- Path B service (Chromium, GPU) — TEMPLATE, commented out -----
+# ----- Path B service (Chromium, GPU) — the RUNNING unit lives in hardware/path-b/ -----
+# hardware/path-b/carplay-dev-chromium.service + run-chromium-kiosk.sh + serve-build.js are
+# the versioned copies of what is on the Pi (BUILD_NOTES Section 18). Install them to
+# /etc/systemd/system/ and ~/carplay-dev/ and `systemctl enable carplay-dev-chromium`
+# INSTEAD of carplay.service. The unit below is the Path A fallback.
+#
+# Old template kept for reference:
 # Enable this INSTEAD of the above once video decode is confirmed. It needs the web app
 # served locally first (dev server, or better a static production build + a tiny static
 # server). Left here as a reference; do not enable blind. See BUILD_NOTES 11.7.

@@ -27,6 +27,10 @@ Two paths exist (see BUILD_NOTES §8.5):
 - **Path A** — the Electron app under `cage --disable-gpu` (software, stable).
 - **Path B (currently chosen)** — `carplay-web-app` in system Chromium (GPU compositing,
   confirmed via `chrome://gpu`).
+  The running unit, kiosk script and static server are versioned in `hardware/path-b/`.
+  Boot is tuned (BUILD_NOTES §18): kiosk on screen ~5.7 s after kernel start, display
+  pinned to the car panel's 720x576@50 via `video=` in cmdline.txt, and NetworkManager
+  deliberately starts 20 s after boot — SSH to the Pi takes ~30 s after power-on.
 
 ## State of THIS fork's code
 - Electron bumped **27 → 33** (Chromium 130 / Node 20). Pi GPU flags added in
