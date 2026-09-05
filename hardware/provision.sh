@@ -227,7 +227,24 @@ npx tsc --build ./src/web/tsconfig.json
 cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
 npm install --ignore-scripts
 
-echo ">>> Path B ready. To test by hand (with the service stopped):"
+# S660-specific App.tsx changes (BUILD_NOTES 18.5): 720x576 (the panel's EDID mode, not
+# window.innerWidth which the bench 4K monitor would inflate), fps 30, and
+# hand: HandDriveType.RHD so iOS puts the CarPlay sidebar on the right (right-hand drive).
+# Patch is against node-CarPlay 670f19e; if it fails to apply, redo the three edits by hand.
+git -C "/home/${CARPLAY_USER}/node-CarPlay" apply "$(dirname "$0")/path-b/carplay-web-app-App.tsx.patch"
+
+# Production build. The kiosk script serves build/ via serve-build.js (COOP/COEP headers for
+# SharedArrayBuffer) instead of the dev server, which recompiled at every boot (~12 s).
+CI=false npm run build
+
+# Install the kiosk pieces the Path B unit expects.
+mkdir -p "/home/${CARPLAY_USER}/carplay-dev"
+install -m 775 "$(dirname "$0")/path-b/run-chromium-kiosk.sh" "/home/${CARPLAY_USER}/carplay-dev/"
+install -m 664 "$(dirname "$0")/path-b/serve-build.js" "/home/${CARPLAY_USER}/carplay-dev/"
+sudo install -m 644 "$(dirname "$0")/path-b/carplay-dev-chromium.service" /etc/systemd/system/
+
+echo ">>> Path B ready. Enable with: sudo systemctl enable carplay-dev-chromium (instead of carplay.service)"
+echo ">>> To test by hand (with the service stopped):"
 echo ">>>   Terminal 1:  cd ~/node-CarPlay/examples/carplay-web-app && npm start"
 echo ">>>   Terminal 2:  cage -- chromium --ozone-platform=wayland --kiosk --no-sandbox http://localhost:3000"
 echo ">>> WebUSB only works on localhost/HTTPS ON THE PI — a remote browser shows blank."

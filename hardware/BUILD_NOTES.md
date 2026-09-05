@@ -1008,7 +1008,18 @@ Display:
   at the cost of the TOFU's RJ45 port. Not applied.
 - The `hdmi_enable_4kp60` warning from earlier boots was the 4K bench monitor; gone now.
 
-### 18.4 Rollback
+### 18.4 Right-hand drive + panel resolution in the web app (2026-09-05, same day)
+CarPlay supports RHD natively: the head unit sends a hand-drive value to the dongle at
+init and iOS moves the sidebar to the right. node-carplay exposes it as
+`DongleConfig.hand` (`HandDriveType.LHD = 0 | RHD = 1`, sent as `/tmp/hand_drive_mode`).
+`carplay-web-app/src/App.tsx` on the Pi now sets `hand: HandDriveType.RHD`, and its
+hardcoded canvas went **800x480 → 720x576** — the 800x480 "native S660 screen" was a
+pre-EDID guess and would have been cropped on the pinned 720x576 mode. Both are in
+`hardware/path-b/carplay-web-app-App.tsx.patch` (applied by provision.sh PHASE 3B).
+The setting is read at dongle init, so a reboot/service restart plus one phone
+reconnect is needed for it to show. **Not yet confirmed with a phone.**
+
+### 18.5 Rollback
 Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are in
 `/root/boot-tuning-backup-2026-09-05/` on the Pi, alongside the baseline
 `systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;
