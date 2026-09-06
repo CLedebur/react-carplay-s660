@@ -29,7 +29,7 @@ Two paths exist (see BUILD_NOTES §8.5):
   confirmed via `chrome://gpu`).
   The running unit, kiosk script and static server are versioned in `hardware/path-b/`.
   Boot is tuned (BUILD_NOTES §22): kiosk on screen ~5.7 s after kernel start, display
-  forced to the car panel's 720x576@50 via an EDID override (`drm.edid_firmware`; cage
+  forced to the car panel's 720x480@59.94 16:9 via an EDID override (`drm.edid_firmware`; cage
   ignores `video=`), and NetworkManager
   deliberately starts 20 s after boot — SSH to the Pi takes ~30 s after power-on.
 

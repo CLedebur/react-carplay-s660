@@ -1213,7 +1213,34 @@ WAYLAND_DISPLAY=wayland-0 grim out.png`). Findings:
 - All of it is in provision.sh PHASE 3B (App.tsx + index.html patches) and the kiosk script.
   `grim` is left installed as a diagnostic; `swayimg` was removed again.
 
-### 22.6 Rollback
+### 22.6 In-car result: 576p50 looked stretched → 720x480@59.94 16:9 (2026-09-06)
+First test on the real panel: the picture was **horizontally stretched** at 720x576@50. The
+glass is 800x480 (5:3) behind a TV-style scaler board that only advertises 720x480 and 720x576
+(range limits: 49–61 Hz, 31–32 kHz, ≤30 MHz — no room for a real 800x480 timing, and the raw
+EDID re-read over the DDC bus in the car confirmed nothing hidden). 576 lines squeezed onto 480
+rows is a 1.2x vertical squash, which reads as a horizontal stretch. Switched to the panel's
+own preferred **720x480@59.94** (1:1 vertically; 720→800 is an 11% horizontal stretch, the
+usual anamorphic 16:9 SD look) and asked for the **16:9** flavour. Getting the kernel to tag
+the mode 16:9 took two tries: a detailed-timing (DTD) mode carries no aspect, and the kernel
+merges the CEA 16:9 twin *into* it, so with any 720x480 DTD present the AVI infoframe said 4:3
+(VIC 2). The override therefore has **no detailed timings at all** (both DTD slots are dummy
+descriptors) and a CTA video data block of just **VIC 3 (720x480 16:9, native) + VIC 1 (VGA)**.
+Nothing is flagged preferred; wlroots then takes the first mode in the kernel's sorted list,
+which is 720x480 — verified `mode: "720x480": 60 27027 ...` in the DRM state with cage up, and
+the transmitted AVI infoframe decoded from `/sys/kernel/debug/dri/1/HDMI-A-1/infoframes/avi`
+= `82 02 0d 2e 12 28 04 03 …` → PB2 M=2 (**16:9**), PB4 **VIC 3**. (The debugfs `mode:` line's
+flags field does NOT show aspect — it lives in a separate `picture_aspect_ratio`; check the
+infoframe, not the flags.) App canvas 720x480, cmdline `video=HDMI-A-1:720x480@60D` (console
+only). If CarPlay's UI still looks wide,
+the remaining 11% is the panel's pixel aspect and only a true 800x480 timing would remove it —
+possible to try as a custom DTD (~29 MHz CVT-RB, 30 kHz H — just outside the advertised range),
+at the risk of no picture.
+
+**Pointer auto-hide:** no cursor over CarPlay unless a mouse actually moves; it hides again 2 s
+after the last movement (small inline script in `public/index.html`; the invisible WebUSB
+button inherits the page cursor). cage itself has no cursor-hiding option.
+
+### 22.7 Rollback
 Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are in
 `/root/boot-tuning-backup-2026-09-05/` on the Pi, alongside the baseline
 `systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;
@@ -1225,7 +1252,7 @@ Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are i
 *Last updated: 2026-09-06. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
 (§22): kiosk service at 2.5 s, cage at 3.5 s, S660 logo page at ≈7 s after kernel start (26 s
 stopwatch from power-on to picture before the logo work), display forced to the car panel's
-720x576@50 via an EDID override (cage ignores `video=`), right-hand-drive layout requested
+720x480@59.94 16:9 via an EDID override (cage ignores `video=`; 576p50 looked stretched in the car, §22.6), right-hand-drive layout requested
 from the dongle, black page + inline logo + black Chromium blank colour = no flashes. No
 network daemon on the boot path — Wi-Fi/SSH start 20 s after boot by design. The Carlinkit
 dongle's own ~11 s boot is the floor for CarPlay availability. Path A (Electron,

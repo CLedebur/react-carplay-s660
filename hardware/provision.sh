@@ -159,14 +159,16 @@ for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 di
   fi
 done
 
-# Display mode. The car panel's EDID lists 720x480@59.94 as PREFERRED and 720x576@50 (VIC 18)
-# only as an alternative; the bench 4K monitor prefers 3840x2160. `video=` on the cmdline
-# only pins the kernel CONSOLE — cage/wlroots picks the connector's EDID-preferred mode and
-# ignored it (measured: cage ran 3840x2160 on the bench, §22.2). So the kernel is given an
-# EDID override: the panel's own EDID with the 576p50 timing moved into the preferred slot
-# (path-b/s660-edid.bin, built from references/edid-hdmi.txt). Every consumer then sees
-# 720x576@50 as the one preferred mode, on the bench and in the car. If the panel is ever
-# replaced, regenerate the override from the new panel's EDID.
+# Display mode. The car panel is an 800x480 glass behind a TV-style scaler whose EDID offers
+# only 720x480@59.94 (preferred) and 720x576@50; the bench 4K monitor prefers 3840x2160.
+# `video=` on the cmdline only pins the kernel CONSOLE — cage/wlroots picks the connector's
+# EDID-preferred mode and ignored it (measured: cage ran 3840x2160 on the bench, §22.2). So
+# the kernel is given an EDID override (path-b/s660-edid.bin): the panel's own EDID with NO
+# detailed timings (a DTD mode carries no aspect and the kernel merges the 16:9 CEA twin into
+# it -> AVI said 4:3) and a video data block of just VIC 3 (720x480 16:9, native) + VGA. The
+# kernel's first listed mode is then 720x480 tagged 16:9 and the AVI infoframe says VIC 3 —
+# verified on the car panel (§22.6; 576p50 looked horizontally stretched on the glass). Bench
+# or car, every consumer sees the same mode. If the panel is ever replaced, regenerate it.
 sudo install -D -m 644 "${PB}/s660-edid.bin" /lib/firmware/edid/s660.bin
 
 # cmdline.txt (ONE line): drop the 115200-baud serial console (~2 s of synchronous kernel
@@ -174,7 +176,7 @@ sudo install -D -m 644 "${PB}/s660-edid.bin" /lib/firmware/edid/s660.bin
 # waiting for hotplug) and point DRM at the EDID override above. For serial debugging,
 # temporarily put "console=serial0,115200" back.
 ROOT_PARTUUID=$(sed -nE 's/.*root=(PARTUUID=[^ ]+).*/\1/p' /boot/firmware/cmdline.txt)
-echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x576@50D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
+echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x480@60D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
   | sudo tee /boot/firmware/cmdline.txt >/dev/null
 
 sudo systemctl daemon-reload
@@ -298,7 +300,7 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
-  # ---- S660 patch: 720x576 @ 30fps, right-hand drive, seamless boot look (BUILD_NOTES §21, §22.4, §22.5) ----
+  # ---- S660 patch: 720x480 @ 30fps, right-hand drive, seamless boot look (BUILD_NOTES §21, §22.4, §22.5) ----
   # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
   # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
   # the CM4 must then software-decode that (§17). A bench monitor (up to 3840x2160) silently
@@ -326,11 +328,11 @@ with open(path) as f:
 replacements = [
     (
         "const width = window.innerWidth\nconst height = window.innerHeight",
-        "// The S660 panel's EDID (\"Car Audio\", mfr FTL) advertises 720x576@50 16:9 as its only real\n"
-        "// mode, and the kiosk forces it with an EDID override + video= (BUILD_NOTES 22). Hardcode it\n"
-        "// so the dongle is asked for the panel's resolution regardless of what is plugged in on the\n"
-        "// bench (the 4K monitor would otherwise make window.innerWidth/Height request 3840x2160).\n"
-        "const width = 720\nconst height = 576",
+        "// The S660 panel is an 800x480 glass behind a TV-style scaler whose EDID offers only\n"
+        "// 720x480@59.94 and 720x576@50. The kiosk forces 720x480 16:9 via an EDID override (BUILD_NOTES\n"
+        "// 22.6); hardcode the same size so the dongle is asked for the panel's resolution regardless\n"
+        "// of what is plugged in on the bench (the 4K monitor would otherwise inflate innerWidth/Height).\n"
+        "const width = 720\nconst height = 480",
     ),
     (
         "const config: Partial<DongleConfig> = {\n"
@@ -395,7 +397,7 @@ replacements = [
         "                border: 0,\n"
         "                padding: 0,\n"
         "                background: 'transparent',\n"
-        "                cursor: 'default',\n"
+        "                cursor: 'inherit', // follow the page-level auto-hide (index.html)\n"
         "              }}\n"
         "            />\n"
         "          )}",
@@ -436,14 +438,14 @@ for old, new in replacements:
 with open(path, "w") as f:
     f.write(src)
 
-print(f"Patched {path}: 720x576 @ 30fps, RHD, invisible authorise button, small spinner.")
+print(f"Patched {path}: 720x480 @ 30fps, RHD, invisible authorise button, small spinner.")
 PY
   fi
 
   # ---- S660 boot look: black page with the S660 logo inlined in public/index.html (§22.5) ----
   # The logo is a data: URI so Chromium's FIRST page paint already contains it (a separate
   # image request paints one black frame first); color-scheme dark; overflow hidden so the
-  # 720x576 CarPlay canvas never shows scrollbars. Idempotent via the marker comment.
+  # 720x480 CarPlay canvas never shows scrollbars. Idempotent via the marker comment.
   INDEX_HTML="public/index.html"
   if ! grep -q "S660 kiosk (BUILD_NOTES 22.5)" "${INDEX_HTML}"; then
     LOGO_B64="$(base64 -w0 "${PB}/s660-logo.jpg")"
@@ -458,12 +460,26 @@ block = f"""{anchor}
     <!-- S660 kiosk (BUILD_NOTES 22.5): dark colour scheme + black background, and the S660 logo
          inlined as a data URI so Chromium's very first page paint already shows it (a separate
          image request paints one black frame first). overflow:hidden — no scrollbars when the
-         720x576 CarPlay canvas appears. Same logo/geometry as the boot screen. -->
+         720x480 CarPlay canvas appears. Same logo/geometry as the boot screen. -->
     <meta name="color-scheme" content="dark" />
     <style>
       html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / contain no-repeat; }}
       #root {{ height: 100%; }}
-    </style>"""
+    </style>
+    <!-- Pointer auto-hide: no cursor over CarPlay unless a mouse actually moves; it disappears
+         again 2 s after the last movement. Touch input never shows it. -->
+    <script>
+      (function () {{
+        var t, root = document.documentElement;
+        root.style.cursor = 'none';
+        window.addEventListener('pointermove', function (e) {{
+          if (e.pointerType !== 'mouse') return;
+          root.style.cursor = '';
+          clearTimeout(t);
+          t = setTimeout(function () {{ root.style.cursor = 'none'; }}, 2000);
+        }}, {{ passive: true }});
+      }})();
+    </script>"""
 src = src.replace(anchor, block, 1).replace("<title>React App</title>", "<title>S660 CarPlay</title>", 1)
 with open(path, "w") as f:
     f.write(src)
