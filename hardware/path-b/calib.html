@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<title>S660 aspect calibration</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #ddd; font: 14px system-ui, sans-serif; overflow: hidden; cursor: none; }
+  .frame { position: absolute; inset: 0; border: 3px solid #fff; box-sizing: border-box; }
+  .cross { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; transform: translate(-50%, -50%); }
+  .cross::before, .cross::after { content: ""; position: absolute; background: #888; }
+  .cross::before { left: 19px; top: 0; width: 2px; height: 40px; }
+  .cross::after  { top: 19px; left: 0; height: 2px; width: 40px; }
+  .row { position: absolute; left: 0; right: 0; top: 130px; display: flex; justify-content: space-evenly; }
+  .c { text-align: center; }
+  .c i { display: block; width: 110px; height: 110px; border: 4px solid #fff; border-radius: 50%; box-sizing: border-box; margin: 0 auto 10px; }
+  .c b { display: block; font-size: 16px; }
+  .c small { color: #999; }
+  p { position: absolute; left: 0; right: 0; text-align: center; margin: 0; }
+</style>
+<!-- Each circle is squeezed horizontally by f. The one that looks ROUND on the glass tells you
+     the width iOS must render at: W = 720 / f (BUILD_NOTES 22.8). -->
+<div class="frame"></div>
+<div class="cross"></div>
+<p style="top: 28px; font-size: 18px;">Which circle is round? (frame border must touch all four edges)</p>
+<p style="top: 56px;">glass 135 x 72 mm = 1.875 &rarr; W = 900 &rarr; f = 0.80 is the prediction</p>
+<div class="row">
+  <div class="c"><i style="transform: scaleX(0.74)"></i><b>0.74</b><small>W 973</small></div>
+  <div class="c"><i style="transform: scaleX(0.77)"></i><b>0.77</b><small>W 935</small></div>
+  <div class="c"><i style="transform: scaleX(0.80)"></i><b>0.80</b><small>W 900</small></div>
+  <div class="c"><i style="transform: scaleX(0.83)"></i><b>0.83</b><small>W 867</small></div>
+  <div class="c"><i style="transform: scaleX(0.86)"></i><b>0.86</b><small>W 837</small></div>
+  <div class="c"><i style="transform: scaleX(1.00)"></i><b>1.00</b><small>unsqueezed</small></div>
+</div>
+<p style="bottom: 24px; color: #999;">720 x 480 output &middot; kiosk shows this page when KIOSK_URL=http://localhost:3000/calib.html</p>

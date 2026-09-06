@@ -309,16 +309,18 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
-  # ---- S660 patch: 720x480 @ 30fps, right-hand drive, seamless boot look (BUILD_NOTES §21, §22.4, §22.5) ----
+  # ---- S660 patch: glass-aspect video (896x480) squeezed into the 720x480 output, 30fps, RHD, seamless boot look (BUILD_NOTES §21, §22.4, §22.5, §22.8) ----
   # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
   # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
   # the CM4 must then software-decode that (§17). A bench monitor (up to 3840x2160) silently
-  # inflates the decode workload 5-10x. The car panel's EDID advertises 720x576@50 as its only
-  # real mode (§22) — the earlier 800x480 was a pre-EDID guess — and cmdline.txt pins it, so
-  # hardcode exactly that. 30fps is a match for a dash and halves decode load. The container's
-  # CSS box is resized to match IN THE SAME EDIT, because touch-coordinate normalization
-  # (useCarplayTouch) divides by these same width/height constants — changing one without the
-  # other breaks touch mapping. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
+  # inflates the decode workload 5-10x. The S660 glass is 135x72 mm (1.875:1) behind a TV-style
+  # scaler that only accepts 720x480/720x576 and stretches whatever it gets across the glass
+  # (§22.8). So: iOS renders at the GLASS aspect — 896x480 (≈480*1.875, multiple of 16) — and the
+  # canvas is displayed squeezed into the 720x480 HDMI output; the panel's stretch then restores
+  # square pixels. Touch is normalised by the DISPLAY size (useCarplayTouch divides offsetX/Y by
+  # the constants it is given), so the container gets the display constants, the dongle config
+  # gets the video constants, and the canvas is CSS 100%x100% so the 896-wide frame is squeezed.
+  # 30fps is a match for a dash and halves decode load. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
   # the right (S660 is right-hand drive); it is read at dongle init. The "Plug-In Carplay
   # Dongle and Press" button becomes an invisible full-screen tap target (its one job — the
   # first-time WebUSB authorisation gesture — still works) and the big grey spinner becomes a
@@ -326,7 +328,7 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   # Idempotent: the grep guard skips sources already carrying the newest edit; each older
   # edit is skipped individually if already present, so a partially patched tree heals.
   APP_TSX="src/App.tsx"
-  if ! grep -q "Authorise CarPlay dongle" "${APP_TSX}"; then
+  if ! grep -q "DISPLAY_WIDTH" "${APP_TSX}"; then
     python3 - "${APP_TSX}" << 'PY'
 import sys
 
@@ -337,11 +339,16 @@ with open(path) as f:
 replacements = [
     (
         "const width = window.innerWidth\nconst height = window.innerHeight",
-        "// The S660 panel is an 800x480 glass behind a TV-style scaler whose EDID offers only\n"
-        "// 720x480@59.94 and 720x576@50. The kiosk forces 720x480 16:9 via an EDID override (BUILD_NOTES\n"
-        "// 22.6); hardcode the same size so the dongle is asked for the panel's resolution regardless\n"
-        "// of what is plugged in on the bench (the 4K monitor would otherwise inflate innerWidth/Height).\n"
-        "const width = 720\nconst height = 480",
+        "// Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a\n"
+        "// TV-style scaler that only accepts 720x480/720x576 and stretches whatever it gets across the\n"
+        "// glass. The HDMI output is 720x480 (EDID override + cmdline video=); iOS renders at the GLASS\n"
+        "// aspect (896x480 ~= 480*1.875, multiple of 16) and the canvas is displayed squeezed into\n"
+        "// 720x480, so the panel's stretch restores square pixels. Touch is normalised by the DISPLAY\n"
+        "// size. Hardcoded so the bench monitor (4K) cannot inflate window.innerWidth/innerHeight.\n"
+        "const DISPLAY_WIDTH = 720\n"
+        "const DISPLAY_HEIGHT = 480\n"
+        "const width = 896 // video: what the dongle / iOS renders\n"
+        "const height = 480",
     ),
     (
         "const config: Partial<DongleConfig> = {\n"
@@ -376,8 +383,8 @@ replacements = [
         "          display: 'flex',\n"
         "        }}",
         "        style={{\n"
-        "          height: `${height}px`,\n"
-        "          width: `${width}px`,\n"
+        "          height: `${DISPLAY_HEIGHT}px`,\n"
+        "          width: `${DISPLAY_WIDTH}px`,\n"
         "          padding: 0,\n"
         "          margin: '0 auto',\n"
         "          display: 'flex',\n"
@@ -435,6 +442,14 @@ replacements = [
         "            </div>\n"
         "          )}",
     ),
+    (
+        "  const sendTouchEvent = useCarplayTouch(carplayWorker, width, height)",
+        "  const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)",
+    ),
+    (
+        "          style={isPlugged ? { height: '100%' } : { display: 'none' }}",
+        "          style={isPlugged ? { width: '100%', height: '100%' } : { display: 'none' }} // squeeze 896 -> 720",
+    ),
 ]
 
 for old, new in replacements:
@@ -447,7 +462,7 @@ for old, new in replacements:
 with open(path, "w") as f:
     f.write(src)
 
-print(f"Patched {path}: 720x480 @ 30fps, RHD, invisible authorise button, small spinner.")
+print(f"Patched {path}: video 896x480 in a 720x480 display @ 30fps, RHD, invisible authorise button, small spinner.")
 PY
   fi
 
@@ -472,7 +487,9 @@ block = f"""{anchor}
          720x480 CarPlay canvas appears. Same logo/geometry as the boot screen. -->
     <meta name="color-scheme" content="dark" />
     <style>
-      html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / contain no-repeat; }}
+      /* logo drawn 363x320 on the 720x480 output = its natural 800x566 aspect pre-squeezed by 720/896,
+         so it is round-true on the 1.875:1 glass (BUILD_NOTES 22.8) */
+      html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / 363px 320px no-repeat; }}
       #root {{ height: 100%; }}
     </style>
     <!-- Pointer auto-hide: no cursor over CarPlay unless a mouse actually moves; it disappears
@@ -495,6 +512,10 @@ with open(path, "w") as f:
 print(f"Patched {path}: black background + inline S660 logo.")
 PY
   fi
+
+  # Aspect calibration page (served at /calib.html; show it with a systemd drop-in
+  # Environment=KIOSK_URL=http://localhost:3000/calib.html on carplay-dev-chromium.service).
+  install -m 664 "${PB}/calib.html" public/calib.html
 
   # Production build. The kiosk wrapper serves build/ through serve-build.js (which sends the
   # COOP/COEP headers SharedArrayBuffer needs) instead of the CRA dev server, which recompiled

@@ -54,9 +54,11 @@ export WLR_NO_HARDWARE_CURSORS=1
 # --default-background-color=000000: the colour Chromium presents in the ~0.3 s between
 # mapping its window and the first page paint. Default is WHITE — a visible flash on a
 # black boot sequence (measured with grim, BUILD_NOTES 22.5).
+# KIOSK_URL override (systemd drop-in Environment=) is for the aspect calibration page,
+# http://localhost:3000/calib.html — see BUILD_NOTES 22.8.
 exec cage -- chromium \
   --ozone-platform=wayland --kiosk --no-sandbox \
   --disable-background-networking --disable-component-update --disable-sync \
   --disable-breakpad --no-first-run --password-store=basic \
   --default-background-color=000000 \
-  http://localhost:3000
+  "${KIOSK_URL:-http://localhost:3000}"
