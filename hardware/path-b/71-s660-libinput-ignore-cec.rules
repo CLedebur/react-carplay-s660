@@ -1,0 +1,7 @@
+# S660 kiosk (BUILD_NOTES 22.7): the vc4 HDMI-CEC remote-control input devices
+# ("vc4-hdmi-0"/"vc4-hdmi-1") advertise REL_X/REL_Y + INPUT_PROP_POINTING_STICK, so udev
+# tags them ID_INPUT_POINTINGSTICK and libinput hands cage two "pointers". That gives the
+# Wayland seat pointer capability, so Chromium gets a wl_pointer and shows its default
+# arrow — for a "mouse" nothing can ever move. There is no CEC remote in the car. Hide
+# every vc4-hdmi input (the "HDMI Jack" switch devices match too; cage has no use for them).
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="vc4-hdmi-*", ENV{LIBINPUT_IGNORE_DEVICE}="1"

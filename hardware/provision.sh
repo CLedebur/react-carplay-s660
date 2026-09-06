@@ -159,12 +159,24 @@ for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 di
   fi
 done
 
+# Display mode. The car panel is an 800x480 glass behind a TV-style scaler whose EDID offers
+# only 720x480@59.94 (preferred) and 720x576@50; the bench 4K monitor prefers 3840x2160.
+# `video=` on the cmdline only pins the kernel CONSOLE — cage/wlroots picks the connector's
+# EDID-preferred mode and ignored it (measured: cage ran 3840x2160 on the bench, §22.2). So
+# the kernel is given an EDID override (path-b/s660-edid.bin): the panel's own EDID with NO
+# detailed timings (a DTD mode carries no aspect and the kernel merges the 16:9 CEA twin into
+# it -> AVI said 4:3) and a video data block of just VIC 3 (720x480 16:9, native) + VGA. The
+# kernel's first listed mode is then 720x480 tagged 16:9 and the AVI infoframe says VIC 3 —
+# verified on the car panel (§22.6; 576p50 looked horizontally stretched on the glass). Bench
+# or car, every consumer sees the same mode. If the panel is ever replaced, regenerate it.
+sudo install -D -m 644 "${PB}/s660-edid.bin" /lib/firmware/edid/s660.bin
+
 # cmdline.txt (ONE line): drop the 115200-baud serial console (~2 s of synchronous kernel
-# output), quiet the kernel, pin the car panel's native mode (EDID VIC 18: 720x576@50,
-# 16:9; "D" forces the connector on without waiting for hotplug). For serial debugging,
+# output), quiet the kernel, pin the console mode ("D" forces the connector on without
+# waiting for hotplug) and point DRM at the EDID override above. For serial debugging,
 # temporarily put "console=serial0,115200" back.
 ROOT_PARTUUID=$(sed -nE 's/.*root=(PARTUUID=[^ ]+).*/\1/p' /boot/firmware/cmdline.txt)
-echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x576@50D" \
+echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x480@60D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
   | sudo tee /boot/firmware/cmdline.txt >/dev/null
 
 sudo systemctl daemon-reload
@@ -205,6 +217,15 @@ echo ">>> PHASE 2: Carlinkit udev rule"
 # phone straight into the Pi. "Wired mode" = phone-to-dongle by cable. See BUILD_NOTES 7.
 echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1314", ATTR{idProduct}=="152*", MODE="0660", GROUP="plugdev"' \
   | sudo tee /etc/udev/rules.d/52-nodecarplay.rules >/dev/null
+
+# The Pi's vc4 HDMI-CEC receivers ("vc4-hdmi-0/1" — one per HDMI port, registered by the
+# driver whether or not the panel does CEC; it doesn't) advertise REL_X/REL_Y +
+# INPUT_PROP_POINTING_STICK, so libinput treats them as pointers, the Wayland seat gets
+# pointer capability and Chromium puts a cursor on screen that nothing can ever move
+# (BUILD_NOTES 22.7). Hide them from libinput. Both kiosk units then run with ZERO input
+# devices, which wlroots only tolerates with WLR_LIBINPUT_NO_DEVICES=1 (set in each unit).
+sudo install -m 644 "${PB}/71-s660-libinput-ignore-cec.rules" /etc/udev/rules.d/71-s660-libinput-ignore-cec.rules
+
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
@@ -288,20 +309,27 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
-  # ---- S660 patch: 720x576 @ 30fps + right-hand drive in the DongleConfig (BUILD_NOTES §21, §22.4) ----
+  # ---- S660 patch: 16:9 video (848x480) squeezed into the 720x480 output, 30fps, RHD, seamless boot look (BUILD_NOTES §21, §22.4, §22.5, §22.8) ----
   # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
   # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
   # the CM4 must then software-decode that (§17). A bench monitor (up to 3840x2160) silently
-  # inflates the decode workload 5-10x. The car panel's EDID advertises 720x576@50 as its only
-  # real mode (§22) — the earlier 800x480 was a pre-EDID guess — and cmdline.txt pins it, so
-  # hardcode exactly that. 30fps is a match for a dash and halves decode load. The container's
-  # CSS box is resized to match IN THE SAME EDIT, because touch-coordinate normalization
-  # (useCarplayTouch) divides by these same width/height constants — changing one without the
-  # other breaks touch mapping. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
-  # the right (S660 is right-hand drive); it is read at dongle init.
-  # Idempotent: the grep guard skips sources already carrying this patch.
+  # inflates the decode workload 5-10x. The S660 glass is 135x72 mm (1.875:1) behind a TV-style
+  # scaler that only accepts 720x480/720x576 and stretches whatever it gets across the glass
+  # (§22.8). So: iOS renders wide — 848x480, i.e. 16:9, the widest Waze tolerates before its
+  # ultrawide layout pushes the speed-limit badge off the left edge (864 and 896 measured) — and
+  # the canvas is displayed squeezed into the 720x480 HDMI output; the panel's stretch then
+  # leaves only a 6 % residual instead of 25 %. Touch is normalised by the DISPLAY size (useCarplayTouch divides offsetX/Y by
+  # the constants it is given), so the container gets the display constants, the dongle config
+  # gets the video constants, and the canvas is CSS 100%x100% so the 896-wide frame is squeezed.
+  # 30fps is a match for a dash and halves decode load. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
+  # the right (S660 is right-hand drive); it is read at dongle init. The "Plug-In Carplay
+  # Dongle and Press" button becomes an invisible full-screen tap target (its one job — the
+  # first-time WebUSB authorisation gesture — still works) and the big grey spinner becomes a
+  # small dim one at the bottom edge, so the boot logo behind them stays clean (§22.5).
+  # Idempotent: the grep guard skips sources already carrying the newest edit; each older
+  # edit is skipped individually if already present, so a partially patched tree heals.
   APP_TSX="src/App.tsx"
-  if ! grep -q "HandDriveType.RHD" "${APP_TSX}"; then
+  if ! grep -q "DISPLAY_WIDTH" "${APP_TSX}"; then
     python3 - "${APP_TSX}" << 'PY'
 import sys
 
@@ -312,11 +340,17 @@ with open(path) as f:
 replacements = [
     (
         "const width = window.innerWidth\nconst height = window.innerHeight",
-        "// The S660 panel's EDID (\"Car Audio\", mfr FTL) advertises 720x576@50 16:9 as its only real\n"
-        "// mode, and the kiosk pins that via video=HDMI-A-1:720x576@50D (BUILD_NOTES 22). Hardcode it\n"
-        "// so the dongle is asked for the panel's resolution regardless of what is plugged in on the\n"
-        "// bench (the 4K monitor would otherwise make window.innerWidth/Height request 3840x2160).\n"
-        "const width = 720\nconst height = 576",
+        "// Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a\n"
+        "// TV-style scaler that only accepts 720x480/720x576 and stretches whatever it gets across the\n"
+        "// glass. The HDMI output is 720x480 (EDID override + cmdline video=); iOS renders at the GLASS\n"
+        "// aspect, capped at 16:9 (848x480; wider makes Waze switch to an ultrawide layout that pushes its\n"
+        "// speed-limit badge off the left edge — 864/896 measured), and the canvas is displayed squeezed into\n"
+        "// 720x480, so the panel's stretch nearly restores square pixels (6% residual). Touch is normalised by the DISPLAY\n"
+        "// size. Hardcoded so the bench monitor (4K) cannot inflate window.innerWidth/innerHeight.\n"
+        "const DISPLAY_WIDTH = 720\n"
+        "const DISPLAY_HEIGHT = 480\n"
+        "const width = 848 // video: what the dongle / iOS renders\n"
+        "const height = 480",
     ),
     (
         "const config: Partial<DongleConfig> = {\n"
@@ -351,26 +385,139 @@ replacements = [
         "          display: 'flex',\n"
         "        }}",
         "        style={{\n"
-        "          height: `${height}px`,\n"
-        "          width: `${width}px`,\n"
+        "          height: `${DISPLAY_HEIGHT}px`,\n"
+        "          width: `${DISPLAY_WIDTH}px`,\n"
         "          padding: 0,\n"
         "          margin: '0 auto',\n"
         "          display: 'flex',\n"
         "        }}",
     ),
+    (
+        "          {deviceFound === false && (\n"
+        "            <button onClick={onClick} rel=\"noopener noreferrer\">\n"
+        "              Plug-In Carplay Dongle and Press\n"
+        "            </button>\n"
+        "          )}",
+        "          {deviceFound === false && (\n"
+        "            // S660 kiosk: the \"Plug-In Carplay Dongle and Press\" button is kept for its one job\n"
+        "            // (the first-time WebUSB authorisation needs a user gesture) but made an invisible\n"
+        "            // full-screen tap target, so the boot logo behind it stays clean.\n"
+        "            <button\n"
+        "              onClick={onClick}\n"
+        "              rel=\"noopener noreferrer\"\n"
+        "              aria-label=\"Authorise CarPlay dongle\"\n"
+        "              style={{\n"
+        "                position: 'absolute',\n"
+        "                inset: 0,\n"
+        "                width: '100%',\n"
+        "                height: '100%',\n"
+        "                opacity: 0,\n"
+        "                border: 0,\n"
+        "                padding: 0,\n"
+        "                background: 'transparent',\n"
+        "                cursor: 'inherit', // follow the page-level auto-hide (index.html)\n"
+        "              }}\n"
+        "            />\n"
+        "          )}",
+    ),
+    (
+        "          {deviceFound === true && (\n"
+        "            <RotatingLines\n"
+        "              strokeColor=\"grey\"\n"
+        "              strokeWidth=\"5\"\n"
+        "              animationDuration=\"0.75\"\n"
+        "              width=\"96\"\n"
+        "              visible={true}\n"
+        "            />\n"
+        "          )}",
+        "          {deviceFound === true && (\n"
+        "            // S660 kiosk: small, dim \"waiting for the phone\" indicator near the bottom edge\n"
+        "            // instead of a big grey spinner over the logo.\n"
+        "            <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>\n"
+        "              <RotatingLines\n"
+        "                strokeColor=\"#3a3a3a\"\n"
+        "                strokeWidth=\"4\"\n"
+        "                animationDuration=\"1\"\n"
+        "                width=\"28\"\n"
+        "                visible={true}\n"
+        "              />\n"
+        "            </div>\n"
+        "          )}",
+    ),
+    (
+        "  const sendTouchEvent = useCarplayTouch(carplayWorker, width, height)",
+        "  const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)",
+    ),
+    (
+        "          style={isPlugged ? { height: '100%' } : { display: 'none' }}",
+        "          style={isPlugged ? { width: '100%', height: '100%' } : { display: 'none' }} // squeeze 848 -> 720",
+    ),
 ]
 
 for old, new in replacements:
     count = src.count(old)
+    if count == 0 and new in src:
+        continue  # this edit is already in place (tree patched by an earlier provision run)
     assert count == 1, f"expected exactly 1 match, got {count}: {old[:50]!r}..."
     src = src.replace(old, new)
 
 with open(path, "w") as f:
     f.write(src)
 
-print(f"Patched {path}: DongleConfig -> 720x576 @ 30fps, RHD.")
+print(f"Patched {path}: video 848x480 in a 720x480 display @ 30fps, RHD, invisible authorise button, small spinner.")
 PY
   fi
+
+  # ---- S660 boot look: black page with the S660 logo inlined in public/index.html (§22.5) ----
+  # The logo is a data: URI so Chromium's FIRST page paint already contains it (a separate
+  # image request paints one black frame first); color-scheme dark; overflow hidden so the
+  # 720x480 CarPlay canvas never shows scrollbars. Idempotent via the marker comment.
+  INDEX_HTML="public/index.html"
+  if ! grep -q "S660 kiosk (BUILD_NOTES 22.5)" "${INDEX_HTML}"; then
+    LOGO_B64="$(base64 -w0 "${PB}/s660-logo.jpg")"
+    python3 - "${INDEX_HTML}" "${LOGO_B64}" << 'PY'
+import sys
+path, b64 = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    src = f.read()
+anchor = '    <meta name="theme-color" content="#000000" />'
+assert src.count(anchor) == 1, "index.html anchor not found — node-CarPlay re-pinned?"
+block = f"""{anchor}
+    <!-- S660 kiosk (BUILD_NOTES 22.5): dark colour scheme + black background, and the S660 logo
+         inlined as a data URI so Chromium's very first page paint already shows it (a separate
+         image request paints one black frame first). overflow:hidden — no scrollbars when the
+         720x480 CarPlay canvas appears. Same logo/geometry as the boot screen. -->
+    <meta name="color-scheme" content="dark" />
+    <style>
+      /* logo drawn 384x320 on the 720x480 output = its natural 800x566 aspect pre-squeezed by 720/848,
+         so it is round-true on the 1.875:1 glass (BUILD_NOTES 22.8) */
+      html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / 384px 320px no-repeat; }}
+      #root {{ height: 100%; }}
+    </style>
+    <!-- Pointer auto-hide: no cursor over CarPlay unless a mouse actually moves; it disappears
+         again 2 s after the last movement. Touch input never shows it. -->
+    <script>
+      (function () {{
+        var t, root = document.documentElement;
+        root.style.cursor = 'none';
+        window.addEventListener('pointermove', function (e) {{
+          if (e.pointerType !== 'mouse') return;
+          root.style.cursor = '';
+          clearTimeout(t);
+          t = setTimeout(function () {{ root.style.cursor = 'none'; }}, 2000);
+        }}, {{ passive: true }});
+      }})();
+    </script>"""
+src = src.replace(anchor, block, 1).replace("<title>React App</title>", "<title>S660 CarPlay</title>", 1)
+with open(path, "w") as f:
+    f.write(src)
+print(f"Patched {path}: black background + inline S660 logo.")
+PY
+  fi
+
+  # Aspect calibration page (served at /calib.html; show it with a systemd drop-in
+  # Environment=KIOSK_URL=http://localhost:3000/calib.html on carplay-dev-chromium.service).
+  install -m 664 "${PB}/calib.html" public/calib.html
 
   # Production build. The kiosk wrapper serves build/ through serve-build.js (which sends the
   # COOP/COEP headers SharedArrayBuffer needs) instead of the CRA dev server, which recompiled
@@ -416,6 +563,8 @@ TTYVTDisallocate=yes
 StandardInput=tty
 StandardOutput=journal
 StandardError=journal
+# Zero input devices is normal here (BUILD_NOTES 22.7); wlroots refuses to start otherwise.
+Environment=WLR_LIBINPUT_NO_DEVICES=1
 ExecStart=/usr/bin/cage -- /home/${CARPLAY_USER}/react-carplay/squashfs-root/react-carplay --no-sandbox --disable-gpu
 Restart=always
 RestartSec=2

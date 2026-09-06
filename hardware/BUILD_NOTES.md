@@ -1140,13 +1140,20 @@ Contention (not on the chain, but the four cores were saturated during early boo
   untouched** and still uses PAM.
 
 Display:
-- The car panel (EDID: "Car Audio", mfr FTL) natively advertises **CTA VIC 18 = 720x576
-  @ 50 Hz 16:9**. `hdmi_group/hdmi_mode/hdmi_force_hotplug` are **ignored** under
-  `vc4-kms-v3d` with `disable_fw_kms_setup=1`; the mode is pinned with
-  `video=HDMI-A-1:720x576@50D` in cmdline.txt (`D` = force the connector on, no hotplug
-  wait). Confirmed: `fb0` is 720x576, CRTC active. The bench 4K monitor also accepted the
-  mode. VIC 17 (4:3) has identical timings; the AVI aspect flag cannot be chosen via
-  `video=`, and this class of panel stretches to its glass anyway.
+- The car panel (EDID: "Car Audio", mfr FTL) advertises **720x480@59.94 as its preferred
+  timing** and **CTA VIC 18 = 720x576@50 16:9** only as an alternative. `hdmi_group/hdmi_mode/
+  hdmi_force_hotplug` are **ignored** under `vc4-kms-v3d` with `disable_fw_kms_setup=1`.
+  `video=HDMI-A-1:720x576@50D` in cmdline.txt pins the **console** (fbcon) to 576p50 and
+  forces the connector on — but **cage/wlroots ignores it** and takes the connector's
+  EDID-preferred mode (measured 2026-09-06 with `grim`: cage was running the bench monitor at
+  3840x2160 while `fb0` said 720x576; in the car it would have picked 720x480). Fix: an
+  **EDID override** — the panel's own 256-byte EDID with the 576p50 DTD moved into the
+  preferred slot (`hardware/path-b/s660-edid.bin`, checksum recomputed, built from
+  `references/edid-hdmi.txt`), installed as `/lib/firmware/edid/s660.bin` and selected with
+  `drm.edid_firmware=HDMI-A-1:edid/s660.bin`. Now every consumer, bench or car, sees one
+  preferred mode: confirmed `mode: "720x576": 50` in the DRM state with cage running. VIC 17
+  (4:3) has identical timings; this class of panel stretches to its glass anyway. If the panel
+  is ever replaced, regenerate the override from the new EDID.
 - `camera_auto_detect=0`, `display_auto_detect=0` (no CSI camera, no DSI panel).
 
 ### 22.3 Deliberately NOT done / gotchas
@@ -1177,7 +1184,137 @@ mechanism, updated); **this supersedes §21's 800x480** — that figure was a pr
 The setting is read at dongle init, so a reboot/service restart plus one phone
 reconnect is needed for it to show. **Not yet confirmed with a phone.**
 
-### 22.5 Rollback
+### 22.5 Boot logo and a seamless start (2026-09-06)
+Goal: S660 logo on screen while the unit boots, black page with the same logo as the web
+app's background, no visible "Plug-In Carplay Dongle and Press" button, no flashes.
+
+**What the screen actually does was measured with `grim` inside the cage session** (100 ms
+captures across a kiosk restart; `sudo -u s660 XDG_RUNTIME_DIR=/run/carplay-kiosk
+WAYLAND_DISPLAY=wayland-0 grim out.png`). Findings:
+- Chromium presents a **pure white frame (~0.3 s)** when its window maps, then a black frame,
+  then the page. On a black boot sequence that white flash is the single most visible defect.
+  Fix: `--default-background-color=000000` (present in Debian's Chromium 151 — checked with
+  `strings`), plus the logo inlined as a **data: URI** in `public/index.html` so the first page
+  paint already contains it (a separate image request painted one black frame first).
+  Result: black → logo, nothing in between (3.65 s after cage starts, ≈ 7 s after kernel start).
+- `html, body { overflow: hidden }`: the 720x576 CarPlay canvas produced scrollbars otherwise.
+- **A splash before/under cage cannot be seamless with this stack, so none was added.** Two
+  variants were built and measured, both rejected: (a) a framebuffer logo when `/dev/fb0`
+  appears — the kiosk unit's `TTYVTDisallocate` and cage's first (black) frame wipe it within
+  ~0.1 s of it appearing (fb0 registers at ~3.45 s, cage starts at ~3.5 s); (b) `swayimg`
+  showing the logo inside cage from 0.8 s, with Chromium started alongside — cage stacks the
+  newest toplevel on top, so Chromium's blank frame *covers* the logo when it maps (logo →
+  white/black blink → logo), and cage 0.2 has no layer-shell, so the splash cannot be kept
+  above Chromium. The logo therefore appears when Chromium's page does, ~2.5 s later than a
+  splash could show it, in exchange for zero flicker.
+- Web app: the WebUSB button is now an invisible full-screen tap target (`opacity: 0`, kept
+  because the first-time WebUSB authorisation needs a user gesture — tap anywhere on the logo);
+  the 96 px grey spinner is a 28 px dim one at the bottom edge while waiting for the phone.
+- All of it is in provision.sh PHASE 3B (App.tsx + index.html patches) and the kiosk script.
+  `grim` is left installed as a diagnostic; `swayimg` was removed again.
+
+### 22.6 In-car result: 576p50 looked stretched → 720x480@59.94 16:9 (2026-09-06)
+First test on the real panel: the picture was **horizontally stretched** at 720x576@50. The
+glass is 800x480 (5:3) behind a TV-style scaler board that only advertises 720x480 and 720x576
+(range limits: 49–61 Hz, 31–32 kHz, ≤30 MHz — no room for a real 800x480 timing, and the raw
+EDID re-read over the DDC bus in the car confirmed nothing hidden). 576 lines squeezed onto 480
+rows is a 1.2x vertical squash, which reads as a horizontal stretch. Switched to the panel's
+own preferred **720x480@59.94** (1:1 vertically; 720→800 is an 11% horizontal stretch, the
+usual anamorphic 16:9 SD look) and asked for the **16:9** flavour. Getting the kernel to tag
+the mode 16:9 took two tries: a detailed-timing (DTD) mode carries no aspect, and the kernel
+merges the CEA 16:9 twin *into* it, so with any 720x480 DTD present the AVI infoframe said 4:3
+(VIC 2). The override therefore has **no detailed timings at all** (both DTD slots are dummy
+descriptors) and a CTA video data block of just **VIC 3 (720x480 16:9, native) + VIC 1 (VGA)**.
+Nothing is flagged preferred; wlroots then takes the first mode in the kernel's sorted list,
+which is 720x480 — verified `mode: "720x480": 60 27027 ...` in the DRM state with cage up, and
+the transmitted AVI infoframe decoded from `/sys/kernel/debug/dri/1/HDMI-A-1/infoframes/avi`
+= `82 02 0d 2e 12 28 04 03 …` → PB2 M=2 (**16:9**), PB4 **VIC 3**. (The debugfs `mode:` line's
+flags field does NOT show aspect — it lives in a separate `picture_aspect_ratio`; check the
+infoframe, not the flags.) App canvas 720x480, cmdline `video=HDMI-A-1:720x480@60D` (console
+only). If CarPlay's UI still looks wide,
+the remaining 11% is the panel's pixel aspect and only a true 800x480 timing would remove it —
+possible to try as a custom DTD (~29 MHz CVT-RB, 30 kHz H — just outside the advertised range),
+at the risk of no picture.
+
+**Pointer auto-hide:** no cursor over CarPlay unless a mouse actually moves; it hides again 2 s
+after the last movement (small inline script in `public/index.html`; the invisible WebUSB
+button inherits the page cursor). cage itself has no cursor-hiding option.
+
+### 22.7 The cursor was Chromium's, not the page's — the Pi's HDMI-CEC receivers pose as pointers
+The §22.6 script never had a chance. On the real unit a static arrow sat in the middle of the
+screen (photo-confirmed on the glass) and it turned out to be **Chromium's default cursor**, set
+through a genuine `wl_pointer`. The unit has no mouse and no touchscreen HID — but the Pi's
+`vc4-hdmi` driver registers an HDMI-CEC remote-control receiver (`rc0`/`rc1`, one per HDMI
+port, created by the driver whether or not the panel speaks CEC — it doesn't) as an input
+device advertising `REL_X`/`REL_Y` and `INPUT_PROP_POINTING_STICK`. udev tags them
+`ID_INPUT_POINTINGSTICK=1` (`udevadm info -q property -n /dev/input/eventN`), libinput hands
+cage two "pointers", the Wayland seat gains pointer capability, Chromium binds a `wl_pointer`,
+gets pointer focus and sets its arrow. Nothing can ever move that pointer, so Chromium never
+re-evaluates the cursor against the page's `cursor: none` — and cage's own cursor theme is
+irrelevant, because the image on screen is the client's.
+
+Fix: `hardware/path-b/71-s660-libinput-ignore-cec.rules` sets `LIBINPUT_IGNORE_DEVICE=1` for
+every `vc4-hdmi-*` input device (PHASE 2 of provision.sh; these ARE udev-managed, so the rule
+applies at boot). No pointer → no `wl_pointer` → no cursor; cage draws none of its own without
+a pointer device, so nothing is left to hide. Consequence: the unit now has **zero** input
+devices, and wlroots' libinput backend refuses to start that way (`libinput initialization
+failed, no input devices` → `Unable to start the wlroots backend` → black screen, restart
+loop), so the wrapper exports `WLR_LIBINPUT_NO_DEVICES=1`. The Path A unit gets the same
+`Environment=` line in provision.sh (not exercised on the CM4 — Path A is not the running
+channel).
+
+Also set, `WLR_NO_HARDWARE_CURSORS=1` — not part of the fix, but what makes verification
+honest: a hardware cursor lives on the vc4 cursor plane, which `grim` cannot see, so a
+screenshot shows a clean frame while an arrow sits on the glass — exactly how a first attempt
+at this bug was "verified" and wrong. With software cursors, whatever is on the glass is in the
+frame. To check for real: `grim -c` (forces any cursor wlroots believes is enabled into the
+capture) plus `sudo grep -A6 '^plane\[' /sys/kernel/debug/dri/1/state` — only the primary
+plane (`plane-3`) may have a `crtc=`; the cursor plane (`plane-57`) must stay `fb=0`.
+**Confirmed on the glass 2026-09-06** after a cold reboot — the screenshot evidence above is what
+the panel showed too.
+
+Detours, so nobody repeats them: (1) a virtual `uinput` mouse "nudge" to hand Chromium one
+real motion event — the theory (Chromium only re-evaluates the cursor on real input) was right,
+but the nudge merely moved the cursor from software rendering onto the hardware plane, where
+the screenshot lost it; (2) a fully transparent Xcursor theme for cage — it loaded (proved with
+`inotifywait`; a magenta variant proved it was not what was on screen) but cage's theme was
+never the source. The §22.6 index.html script stays: harmless, and correct if a real mouse is
+ever attached.
+
+### 22.8 Aspect ratio root cause: the glass is 1.875:1, the output is 1.5:1 (2026-09-06, verified in the car)
+Second in-car look at 720x480 16:9: UI elements still **~20-25 % too wide** (Photoshop overlay
+of the correct UI against a photo). Measured the panel: **glass 135 x 72 mm = 1.875:1**
+(bezel 170 x 85). The picture fills the glass edge to edge. So the scaler board simply stretches
+the 720x480 (1.5:1) frame across a 1.875:1 glass — a 25 % horizontal stretch — and no HDMI
+aspect signalling changes that (§22.6 proved the AVI infoframe is ignored). The panel offers
+no wider timing (raw EDID: 720x480/720x576 only, 31-32 kHz, ≤30 MHz).
+
+**Fix (fix A, applied):** render wide and pre-squeeze. The web app displays the decoded frame
+squeezed into the 720x480 output (canvas CSS 100 % x 100 %, GPU resample); the panel's stretch
+then undoes the squeeze. The ideal width is the glass aspect, 480 x 1.875 = 900 → 896 — and it
+looked right — **but Waze clips its speed-limit badge above 16:9**: at 896 and 864 the red
+"50" moved from the top-right of the speedometer to the top-left, half off the frame (in the
+signal, not on the glass — checked with `grim`); at 848 and 800 it is back on the right.
+480 x 16/9 = 853, so Waze switches to an ultrawide layout past 16:9. **Chosen: 848x480**
+(1.767:1, multiple of 16): residual stretch on the glass 1.875/1.767 = **6 %**, down from 25 %,
+and every app's UI stays inside the frame. Confirmed in the car: "much, much better". Code: `DISPLAY_WIDTH/HEIGHT`
+(720x480, container + touch normalisation — `useCarplayTouch` divides `offsetX/Y` by the
+constants it is given, so it must get the display size) vs `width/height` (896x480, dongle
+config). The boot logo is drawn 384x320 on the output for the same reason. Cost: +18 % pixels
+to decode, a 0.85x horizontal resample. All in provision.sh PHASE 3B and applied to the CM4.
+
+**Calibration page** `hardware/path-b/calib.html` → `/calib.html`: a white frame touching the
+edges plus circles pre-squeezed by 0.74 … 1.00, each labelled with the render width it implies
+(W = 720 / f). Show it with a drop-in on `carplay-dev-chromium.service`
+(`Environment=KIOSK_URL=http://localhost:3000/calib.html`) and pick the round one; 0.80 (W 900)
+is the ruler's ideal; the kiosk deliberately stops at 848 (f = 0.85) for Waze's sake.
+
+**Fix B (not chosen):** a custom 800x480 timing (~29 MHz CVT-RB, 30 kHz H) is outside the
+board's advertised range and would still be 1.875:1 glass vs a 1.667:1 frame — wrong aspect
+anyway. The glass is not 800x480-square; whatever its pixel count, only its physical aspect
+matters here.
+
+### 22.9 Rollback
 Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are in
 `/root/boot-tuning-backup-2026-09-05/` on the Pi, alongside the baseline
 `systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;
@@ -1186,12 +1323,15 @@ Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are i
 
 ---
 
-*Last updated: 2026-09-05. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
-(§22): on screen ~5.7 s after kernel start, 26 s stopwatch from power-on to picture, display
-pinned to the car panel's native 720x576@50 (EDID), right-hand-drive layout requested from the
-dongle. No network daemon on the boot path — Wi-Fi/SSH start 20 s after boot by design. The
-Carlinkit dongle's own ~11 s boot is the floor for CarPlay availability. Path A (Electron,
-`--disable-gpu`) remains a fallback and still uses the PAM-based unit. Open: confirm RHD layout
-and touch calibration on the real panel with a phone; wireless pairing re-check with
+*Last updated: 2026-09-06. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
+(§22): kiosk service at 2.5 s, cage at 3.5 s, S660 logo page at ≈7 s after kernel start (26 s
+stopwatch from power-on to picture before the logo work), display forced to the car panel's
+720x480@59.94 via an EDID override (cage ignores `video=`; 576p50 looked stretched, §22.6), iOS
+rendering 848x480 squeezed into it to counter the 1.875:1 glass (§22.8), right-hand-drive layout requested
+from the dongle, black page + inline logo + black Chromium blank colour = no flashes. No
+network daemon on the boot path — Wi-Fi/SSH start 20 s after boot by design. The Carlinkit
+dongle's own ~11 s boot is the floor for CarPlay availability. Path A (Electron,
+`--disable-gpu`) remains a fallback and still uses the PAM-based unit. Open: confirm RHD
+layout, logo geometry and touch calibration on the real panel; wireless pairing re-check with
 `bluetooth.service` disabled; hardware video decode (V4L2 / custom Electron); regenerate the
 stale on-disk `carplay.service` (§20).*
