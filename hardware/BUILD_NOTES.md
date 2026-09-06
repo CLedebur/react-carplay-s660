@@ -1281,7 +1281,7 @@ the screenshot lost it; (2) a fully transparent Xcursor theme for cage — it lo
 never the source. The §22.6 index.html script stays: harmless, and correct if a real mouse is
 ever attached.
 
-### 22.8 Aspect ratio root cause: the glass is 1.875:1, the output is 1.5:1 (2026-09-06, prepared, UNTESTED)
+### 22.8 Aspect ratio root cause: the glass is 1.875:1, the output is 1.5:1 (2026-09-06, verified in the car)
 Second in-car look at 720x480 16:9: UI elements still **~20-25 % too wide** (Photoshop overlay
 of the correct UI against a photo). Measured the panel: **glass 135 x 72 mm = 1.875:1**
 (bezel 170 x 85). The picture fills the glass edge to edge. So the scaler board simply stretches
@@ -1289,21 +1289,25 @@ the 720x480 (1.5:1) frame across a 1.875:1 glass — a 25 % horizontal stretch �
 aspect signalling changes that (§22.6 proved the AVI infoframe is ignored). The panel offers
 no wider timing (raw EDID: 720x480/720x576 only, 31-32 kHz, ≤30 MHz).
 
-**Fix (fix A, prepared):** render at the glass aspect and pre-squeeze. iOS is asked for
-**896x480** (480 x 1.875 = 900, rounded to a multiple of 16, 0.4 % off); the web app displays
-the decoded 896-wide frame squeezed into the 720x480 output (canvas CSS 100 % x 100 %, GPU
-resample); the panel's stretch then restores square pixels. Code: `DISPLAY_WIDTH/HEIGHT`
+**Fix (fix A, applied):** render wide and pre-squeeze. The web app displays the decoded frame
+squeezed into the 720x480 output (canvas CSS 100 % x 100 %, GPU resample); the panel's stretch
+then undoes the squeeze. The ideal width is the glass aspect, 480 x 1.875 = 900 → 896 — and it
+looked right — **but Waze clips its speed-limit badge above 16:9**: at 896 and 864 the red
+"50" moved from the top-right of the speedometer to the top-left, half off the frame (in the
+signal, not on the glass — checked with `grim`); at 848 and 800 it is back on the right.
+480 x 16/9 = 853, so Waze switches to an ultrawide layout past 16:9. **Chosen: 848x480**
+(1.767:1, multiple of 16): residual stretch on the glass 1.875/1.767 = **6 %**, down from 25 %,
+and every app's UI stays inside the frame. Confirmed in the car: "much, much better". Code: `DISPLAY_WIDTH/HEIGHT`
 (720x480, container + touch normalisation — `useCarplayTouch` divides `offsetX/Y` by the
 constants it is given, so it must get the display size) vs `width/height` (896x480, dongle
-config). The boot logo is drawn 363x320 on the output for the same reason. Cost: +24 % pixels
-to decode, a 0.8x horizontal resample. All in provision.sh PHASE 3B; the Pi's tree gets the
-same edits by hand when it is back online (battery flat, on the trickle charger).
+config). The boot logo is drawn 384x320 on the output for the same reason. Cost: +18 % pixels
+to decode, a 0.85x horizontal resample. All in provision.sh PHASE 3B and applied to the CM4.
 
 **Calibration page** `hardware/path-b/calib.html` → `/calib.html`: a white frame touching the
 edges plus circles pre-squeezed by 0.74 … 1.00, each labelled with the render width it implies
 (W = 720 / f). Show it with a drop-in on `carplay-dev-chromium.service`
 (`Environment=KIOSK_URL=http://localhost:3000/calib.html`) and pick the round one; 0.80 (W 900)
-is the prediction from the ruler. Then set `width` accordingly (multiple of 16).
+is the ruler's ideal; the kiosk deliberately stops at 848 (f = 0.85) for Waze's sake.
 
 **Fix B (not chosen):** a custom 800x480 timing (~29 MHz CVT-RB, 30 kHz H) is outside the
 board's advertised range and would still be 1.875:1 glass vs a 1.667:1 frame — wrong aspect
@@ -1322,7 +1326,8 @@ Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are i
 *Last updated: 2026-09-06. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
 (§22): kiosk service at 2.5 s, cage at 3.5 s, S660 logo page at ≈7 s after kernel start (26 s
 stopwatch from power-on to picture before the logo work), display forced to the car panel's
-720x480@59.94 16:9 via an EDID override (cage ignores `video=`; 576p50 looked stretched in the car, §22.6), right-hand-drive layout requested
+720x480@59.94 via an EDID override (cage ignores `video=`; 576p50 looked stretched, §22.6), iOS
+rendering 848x480 squeezed into it to counter the 1.875:1 glass (§22.8), right-hand-drive layout requested
 from the dongle, black page + inline logo + black Chromium blank colour = no flashes. No
 network daemon on the boot path — Wi-Fi/SSH start 20 s after boot by design. The Carlinkit
 dongle's own ~11 s boot is the floor for CarPlay availability. Path A (Electron,
