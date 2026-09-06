@@ -1240,7 +1240,48 @@ at the risk of no picture.
 after the last movement (small inline script in `public/index.html`; the invisible WebUSB
 button inherits the page cursor). cage itself has no cursor-hiding option.
 
-### 22.7 Rollback
+### 22.7 The cursor was Chromium's, not the page's — the Pi's HDMI-CEC receivers pose as pointers
+The §22.6 script never had a chance. On the real unit a static arrow sat in the middle of the
+screen (photo-confirmed on the glass) and it turned out to be **Chromium's default cursor**, set
+through a genuine `wl_pointer`. The unit has no mouse and no touchscreen HID — but the Pi's
+`vc4-hdmi` driver registers an HDMI-CEC remote-control receiver (`rc0`/`rc1`, one per HDMI
+port, created by the driver whether or not the panel speaks CEC — it doesn't) as an input
+device advertising `REL_X`/`REL_Y` and `INPUT_PROP_POINTING_STICK`. udev tags them
+`ID_INPUT_POINTINGSTICK=1` (`udevadm info -q property -n /dev/input/eventN`), libinput hands
+cage two "pointers", the Wayland seat gains pointer capability, Chromium binds a `wl_pointer`,
+gets pointer focus and sets its arrow. Nothing can ever move that pointer, so Chromium never
+re-evaluates the cursor against the page's `cursor: none` — and cage's own cursor theme is
+irrelevant, because the image on screen is the client's.
+
+Fix: `hardware/path-b/71-s660-libinput-ignore-cec.rules` sets `LIBINPUT_IGNORE_DEVICE=1` for
+every `vc4-hdmi-*` input device (PHASE 2 of provision.sh; these ARE udev-managed, so the rule
+applies at boot). No pointer → no `wl_pointer` → no cursor; cage draws none of its own without
+a pointer device, so nothing is left to hide. Consequence: the unit now has **zero** input
+devices, and wlroots' libinput backend refuses to start that way (`libinput initialization
+failed, no input devices` → `Unable to start the wlroots backend` → black screen, restart
+loop), so the wrapper exports `WLR_LIBINPUT_NO_DEVICES=1`. The Path A unit gets the same
+`Environment=` line in provision.sh (not exercised on the CM4 — Path A is not the running
+channel).
+
+Also set, `WLR_NO_HARDWARE_CURSORS=1` — not part of the fix, but what makes verification
+honest: a hardware cursor lives on the vc4 cursor plane, which `grim` cannot see, so a
+screenshot shows a clean frame while an arrow sits on the glass — exactly how a first attempt
+at this bug was "verified" and wrong. With software cursors, whatever is on the glass is in the
+frame. To check for real: `grim -c` (forces any cursor wlroots believes is enabled into the
+capture) plus `sudo grep -A6 '^plane\[' /sys/kernel/debug/dri/1/state` — only the primary
+plane (`plane-3`) may have a `crtc=`; the cursor plane (`plane-57`) must stay `fb=0`.
+**Confirmed on the glass 2026-09-06** after a cold reboot — the screenshot evidence above is what
+the panel showed too.
+
+Detours, so nobody repeats them: (1) a virtual `uinput` mouse "nudge" to hand Chromium one
+real motion event — the theory (Chromium only re-evaluates the cursor on real input) was right,
+but the nudge merely moved the cursor from software rendering onto the hardware plane, where
+the screenshot lost it; (2) a fully transparent Xcursor theme for cage — it loaded (proved with
+`inotifywait`; a magenta variant proved it was not what was on screen) but cage's theme was
+never the source. The §22.6 index.html script stays: harmless, and correct if a real mouse is
+ever attached.
+
+### 22.8 Rollback
 Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are in
 `/root/boot-tuning-backup-2026-09-05/` on the Pi, alongside the baseline
 `systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;

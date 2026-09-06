@@ -217,6 +217,15 @@ echo ">>> PHASE 2: Carlinkit udev rule"
 # phone straight into the Pi. "Wired mode" = phone-to-dongle by cable. See BUILD_NOTES 7.
 echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1314", ATTR{idProduct}=="152*", MODE="0660", GROUP="plugdev"' \
   | sudo tee /etc/udev/rules.d/52-nodecarplay.rules >/dev/null
+
+# The Pi's vc4 HDMI-CEC receivers ("vc4-hdmi-0/1" — one per HDMI port, registered by the
+# driver whether or not the panel does CEC; it doesn't) advertise REL_X/REL_Y +
+# INPUT_PROP_POINTING_STICK, so libinput treats them as pointers, the Wayland seat gets
+# pointer capability and Chromium puts a cursor on screen that nothing can ever move
+# (BUILD_NOTES 22.7). Hide them from libinput. Both kiosk units then run with ZERO input
+# devices, which wlroots only tolerates with WLR_LIBINPUT_NO_DEVICES=1 (set in each unit).
+sudo install -m 644 "${PB}/71-s660-libinput-ignore-cec.rules" /etc/udev/rules.d/71-s660-libinput-ignore-cec.rules
+
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
@@ -531,6 +540,8 @@ TTYVTDisallocate=yes
 StandardInput=tty
 StandardOutput=journal
 StandardError=journal
+# Zero input devices is normal here (BUILD_NOTES 22.7); wlroots refuses to start otherwise.
+Environment=WLR_LIBINPUT_NO_DEVICES=1
 ExecStart=/usr/bin/cage -- /home/${CARPLAY_USER}/react-carplay/squashfs-root/react-carplay --no-sandbox --disable-gpu
 Restart=always
 RestartSec=2

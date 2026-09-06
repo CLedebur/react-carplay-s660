@@ -31,6 +31,22 @@ for _ in $(seq 1 300); do
   sleep 0.05
 done
 
+# Cursor (BUILD_NOTES 22.7). The arrow that sat in the middle of the screen was Chromium's
+# default cursor: the Pi's vc4 HDMI-CEC receivers look like pointing sticks to libinput, which
+# gave the Wayland seat pointer capability and Chromium a wl_pointer that nothing could ever
+# move. 71-s660-libinput-ignore-cec.rules hides them from libinput, so there is no pointer, no
+# wl_pointer and no cursor at all — cage draws none of its own without a pointer device.
+#
+# Zero input devices is therefore this unit's normal state. wlroots' libinput backend refuses
+# to start with none at all (cage exits, the unit restart-loops, black screen) unless told
+# that this is expected:
+export WLR_LIBINPUT_NO_DEVICES=1
+# Software cursors: if a cursor ever does appear (a real mouse/touchscreen), it is composited
+# into the frame instead of placed on the vc4 hardware cursor plane, so `grim` shows what the
+# glass shows. A hardware cursor is invisible to screenshots — that is how this bug survived
+# a screenshot-"verified" fix once already.
+export WLR_NO_HARDWARE_CURSORS=1
+
 # WebUSB requires a localhost origin — which this is. Full-screen kiosk, GPU compositing.
 # Kiosk hygiene flags: no background networking (kills GCM/update/translate pings), no
 # component updates, sync, crash reporting, first-run, or keyring lookups — none of which
