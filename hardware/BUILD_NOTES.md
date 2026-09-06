@@ -1054,15 +1054,144 @@ identical.
 remains the way to smooth CarPlay video further — this patch only removes a self-inflicted
 bench-monitor resolution tax, it does not add hardware decode.
 
+## 22. 2026-09-05 — Boot-time tuning for Path B (kiosk up in ~5.7 s instead of ~14.5 s)
+
+Goal: get `carplay-dev-chromium.service` (cage + system Chromium) on screen as early as
+possible after ACC-on, with **no network daemon anywhere on the boot path** (Wi-Fi is
+never guaranteed in the car). All work was done on the CM4 over SSH; every original file
+is backed up on the Pi in `/root/boot-tuning-backup-2026-09-05/`. The resulting files are
+versioned in **`hardware/path-b/`** (unit, kiosk script, static server, drop-ins).
+
+### 22.1 Where the time went (single-boot profile, times from kernel start)
+
+| Milestone | Before | After |
+|---|---|---|
+| Kernel done, `/init` runs | 2.82 s | 1.03 s |
+| initramfs | 1.1 s | none |
+| systemd queues first job | 5.04 s | 2.08 s |
+| `sysinit.target` | 7.31 s | 2.50 s |
+| kiosk service started | 7.44 s | 2.53 s |
+| cage launched (kiosk script done) | 11.20 s | 3.47 s |
+| Chromium browser process alive | ~14.5 s | ~5.7 s |
+| Web app claims + resets the Carlinkit dongle | 18.1 s | 11.5 s |
+| Dongle re-enumerated, CarPlay possible | 21.3 s | ~14.7 s (est.) |
+| `systemd-analyze` total | 4.09 + 5.95 = 10.05 s | 1.09 + 1.72 = 2.81 s |
+| SSH reachable (Wi-Fi) | ~10 s | ~30 s — **deliberate**, see 22.3 |
+
+Firmware time (before the kernel) is not visible from Linux and was not measured.
+
+**The dongle sets the floor.** The Carlinkit enumerates ~11.3 s after kernel start
+regardless of what the Pi does (it boots its own firmware), and `node-carplay` USB-resets
+it on open (+3 s). Before, the web app was not ready until 18 s, so the reset happened
+late. Now the app is waiting when the dongle appears and resets it at 11.5 s. Getting
+Chromium up any earlier than ~11 s buys nothing more for CarPlay itself.
+
+### 22.2 What changed on the Pi (and why)
+
+Critical path:
+- **Kiosk script polled once a second** for the local static server; Node is up in
+  ~0.2 s, so the loop wasted most of a second plus cold-exec time. Now polls every 100 ms
+  (`hardware/path-b/run-chromium-kiosk.sh`).
+- **initramfs dropped** (`auto_initramfs=0` in config.txt). The RPi kernel has ext4,
+  nvme, pcie-brcmstb and xhci built in (checked `modules.builtin`), so the 11.8 MB
+  initramfs only added load + unpack time. Root fsck now runs via `systemd-fsck-root`.
+- **Console quieted.** cmdline.txt had `console=serial0,115200` and no `quiet`; ~21 KB of
+  kernel text went out a 115200-baud UART before systemd even started (~1.9 s of
+  serial time, largely synchronous). Now `console=tty1 quiet loglevel=3
+  vt.global_cursor_default=0`. Kernel phase went 2.82 s → 1.03 s (this plus the
+  initramfs removal account for it; the 1.3 s "gap" seen before was the serial console).
+  To debug over serial again, put `console=serial0,115200` back temporarily.
+- **`systemd-binfmt` + `binfmt_misc` mount masked** — they sat on the kiosk's critical
+  chain and only registered python3.13.
+- **`/boot/firmware` is an automount** (`noauto,x-systemd.automount,nofail`, fsck pass 0)
+  so `local-fs.target` no longer waits for udev to enumerate the vfat partition and fsck
+  it. It mounts on first access (apt, `rpi-eeprom-update`, editing config.txt all work).
+- **Swap removed** (`/etc/rpi/swap.conf.d/90-boot-tuning.conf` → `Mechanism=none`):
+  8 GB RAM, a 2 GB loop-device swap file and a 2 GB zram both pointless for a kiosk.
+- **`keyboard-setup`, `console-setup` disabled**; **cloud-init purged** (its generator and
+  units still loaded every boot despite `cloud-init.disabled`). `apt autoremove` then
+  dropped ~30 dependency packages (gdisk, netcat-openbsd, eatmydata, python babel…).
+- **GPU modules loaded from `/etc/modules-load.d/carplay-gpu.conf`** (`vc4`, `v3d`).
+  With the boot this fast, cage started before udev had loaded vc4, failed with
+  `Found 0 GPUs` and — worse — **hung instead of exiting**, so `Restart=always` never
+  fired. modules-load runs inside sysinit, before the kiosk. The script also waits for
+  `/sys/class/drm/card*-HDMI-A-1` as a belt-and-braces guard.
+
+Contention (not on the chain, but the four cores were saturated during early boot):
+- **NetworkManager + wpa_supplicant no longer start at boot.** `network-late.timer`
+  starts NetworkManager 20 s after boot (Chromium is long up by then); a drop-in makes NM
+  `Wants=wpa_supplicant.service`. The D-Bus alias for wpa_supplicant and the
+  NetworkManager-dispatcher alias were re-created (disabling NM removes them). Nothing on
+  the boot path can wait for Wi-Fi.
+- **bluetooth.service + user `mpris-proxy` disabled** — the Carlinkit does its own BT.
+- **`rpi-eeprom-update.service` disabled.** It ran `rpi-eeprom-update -s -a` with
+  `RPI_EEPROM_IMMEDIATE_UPDATE=1`, i.e. it could flash the bootloader at boot **in the
+  car**; a power cut mid-flash means SD-card recovery. Update the EEPROM by hand on the
+  bench.
+- **Persistent timers** (`man-db`, `dpkg-db-backup`, `e2scrub_all`) disabled; `logrotate`
+  and `fstrim` kept but `Persistent=false`, so a car that sat overnight no longer runs
+  all of them in the first minute. `sshswitch`, `e2scrub_reap` disabled (the former also
+  touched `/boot/firmware` every boot).
+- **`upower.service` masked** (Chromium D-Bus-activated it); `NO_AT_BRIDGE=1` set.
+- **Kiosk unit runs without `PAMName=login`** — no logind session, no `user@1000`, no
+  session D-Bus. cage talks to seatd directly; `RuntimeDirectory=carplay-kiosk` provides
+  `XDG_RUNTIME_DIR`. Chromium logs a burst of harmless `Failed to connect to the bus`
+  errors at start (no session bus) — expected. **`carplay.service` (Path A) was left
+  untouched** and still uses PAM.
+
+Display:
+- The car panel (EDID: "Car Audio", mfr FTL) natively advertises **CTA VIC 18 = 720x576
+  @ 50 Hz 16:9**. `hdmi_group/hdmi_mode/hdmi_force_hotplug` are **ignored** under
+  `vc4-kms-v3d` with `disable_fw_kms_setup=1`; the mode is pinned with
+  `video=HDMI-A-1:720x576@50D` in cmdline.txt (`D` = force the connector on, no hotplug
+  wait). Confirmed: `fb0` is 720x576, CRTC active. The bench 4K monitor also accepted the
+  mode. VIC 17 (4:3) has identical timings; the AVI aspect flag cannot be chosen via
+  `video=`, and this class of panel stretches to its glass anyway.
+- `camera_auto_detect=0`, `display_auto_detect=0` (no CSI camera, no DSI panel).
+
+### 22.3 Deliberately NOT done / gotchas
+- **SSH now comes up ~30 s after power-on**, because NetworkManager waits 20 s. Do not
+  "fix" this. If the Pi ever seems unreachable, wait a minute first.
+- `netplan.io` cannot be purged: Raspberry Pi's `network-manager` package depends on it.
+- The cpufreq governor is forced to `ondemand` by
+  `/usr/lib/udev/rules.d/60-ondemand-governor.rules`; a kernel-parameter governor would
+  be overridden, and `performance` at idle costs heat in a dashboard. Left alone.
+- The Chromium profile (180 MB) was **not** wiped: there is no policy file granting the
+  WebUSB device, so the grant lives in the profile.
+- `BOOT_UART=0` in the EEPROM config would save a few hundred ms of bootloader time but
+  requires an EEPROM flash (`rpi-eeprom-config --apply`) — do it on the bench, on purpose.
+- A one-off `initcall_debug` boot showed the two remaining kernel hogs:
+  `init_kprobe_trace` (0.46 s, kernel-config, not tunable) and `bcmgenet_driver_init`
+  (0.19 s — the Ethernet MAC). `initcall_blacklist=bcmgenet_driver_init` would save it
+  at the cost of the TOFU's RJ45 port. Not applied.
+- The `hdmi_enable_4kp60` warning from earlier boots was the 4K bench monitor; gone now.
+
+### 22.4 Right-hand drive + panel resolution in the web app (2026-09-05, same day)
+CarPlay supports RHD natively: the head unit sends a hand-drive value to the dongle at
+init and iOS moves the sidebar to the right. node-carplay exposes it as
+`DongleConfig.hand` (`HandDriveType.LHD = 0 | RHD = 1`, sent as `/tmp/hand_drive_mode`).
+`carplay-web-app/src/App.tsx` on the Pi now sets `hand: HandDriveType.RHD`, and its
+hardcoded canvas went **800x480 → 720x576** — the 800x480 "native S660 screen" was a
+pre-EDID guess and would have been cropped on the pinned 720x576 mode. Both are applied by the idempotent embedded source patch in provision.sh PHASE 3B (the §21
+mechanism, updated); **this supersedes §21's 800x480** — that figure was a pre-EDID guess.
+The setting is read at dongle init, so a reboot/service restart plus one phone
+reconnect is needed for it to show. **Not yet confirmed with a phone.**
+
+### 22.5 Rollback
+Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are in
+`/root/boot-tuning-backup-2026-09-05/` on the Pi, alongside the baseline
+`systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;
+`apt install cloud-init` if it is ever wanted again (it is not).
+
+
 ---
 
-*Last updated: 2026-08-24. Status: NVMe SSD in service (§18). Path B **dev Chromium channel
-verified on the CM4** (§20) and **perf-patched to the S660's real 800x480 @ 30fps** (§21) —
-confirmed visibly smoother; the fix is persisted as an idempotent source patch in
-`provision.sh` (verified byte-identical against a fresh-clone dry run), not a fork. Switch
-stable⇄dev by enabling one and rebooting — the live hot-switch drops HDMI and is not used.
-`provision.sh` provisions both channels via `INSTALL_STABLE_A` / `INSTALL_DEV_CHROMIUM`. Open
-TODOs: regenerate the stale on-disk `carplay.service` (`INSTALL_STABLE_A=yes` — `4[Unit]` typo,
-no `--disable-gpu`, §20); verify touch calibration on the real touchscreen (§21); hardware
-video decode (V4L2 / custom Electron → future `carplay-dev-electron.service`); `chrome://gpu`
-decode readout.*
+*Last updated: 2026-09-05. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
+(§22): on screen ~5.7 s after kernel start, 26 s stopwatch from power-on to picture, display
+pinned to the car panel's native 720x576@50 (EDID), right-hand-drive layout requested from the
+dongle. No network daemon on the boot path — Wi-Fi/SSH start 20 s after boot by design. The
+Carlinkit dongle's own ~11 s boot is the floor for CarPlay availability. Path A (Electron,
+`--disable-gpu`) remains a fallback and still uses the PAM-based unit. Open: confirm RHD layout
+and touch calibration on the real panel with a phone; wireless pairing re-check with
+`bluetooth.service` disabled; hardware video decode (V4L2 / custom Electron); regenerate the
+stale on-disk `carplay.service` (§20).*

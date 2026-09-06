@@ -86,30 +86,88 @@ echo "=== NOTE: reboot required at the end. See PHASE 5. ==="
 
 
 # ============================================================================
-# PHASE 0 — Boot-time trims  [COMMON]  (see BUILD_NOTES Section 4)
+# PHASE 0 — Boot-time trims  [COMMON]  (see BUILD_NOTES Section 4 and Section 22)
 # ============================================================================
+# Section 22 measured every one of these on the CM4 (2026-09-05). Net effect: the Path B
+# kiosk is on screen ~5.7 s after kernel start instead of ~14.5 s (26 s stopwatch from
+# power-on). Nothing network-related is allowed on the boot path — Wi-Fi is never
+# guaranteed in the car. Files referenced as path-b/... live next to this script.
 echo ">>> PHASE 0: boot-time trims"
+PB="$(cd "$(dirname "$0")" && pwd)/path-b"
 
-# cloud-init: first-boot setup tool, present on RPi OS Lite; not needed every boot (~3s).
-sudo systemctl disable cloud-init cloud-init-local cloud-config cloud-final 2>/dev/null || true
-sudo touch /etc/cloud/cloud-init.disabled
+# cloud-init: first-boot tool. Even when "disabled" its generator + units load every boot,
+# so purge it outright. (netplan.io must STAY — RPi's network-manager depends on it.)
+sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y cloud-init rpi-cloud-init-mods 2>/dev/null || true
+sudo apt-get -y autoremove --purge 2>/dev/null || true
 
 # apt-daily: background update check. Disable the TIMERS (not just the services) and mask,
 # so nothing re-triggers them. A dash unit updates on your schedule, not at boot.
 sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 sudo systemctl mask apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
 
-# Optional: disable clearly-unused services. Comment out any you actually use.
-sudo systemctl disable man-db.service avahi-daemon.service 2>/dev/null || true
-# sudo systemctl disable bluetooth.service   # leave enabled if you use Bluetooth
+# Persistent timers all fire in the first minute after the car sat overnight. Drop the
+# ones we never want; keep logrotate/fstrim but stop them catching up at boot.
+sudo systemctl disable man-db.timer dpkg-db-backup.timer e2scrub_all.timer 2>/dev/null || true
+for t in logrotate fstrim; do
+  sudo mkdir -p /etc/systemd/system/$t.timer.d
+  printf '[Timer]\nPersistent=false\n' | sudo tee /etc/systemd/system/$t.timer.d/no-persistent.conf >/dev/null
+done
 
-# config.txt: remove the splash delay and boot pause.
-if ! grep -q "^disable_splash=1" /boot/firmware/config.txt; then
-  echo "disable_splash=1" | sudo tee -a /boot/firmware/config.txt >/dev/null
-fi
-if ! grep -q "^boot_delay=0" /boot/firmware/config.txt; then
-  echo "boot_delay=0" | sudo tee -a /boot/firmware/config.txt >/dev/null
-fi
+# Services a kiosk does not need. bluetooth: the Carlinkit dongle does its own BT (if
+# wireless pairing ever fails, re-enable this first). rpi-eeprom-update: with
+# RPI_EEPROM_IMMEDIATE_UPDATE=1 it can FLASH THE BOOTLOADER at boot in the car — a power cut
+# mid-flash means SD-card recovery; update by hand, on the bench. The rest have nothing to do.
+sudo systemctl disable bluetooth.service rpi-eeprom-update.service sshswitch.service \
+  e2scrub_reap.service keyboard-setup.service console-setup.service avahi-daemon.service 2>/dev/null || true
+sudo systemctl --global disable mpris-proxy.service 2>/dev/null || true
+# binfmt sits ON the kiosk's critical chain and only registers python3. upower is only
+# ever D-Bus-activated by Chromium.
+sudo systemctl mask systemd-binfmt.service proc-sys-fs-binfmt_misc.automount \
+  proc-sys-fs-binfmt_misc.mount upower.service 2>/dev/null || true
+
+# Networking OFF the boot path: NetworkManager starts from a timer 20 s after boot
+# (Chromium is long up). Disabling NM removes two D-Bus aliases we still want, so they
+# are re-created, and a drop-in makes NM pull wpa_supplicant with it.
+# CONSEQUENCE: SSH is reachable ~30 s after power-on. Do not "fix" this.
+sudo systemctl disable NetworkManager.service wpa_supplicant.service 2>/dev/null || true
+sudo install -m 644 "${PB}/network-late.timer" /etc/systemd/system/network-late.timer
+sudo mkdir -p /etc/systemd/system/NetworkManager.service.d
+sudo install -m 644 "${PB}/NetworkManager.service.d-wants-wpa.conf" /etc/systemd/system/NetworkManager.service.d/wants-wpa.conf
+sudo ln -sfn /usr/lib/systemd/system/wpa_supplicant.service /etc/systemd/system/dbus-fi.w1.wpa_supplicant1.service
+sudo systemctl enable NetworkManager-dispatcher.service network-late.timer 2>/dev/null || true
+
+# No swap: 8 GB RAM, and the default 2 GB swap file + 2 GB zram cost ~0.6 s of boot CPU.
+sudo mkdir -p /etc/rpi/swap.conf.d
+sudo install -m 644 "${PB}/rpi-swap.conf.d-90-boot-tuning.conf" /etc/rpi/swap.conf.d/90-boot-tuning.conf
+
+# GPU modules in sysinit. A fast boot lets cage start before udev has loaded vc4; cage
+# then fails with "Found 0 GPUs" and HANGS (Restart=always never fires). See §22.2.
+sudo install -m 644 "${PB}/modules-load.d-carplay-gpu.conf" /etc/modules-load.d/carplay-gpu.conf
+
+# /boot/firmware: automount on first access instead of holding up local-fs.target.
+sudo sed -i -E 's|^(PARTUUID=\S+\s+/boot/firmware\s+vfat\s+)defaults(\s+)0\s+2$|\1defaults,noauto,x-systemd.automount,nofail\20  0|' /etc/fstab
+
+# config.txt: no splash/boot pause; no initramfs (kernel has nvme+ext4+pcie built in);
+# no camera/DSI probing. hdmi_group/hdmi_mode/hdmi_force_hotplug are IGNORED under
+# vc4-kms-v3d + disable_fw_kms_setup=1 — the mode is pinned in cmdline.txt below.
+for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 display_auto_detect=0; do
+  k=${kv%%=*}
+  if grep -q "^$k=" /boot/firmware/config.txt; then
+    sudo sed -i "s/^$k=.*/$kv/" /boot/firmware/config.txt
+  else
+    echo "$kv" | sudo tee -a /boot/firmware/config.txt >/dev/null
+  fi
+done
+
+# cmdline.txt (ONE line): drop the 115200-baud serial console (~2 s of synchronous kernel
+# output), quiet the kernel, pin the car panel's native mode (EDID VIC 18: 720x576@50,
+# 16:9; "D" forces the connector on without waiting for hotplug). For serial debugging,
+# temporarily put "console=serial0,115200" back.
+ROOT_PARTUUID=$(sed -nE 's/.*root=(PARTUUID=[^ ]+).*/\1/p' /boot/firmware/cmdline.txt)
+echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x576@50D" \
+  | sudo tee /boot/firmware/cmdline.txt >/dev/null
+
+sudo systemctl daemon-reload
 
 
 # ============================================================================
@@ -230,19 +288,20 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
-  # ---- S660 perf patch: hardcode 800x480 @ 30fps in the DongleConfig (BUILD_NOTES §21) ----
+  # ---- S660 patch: 720x576 @ 30fps + right-hand drive in the DongleConfig (BUILD_NOTES §21, §22.4) ----
   # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
   # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
-  # the CM4 must then software-decode that (§17). On the S660's real 800x480 screen this is a
-  # no-op (innerWidth/Height already equal 800x480), but a bench monitor (e.g. this one, up to
-  # 3840x2160) silently inflates the decode workload 5-10x. Confirmed on hardware 2026-08-24:
-  # pinning to 800x480 @ 30fps measurably smoothed the dev-Chromium channel. The container's
-  # CSS box is resized to match (800x480, centered) IN THE SAME EDIT, because touch-coordinate
-  # normalization (useCarplayTouch) divides by these same width/height constants — changing
-  # one without the other breaks touch mapping.
+  # the CM4 must then software-decode that (§17). A bench monitor (up to 3840x2160) silently
+  # inflates the decode workload 5-10x. The car panel's EDID advertises 720x576@50 as its only
+  # real mode (§22) — the earlier 800x480 was a pre-EDID guess — and cmdline.txt pins it, so
+  # hardcode exactly that. 30fps is a match for a dash and halves decode load. The container's
+  # CSS box is resized to match IN THE SAME EDIT, because touch-coordinate normalization
+  # (useCarplayTouch) divides by these same width/height constants — changing one without the
+  # other breaks touch mapping. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
+  # the right (S660 is right-hand drive); it is read at dongle init.
   # Idempotent: the grep guard skips sources already carrying this patch.
   APP_TSX="src/App.tsx"
-  if ! grep -q "S660 native screen is 800x480" "${APP_TSX}"; then
+  if ! grep -q "HandDriveType.RHD" "${APP_TSX}"; then
     python3 - "${APP_TSX}" << 'PY'
 import sys
 
@@ -253,13 +312,11 @@ with open(path) as f:
 replacements = [
     (
         "const width = window.innerWidth\nconst height = window.innerHeight",
-        "// S660 native screen is 800x480. The bench monitor on this Pi negotiates up to\n"
-        "// 3840x2160 -- window.innerWidth/innerHeight would ask the dongle for THAT resolution,\n"
-        "// which the CM4 has to software-decode. Hardcode to the real car screen so decode load\n"
-        "// (and this perf test) matches production regardless of what's plugged in on the bench.\n"
-        "// In the car this is a no-op: the kiosk window IS 800x480, so innerWidth/Height would\n"
-        "// already equal these values.\n"
-        "const width = 800\nconst height = 480",
+        "// The S660 panel's EDID (\"Car Audio\", mfr FTL) advertises 720x576@50 16:9 as its only real\n"
+        "// mode, and the kiosk pins that via video=HDMI-A-1:720x576@50D (BUILD_NOTES 22). Hardcode it\n"
+        "// so the dongle is asked for the panel's resolution regardless of what is plugged in on the\n"
+        "// bench (the 4K monitor would otherwise make window.innerWidth/Height request 3840x2160).\n"
+        "const width = 720\nconst height = 576",
     ),
     (
         "const config: Partial<DongleConfig> = {\n"
@@ -273,7 +330,17 @@ replacements = [
         "  height,\n"
         "  fps: 30, // 60 was heavy on top of software decode; 30 halves it again, plenty for a dash\n"
         "  mediaDelay: 300,\n"
+        "  hand: HandDriveType.RHD, // S660 is right-hand drive: iOS puts the CarPlay sidebar on the right\n"
         "}",
+    ),
+    (
+        "  DongleConfig,\n"
+        "  CommandMapping,\n"
+        "} from 'node-carplay/web'",
+        "  DongleConfig,\n"
+        "  CommandMapping,\n"
+        "  HandDriveType,\n"
+        "} from 'node-carplay/web'",
     ),
     (
         "        style={{\n"
@@ -301,9 +368,14 @@ for old, new in replacements:
 with open(path, "w") as f:
     f.write(src)
 
-print(f"Patched {path}: DongleConfig -> 800x480 @ 30fps.")
+print(f"Patched {path}: DongleConfig -> 720x576 @ 30fps, RHD.")
 PY
   fi
+
+  # Production build. The kiosk wrapper serves build/ through serve-build.js (which sends the
+  # COOP/COEP headers SharedArrayBuffer needs) instead of the CRA dev server, which recompiled
+  # the app at EVERY boot (~12 s on the CM4). Re-run this after any App.tsx change.
+  CI=false npm run build
 
 fi
 
@@ -359,62 +431,22 @@ fi
 if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   echo ">>> PHASE 4B: carplay-dev-chromium.service (dev, installed but DISABLED)"
 
-  # Launch wrapper: the dev service needs the web app served on localhost first, THEN the
-  # Chromium kiosk. Both live in this unit's cgroup, so a `systemctl stop` (or the Conflicts=
-  # switch back to carplay.service) tears the web server down too. Quoted heredoc: $HOME and
-  # the loop vars are resolved at RUNTIME (systemd sets $HOME from User=), not now.
+  # Launch wrapper + static server + unit are VERSIONED in path-b/ (they are exactly what runs
+  # on the CM4, BUILD_NOTES §22). The wrapper serves the production build via serve-build.js,
+  # polls it every 100 ms, waits for the KMS connector (cage races vc4 on a fast boot), then
+  # execs cage + Chromium. Both processes live in this unit's cgroup, so a `systemctl stop`
+  # (or the Conflicts= switch back to carplay.service) tears the web server down too.
   mkdir -p "${DEV_DIR}"
-  cat > "${DEV_DIR}/run-chromium-kiosk.sh" << 'WRAP'
-#!/usr/bin/env bash
-set -euo pipefail
+  install -m 775 "${PB}/run-chromium-kiosk.sh" "${DEV_DIR}/run-chromium-kiosk.sh"
+  install -m 664 "${PB}/serve-build.js" "${DEV_DIR}/serve-build.js"
 
-APP_DIR="$HOME/node-CarPlay/examples/carplay-web-app"
-
-# Serve the web app locally (dev server; proven in BUILD_NOTES 11.4). BROWSER=none stops
-# react-scripts trying to open a browser.
-cd "$APP_DIR"
-BROWSER=none npm start &
-
-# Wait for the dev server to answer before handing the display to Chromium (the first CRA
-# start on the Pi is slow; allow up to ~90s). If it never comes up, launch anyway and let
-# Restart=always retry.
-for _ in $(seq 1 90); do
-  if curl -sf http://localhost:3000 >/dev/null 2>&1; then break; fi
-  sleep 1
-done
-
-# WebUSB requires a localhost origin — which this is. Full-screen kiosk, GPU compositing.
-exec cage -- chromium --ozone-platform=wayland --kiosk --no-sandbox http://localhost:3000
-WRAP
-  chmod +x "${DEV_DIR}/run-chromium-kiosk.sh"
-
-  # The unit. Conflicts=carplay.service makes the two mutually exclusive (systemd Conflicts=
-  # is symmetric: starting EITHER stops the other), so they never fight over tty1. It is
-  # deliberately NOT enabled — you start it by hand to toggle channels (see PHASE 5).
-  sudo tee /etc/systemd/system/carplay-dev-chromium.service > /dev/null << EOF
-[Unit]
-Description=S660 CarPlay DEV kiosk (cage + system Chromium, Path B / GPU) — toggles vs carplay.service
-After=local-fs.target seatd.service
-Wants=seatd.service
-Conflicts=carplay.service
-
-[Service]
-User=${CARPLAY_USER}
-PAMName=login
-TTYPath=/dev/tty1
-TTYReset=yes
-TTYVHangup=yes
-TTYVTDisallocate=yes
-StandardInput=tty
-StandardOutput=journal
-StandardError=journal
-ExecStart=${DEV_DIR}/run-chromium-kiosk.sh
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  # The unit. No PAMName=login: cage talks to seatd directly, RuntimeDirectory= provides
+  # XDG_RUNTIME_DIR, and skipping the logind session saves user@1000 + a session bus at boot
+  # (Chromium logs harmless "Failed to connect to the bus" lines as a result). Conflicts=
+  # keeps the two kiosks mutually exclusive. Deliberately NOT enabled here (see PHASE 5).
+  sed -e "s/^User=s660$/User=${CARPLAY_USER}/" \
+      -e "s|^ExecStart=.*|ExecStart=${DEV_DIR}/run-chromium-kiosk.sh|" \
+      "${PB}/carplay-dev-chromium.service" | sudo tee /etc/systemd/system/carplay-dev-chromium.service > /dev/null
 fi
 
 sudo systemctl daemon-reload
@@ -447,5 +479,5 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   echo "Do NOT hot-switch with 'systemctl start' while the other kiosk is up: the live"
   echo "cage->cage handoff drops the HDMI output (screen blank until reboot). Conflicts= is"
   echo "kept only as a safety net so both can never run at once."
-  echo "First dev boot is slow: it runs 'npm start' (CRA dev server) before Chromium opens."
+  echo "Wi-Fi/SSH come up ~30 s after power-on by design (network-late.timer, BUILD_NOTES 22)."
 fi

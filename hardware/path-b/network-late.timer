@@ -1,0 +1,9 @@
+[Unit]
+Description=Start NetworkManager 20s after boot (keeps Wi-Fi off the kiosk's boot path)
+
+[Timer]
+OnBootSec=20s
+Unit=NetworkManager.service
+
+[Install]
+WantedBy=timers.target
