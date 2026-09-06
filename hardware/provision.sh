@@ -309,15 +309,16 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
   npm install --ignore-scripts
 
-  # ---- S660 patch: glass-aspect video (896x480) squeezed into the 720x480 output, 30fps, RHD, seamless boot look (BUILD_NOTES §21, §22.4, §22.5, §22.8) ----
+  # ---- S660 patch: 16:9 video (848x480) squeezed into the 720x480 output, 30fps, RHD, seamless boot look (BUILD_NOTES §21, §22.4, §22.5, §22.8) ----
   # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
   # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
   # the CM4 must then software-decode that (§17). A bench monitor (up to 3840x2160) silently
   # inflates the decode workload 5-10x. The S660 glass is 135x72 mm (1.875:1) behind a TV-style
   # scaler that only accepts 720x480/720x576 and stretches whatever it gets across the glass
-  # (§22.8). So: iOS renders at the GLASS aspect — 896x480 (≈480*1.875, multiple of 16) — and the
-  # canvas is displayed squeezed into the 720x480 HDMI output; the panel's stretch then restores
-  # square pixels. Touch is normalised by the DISPLAY size (useCarplayTouch divides offsetX/Y by
+  # (§22.8). So: iOS renders wide — 848x480, i.e. 16:9, the widest Waze tolerates before its
+  # ultrawide layout pushes the speed-limit badge off the left edge (864 and 896 measured) — and
+  # the canvas is displayed squeezed into the 720x480 HDMI output; the panel's stretch then
+  # leaves only a 6 % residual instead of 25 %. Touch is normalised by the DISPLAY size (useCarplayTouch divides offsetX/Y by
   # the constants it is given), so the container gets the display constants, the dongle config
   # gets the video constants, and the canvas is CSS 100%x100% so the 896-wide frame is squeezed.
   # 30fps is a match for a dash and halves decode load. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
@@ -342,12 +343,13 @@ replacements = [
         "// Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a\n"
         "// TV-style scaler that only accepts 720x480/720x576 and stretches whatever it gets across the\n"
         "// glass. The HDMI output is 720x480 (EDID override + cmdline video=); iOS renders at the GLASS\n"
-        "// aspect (896x480 ~= 480*1.875, multiple of 16) and the canvas is displayed squeezed into\n"
-        "// 720x480, so the panel's stretch restores square pixels. Touch is normalised by the DISPLAY\n"
+        "// aspect, capped at 16:9 (848x480; wider makes Waze switch to an ultrawide layout that pushes its\n"
+        "// speed-limit badge off the left edge — 864/896 measured), and the canvas is displayed squeezed into\n"
+        "// 720x480, so the panel's stretch nearly restores square pixels (6% residual). Touch is normalised by the DISPLAY\n"
         "// size. Hardcoded so the bench monitor (4K) cannot inflate window.innerWidth/innerHeight.\n"
         "const DISPLAY_WIDTH = 720\n"
         "const DISPLAY_HEIGHT = 480\n"
-        "const width = 896 // video: what the dongle / iOS renders\n"
+        "const width = 848 // video: what the dongle / iOS renders\n"
         "const height = 480",
     ),
     (
@@ -448,7 +450,7 @@ replacements = [
     ),
     (
         "          style={isPlugged ? { height: '100%' } : { display: 'none' }}",
-        "          style={isPlugged ? { width: '100%', height: '100%' } : { display: 'none' }} // squeeze 896 -> 720",
+        "          style={isPlugged ? { width: '100%', height: '100%' } : { display: 'none' }} // squeeze 848 -> 720",
     ),
 ]
 
@@ -462,7 +464,7 @@ for old, new in replacements:
 with open(path, "w") as f:
     f.write(src)
 
-print(f"Patched {path}: video 896x480 in a 720x480 display @ 30fps, RHD, invisible authorise button, small spinner.")
+print(f"Patched {path}: video 848x480 in a 720x480 display @ 30fps, RHD, invisible authorise button, small spinner.")
 PY
   fi
 
@@ -487,9 +489,9 @@ block = f"""{anchor}
          720x480 CarPlay canvas appears. Same logo/geometry as the boot screen. -->
     <meta name="color-scheme" content="dark" />
     <style>
-      /* logo drawn 363x320 on the 720x480 output = its natural 800x566 aspect pre-squeezed by 720/896,
+      /* logo drawn 384x320 on the 720x480 output = its natural 800x566 aspect pre-squeezed by 720/848,
          so it is round-true on the 1.875:1 glass (BUILD_NOTES 22.8) */
-      html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / 363px 320px no-repeat; }}
+      html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / 384px 320px no-repeat; }}
       #root {{ height: 100%; }}
     </style>
     <!-- Pointer auto-hide: no cursor over CarPlay unless a mouse actually moves; it disappears
