@@ -35,8 +35,12 @@ done
 # Kiosk hygiene flags: no background networking (kills GCM/update/translate pings), no
 # component updates, sync, crash reporting, first-run, or keyring lookups — none of which
 # a locked-down offline kiosk needs. GPU/Wayland/kiosk flags are unchanged.
+# --default-background-color=000000: the colour Chromium presents in the ~0.3 s between
+# mapping its window and the first page paint. Default is WHITE — a visible flash on a
+# black boot sequence (measured with grim, BUILD_NOTES 22.5).
 exec cage -- chromium \
   --ozone-platform=wayland --kiosk --no-sandbox \
   --disable-background-networking --disable-component-update --disable-sync \
   --disable-breakpad --no-first-run --password-store=basic \
+  --default-background-color=000000 \
   http://localhost:3000
