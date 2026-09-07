@@ -1,9 +1,8 @@
 # React-Carplay for the Honda S660
 
-An open-source CarPlay head unit for the Honda S660, built on a Raspberry Pi Compute Module 4 (CM4) + Oratek TOFU carrier board. This repo is a fork of
-[react-carplay](https://github.com/rhysmorgan134/react-carplay) (Electron + React), customised for the S660's panel, GPU, and boot environment.
+An open-source CarPlay head unit for the Honda S660, built on a Raspberry Pi Compute Module 4 (CM4) + Oratek TOFU carrier board. This repo is a fork of [react-carplay](https://github.com/rhysmorgan134/react-carplay) (Electron + React), customised for the S660's panel, GPU, and boot environment.
 
-Hardware assembly, wiring, and enclosure instructions are covered separately. This document is the software-side getting-started guide: how to provision a Pi into a working head unit, and how to develop on this fork.
+Hardware assembly, wiring, and enclosure instructions are covered separately. This  document is the software-side getting-started guide: how to provision a Pi into a working head unit, and how to develop on this fork.
 
 ## Current status
 
@@ -13,35 +12,44 @@ are stable; only one runs at a time.
 | | Path A — `react-carplay` (this repo) | Path B — `carplay-web-app` (chosen) |
 |---|---|---|
 | Runtime | Electron, under `cage`, `--disable-gpu` | Pi's system Chromium, under `cage` |
-| Rendering | Software (stable, low framerate) | GPU-composited (confirmed via `chrome://gpu`) |
+| Rendering | Software (stable, low framerate) | GPU-composited (smoothest performance) |
 | Dongle link | Native USB | WebUSB |
 | Service | `carplay.service` | `carplay-dev-chromium.service` |
 
-**Path B is the currently running channel** on the reference build — see
-[`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §8.5 for why. Video **decode**
-(as opposed to compositing) is still software either way; hardware H.264 decode
-needs a custom-patched Electron build and is not yet verified. This repo (Path A)
-is where that work — Electron 33 + Pi GPU flags — is happening; see
-[`CLAUDE.md`](CLAUDE.md) for the exact state of that effort.
+**Path B is the currently running channel** on the reference build — see [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §8.5 for why. Video **decode** (as opposed to compositing) is still software either way; hardware H.264 decode needs a custom-patched Electron build and is not yet verified. This repo (Path A) is where that work — Electron 33 + Pi GPU flags — is happening; see [`CLAUDE.md`](CLAUDE.md) for the exact state of that effort.
 
-For the full build history, every non-obvious fix, and the reasoning behind each
-decision, read [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) — it is the
-source of truth for anything hardware-, boot-, or GPU-related.
+For the full build history, every non-obvious fix, and the reasoning behind each decision, read [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) — it is the source of truth for anything hardware-, boot-, or GPU-related.
 
-## Getting started — provision a Pi head unit
+# Getting started
 
 This is the fastest path to a working unit and is how the reference build is set up.
 
-**Hardware:**
+## Hardware
+
 - A Raspberry Pi Compute Module 4 flashed with **Raspberry Pi OS Lite (64-bit)**, currently Debian 13 "Trixie", with at least 4GB RAM.
 - Oratek TOFU Board [(link)](https://store.oratek.com/products/tofu-electronic-board)
 - Oratek M.2 Adapter [(link)](https://store.oratek.com/products/tofu-m-2-key-m-adapter)
-- A CM4 Heatsink/Fan [(link)](https://pt.aliexpress.com/item/1005002541607239.html)
-- A Carlinkit CPC200-CCPA/CCPM dongle. This performs the Apple MFi handshake, so an iPhone cannot be plugged directly into the Pi. [(link)](https://www.amazon.es/dp/B0H7GRL6YJ)
+- CM4 Heatsink/Fan [(link)](https://pt.aliexpress.com/item/1005002541607239.html)
+- Carlinkit CPC200-CCPA/CCPM dongle. This performs the Apple MFi handshake, so an iPhone cannot be plugged directly into the Pi. [(link)](https://www.amazon.es/dp/B0H7GRL6YJ)
 - HDMI-e to HDMI cable 0.5m [(example)](https://pt.aliexpress.com/item/1005005903047904.html)
 - Honda S660 Option Coupler (required for providing power to the CM4 + board). A Pikaichi TR-196 is ideal if you can find one. Otherwise, you will want a branching coupler so that you can accommodate more peripherals in the future. This is what I got: [(example)](https://www.amazon.co.jp/-/en/dp/B0886HDJLB?ref=ppx_yo2ov_dt_b_fed_asin_title)
 - Voltage Converter/Stabilizer (8V-40V to 12V 3A 36W) to provide the board with clean power. [(example)](https://www.amazon.es/dp/B0CPSLSH4J)
 - **Not required but highly recommended** - NVMe M.2 SSD (as it will greatly improve boot times and hold up better than an eMMC).
+- A MicroSD card (at least 16GB) to flash the Pi OS Lite image onto the CM4. 
+- 2.1mm barrel jack AC adapter [(link)](https://www.amazon.es/dp/B09K59PGZ5)
+- Wi-Fi Antenna (if you want to use Wi-Fi instead of Ethernet). [(example)](https://www.amazon.es/dp/B08RRX9H2Q)
+- 3D-Printed case (pending)
+
+### Assembly
+
+1. Using the standoffs provided by the heatsink/fan kit between the CM4 and the TOFU board, mount the CM4 to the TOFU board. This will allow the heatsink/fan to be mounted on top of the CM4 without bending the CM4.
+2. Insert the MicroSD card into the CM4 and flash the Raspberry Pi OS Lite (64-bit) image onto it. You can use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to do this.
+3. Insert the NVMe M.2 SSD into the M.2 adapter first, and then insert onto the TOFU board, and then mount.
+4. Connect a monitor to the HDMI port, and a keyboard to the TOFU board. Power on the board and complete the initial setup of the Raspberry Pi OS Lite (64-bit) image. Make sure to enable SSH and set a username and password.
+5. Connect the Carlinkit dongle to the USB port on the TOFU board.
+6. Run the provisioning script (see below) to install the software and configure the system.
+
+## Software
 
 **Run the provisioning script**, as your normal user (not root, not with `sudo` —
 it calls `sudo` itself where needed):
@@ -81,8 +89,41 @@ sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chro
 sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot
 ```
 
+# Physical Installation
+
+## Modifying the head unit
+
+Using plastic trim removal tools, remove the S660's interior parts in this order:
+
+1. Glove box
+2. AC vent behind glove box
+3. Panels on both sides of the center console in the footwells
+4. Remove the plastic shroud behind the center screen, and then unscrew the bolts. Unplug the proprietary HDMI-e cable (gray) and remove the screen.
+5. The frame around the stick shift. No need to pull it off entirely, just enough to remove the frame around the center console. The frame is held in place by clips, so be careful not to break them.
+6. The tray behind the stick shift. It is held in place with clips. Gently pry the tray up and pull it out. Be careful not to break the clips. Disconnect the cables for the buttons and set aside.
+7. The center console itself. It is held in place with clips. Gently pry the front of the console up and pull it out. Be careful not to break the clips. Disconnect the cables for the buttons and set aside.
+8. Unscrew the two 10mm bolts securing the head unit to the dashboard. Do not remove, only loosen them.
+9. Slide the head unit out sideways; it will slide out of the compartment where the glove box was. Disconnect the cables as you go. Try not to disconnect as many cables you can, as it's very difficult to reconnect them.
+10. When you're able to reach it, unplug the HDMI-e cable on the far right side of the head unit (it is the black one) and set aside. Plug in the new HDMI-e cable and route it down to the cavity in the center console behind the shifter.
+11. Re-insert the head unit, reconnecting the cables along the way, EXCEPT for the 24-pin harness at the far left. Pull out the harness as much as you can, and then strip away some of the electrical tape to expose around 5mm of the wire coming from pin 22. It will be the light green wire on the bottom left.
+12. Cut the wire 5mm from the plug, and then solder the wire from the plug to a small length of wire that will reach a screw on the left side of the head unit. If done correctly, this will bypass the handbrake signal and allow the head unit to work while driving. Make sure to insulate the soldered connection with heat shrink or electrical tape.
+13. Plug in the harness and test the head unit. If it works, reassemble the glove box and the AC vent behind it. If it doesn't work, check the soldered connection and make sure the wire is connected to the screw on the left side of the head unit.
+
+## Powering the Pi
+
+1. Wire the 8v-40v to 12v converter to the option coupler. You will want about 1.5m of wire to reach the center console. The converter can be kept in the cavity behind the stick shift. Ensure you connect the positive wire to port number five on the coupler (IGN power). The negative wire will be connected to the chassis ground.
+2. Follow [these instructions](https://minkara.carview.co.jp/userid/135377/car/3279425/6972067/note.aspx) to install the option coupler behind the driver's side AC vent.
+3. Route the wire behind the carpet. Make sure you secure the wire with zip ties to prevent them from getting caught up in the pedals.
+4. Route the wire to the cavity under the center console, and connect to the red/black wire pair on the converter.
+5. Connect the industrial connector provided by the TOFU board to the yellow/black wire pair on the converter.
+6. Plug in the industrial connecetor to the Pi and start the car to test the power. The Pi should boot up.
+7. Switch the input to HDMI via the button on the steering wheel if it isn't there already. The Pi should be running the CarPlay app.
+
+# Script Details
+
 **What the script does**, in short (see the script's own comments and
 `hardware/BUILD_NOTES.md` §4 and §22 for the full reasoning):
+
 - Trims ~10s off boot by disabling cloud-init, unneeded timers/services, swap, and
   the initramfs, and by quieting the kernel console.
 - Installs `cage` (Wayland kiosk compositor) + `seatd`, and the udev rule that gives
