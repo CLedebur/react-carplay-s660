@@ -119,6 +119,12 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 6. Plug in the industrial connecetor to the Pi and start the car to test the power. The Pi should boot up.
 7. Switch the input to HDMI via the button on the steering wheel if it isn't there already. The Pi should be running the CarPlay app.
 
+# Works in Progress
+
+1. 3D-printed case for the Pi + TOFU board sized to fit the S660's center console with mounting points.
+2. Man-in-the-Middle (MITM) proxy for the physical buttons on the center console so that the buttons and knob can be used to control the CarPlay app.
+3. (eventually) A replacement screen for the S660 with touchscreen capabilities and a higher resolution than the stock screen.
+
 # Script Details
 
 **What the script does**, in short (see the script's own comments and
