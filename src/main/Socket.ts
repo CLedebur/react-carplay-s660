@@ -7,7 +7,8 @@ export enum MessageNames {
   Connection = 'connection',
   GetSettings = 'getSettings',
   SaveSettings = 'saveSettings',
-  Stream = 'stream'
+  Stream = 'stream',
+  KeyCommand = 'keyCommand'
 }
 
 export class Socket extends EventEmitter {
@@ -37,6 +38,13 @@ export class Socket extends EventEmitter {
 
       socket.on(MessageNames.Stream, (stream: Stream) => {
         this.emit(MessageNames.Stream, stream)
+      })
+
+      // Relays a key command from any connected client (e.g. a phone-based
+      // remote control page) to every client, including the renderer, which
+      // feeds it into the same pipeline as a physical/keyboard key press.
+      socket.on(MessageNames.KeyCommand, (command: string) => {
+        this.io.emit(MessageNames.KeyCommand, command)
       })
     })
 

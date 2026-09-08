@@ -27,7 +27,8 @@ const DEFAULT_BINDINGS: KeyBindings = {
   play: 'KeyP',
   pause: 'KeyO',
   next: 'KeyM',
-  prev: 'KeyN'
+  prev: 'KeyN',
+  siri: 'KeyS'
 }
 
 const EXTRA_CONFIG: ExtraConfig = {
@@ -57,6 +58,16 @@ fs.exists(configPath, (exists) => {
         console.log("config updating")
         config = {...EXTRA_CONFIG, ...config}
         console.log("new config", config)
+        fs.writeFileSync(configPath, JSON.stringify(config))
+      }
+      // Top-level key check above won't catch a new binding added inside the
+      // nested bindings object (e.g. 'siri') on a device with an existing
+      // config.json, since 'bindings' itself is still a recognised key.
+      // Backfill any missing binding keys from the defaults so new actions
+      // reach already-provisioned units without wiping custom rebinds.
+      const mergedBindings = {...DEFAULT_BINDINGS, ...config.bindings}
+      if(JSON.stringify(mergedBindings) !== JSON.stringify(config.bindings)) {
+        config.bindings = mergedBindings
         fs.writeFileSync(configPath, JSON.stringify(config))
       }
       console.log("config read")
