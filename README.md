@@ -32,7 +32,7 @@ This is the fastest path to a working unit and is how the reference build is set
 - CM4 Heatsink/Fan [(link)](https://pt.aliexpress.com/item/1005002541607239.html)
 - Carlinkit CPC200-CCPA/CCPM dongle. This performs the Apple MFi handshake, so an iPhone cannot be plugged directly into the Pi. [(link)](https://www.amazon.es/dp/B0H7GRL6YJ)
 - HDMI-e to HDMI cable 0.5m [(example)](https://pt.aliexpress.com/item/1005005903047904.html)
-- Honda S660 Option Coupler (required for providing power to the CM4 + board). A Pikaichi TR-196 is ideal if you can find one. Otherwise, you will want a branching coupler so that you can accommodate more peripherals in the future. This is what I got: [(example)](https://www.amazon.co.jp/-/en/dp/B0886HDJLB?ref=ppx_yo2ov_dt_b_fed_asin_title)
+- Honda S660 Option Coupler (required for providing power to the CM4 + board). A Pikaichi TR-196 is ideal if you can find one. Otherwise, you will want a branching coupler so that you can accommodate more peripherals in the future. This is what I got, though I wasn't able to find a branching type coupler: [(example)](https://www.amazon.co.jp/-/en/Pikachi-Power-Supply-Optional-Coupler/dp/B0116HSI40)
 - Voltage Converter/Stabilizer (8V-40V to 12V 3A 36W) to provide the board with clean power. [(example)](https://www.amazon.es/dp/B0CPSLSH4J)
 - **Not required but highly recommended** - NVMe M.2 SSD (as it will greatly improve boot times and hold up better than an eMMC).
 - A MicroSD card (at least 16GB) to flash the Pi OS Lite image onto the CM4. 
