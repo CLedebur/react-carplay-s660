@@ -1,0 +1,14 @@
+[Unit]
+Description=Start Bluetooth after the CarPlay kiosk launch window
+
+[Timer]
+# @BLUETOOTH_DELAY_SEC@ is substituted by provision.sh from its single BLUETOOTH_DELAY_SEC
+# config value -- kept in sync with the ExecStartPre delay in
+# bluetooth.service.d-startup-delay.conf, which enforces the same floor for the D-Bus
+# activation path Chromium uses instead of this timer.
+OnBootSec=@BLUETOOTH_DELAY_SEC@s
+AccuracySec=1s
+Unit=bluetooth.service
+
+[Install]
+WantedBy=timers.target

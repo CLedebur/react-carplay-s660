@@ -1,0 +1,6 @@
+[Unit]
+Description=Self-heal kernel8-uncompressed.img (safety net if a kernel-upgrade hook silently failed)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/s660-update-uncompressed-kernel

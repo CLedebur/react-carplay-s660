@@ -57,6 +57,10 @@ ARCH_SUFFIX="arm64"                           # AppImage arch (arm64 for 64-bit 
 # MIT, modified from upstream rhysmorgan134/node-CarPlay) as of 2026-09-12 — there is no
 # separate clone/pin to configure here any more. See BUILD_NOTES §23 and
 # hardware/path-b/node-CarPlay/README.md.
+# Single source of truth for the Bluetooth boot-relative delay (BUILD_NOTES §24) — used to
+# template BOTH bluetooth-late.timer's OnBootSec= and the ExecStartPre delay math in
+# bluetooth.service.d-startup-delay.conf below, so tuning this one number can't desync them.
+BLUETOOTH_DELAY_SEC=15
 # ============================================================================
 
 DEV_DIR="/home/${CARPLAY_USER}/carplay-dev"   # holds the Path B launch wrapper
@@ -112,11 +116,11 @@ for t in logrotate fstrim; do
   printf '[Timer]\nPersistent=false\n' | sudo tee /etc/systemd/system/$t.timer.d/no-persistent.conf >/dev/null
 done
 
-# Services a kiosk does not need. bluetooth: the Carlinkit dongle does its own BT (if
-# wireless pairing ever fails, re-enable this first). rpi-eeprom-update: with
+# Services a kiosk does not need. Host Bluetooth is REQUIRED for the trackpad and
+# is started separately below. rpi-eeprom-update: with
 # RPI_EEPROM_IMMEDIATE_UPDATE=1 it can FLASH THE BOOTLOADER at boot in the car — a power cut
 # mid-flash means SD-card recovery; update by hand, on the bench. The rest have nothing to do.
-sudo systemctl disable bluetooth.service rpi-eeprom-update.service sshswitch.service \
+sudo systemctl disable rpi-eeprom-update.service sshswitch.service \
   e2scrub_reap.service keyboard-setup.service console-setup.service avahi-daemon.service 2>/dev/null || true
 sudo systemctl --global disable mpris-proxy.service 2>/dev/null || true
 # binfmt sits ON the kiosk's critical chain and only registers python3. upower is only
@@ -135,9 +139,51 @@ sudo install -m 644 "${PB}/NetworkManager.service.d-wants-wpa.conf" /etc/systemd
 sudo ln -sfn /usr/lib/systemd/system/wpa_supplicant.service /etc/systemd/system/dbus-fi.w1.wpa_supplicant1.service
 sudo systemctl enable NetworkManager-dispatcher.service network-late.timer 2>/dev/null || true
 
+# Bluetooth is required for the trackpad, but not during kiosk startup. Remove its
+# automatic bluetooth.target start, preserve D-Bus activation, and start from a timer.
+# A service pre-start delay also covers Chromium's early D-Bus request for BlueZ.
+# Do not disable the radio or erase pairing data. See BUILD_NOTES section 24.
+# `apt update` first: every other package install in this script runs after PHASE 1's
+# `apt update`, but this one is early enough (PHASE 0) that a stale/pruned index on a
+# fresh image could fail it before seatd, the dongle udev rule, or either app stack
+# ever gets installed.
+sudo apt update
+sudo apt-get install -y --no-install-recommends bluez python3
+
+# `systemctl disable` removes ALL of bluetooth.service's declared [Install] aliases,
+# including the one D-Bus uses to activate it on demand -- not just the boot-target want.
+# Discover the ACTUAL declared alias from the installed unit file instead of hardcoding
+# "dbus-org.bluez.service", so a future bluez package that renames or drops it is caught
+# here (loudly) instead of silently breaking D-Bus activation with no error from `ln`.
+BLUEZ_UNIT_FILE="$(systemctl show bluetooth.service --property=FragmentPath --value 2>/dev/null || true)"
+BLUEZ_ALIAS="$(sed -n 's/^Alias=//p' "${BLUEZ_UNIT_FILE}" 2>/dev/null | head -1 || true)"
+if [ -z "${BLUEZ_ALIAS}" ]; then
+  echo "!!! bluetooth.service declares no [Install] Alias= (checked '${BLUEZ_UNIT_FILE:-<not found>}')." >&2
+  echo "!!! Falling back to the historically-known dbus-org.bluez.service. Verify Chromium's" >&2
+  echo "!!! early Bluetooth request (~5s after boot) still brings BlueZ up -- BUILD_NOTES §24." >&2
+  BLUEZ_ALIAS="dbus-org.bluez.service"
+fi
+sudo systemctl disable bluetooth.service 2>/dev/null || true
+sudo ln -sfn /usr/lib/systemd/system/bluetooth.service "/etc/systemd/system/${BLUEZ_ALIAS}"
+# bluetooth-late.timer / bluetooth.service.d-startup-delay.conf both reference
+# @BLUETOOTH_DELAY_SEC@ -- substitute the one BLUETOOTH_DELAY_SEC value from CONFIG above
+# so the timer and the D-Bus-activation delay can never drift out of sync (BUILD_NOTES §24).
+sed "s/@BLUETOOTH_DELAY_SEC@/${BLUETOOTH_DELAY_SEC}/g" "${PB}/bluetooth-late.timer" \
+  | sudo tee /etc/systemd/system/bluetooth-late.timer >/dev/null
+sudo mkdir -p /etc/systemd/system/bluetooth.service.d
+sed "s/@BLUETOOTH_DELAY_SEC@/${BLUETOOTH_DELAY_SEC}/g" "${PB}/bluetooth.service.d-startup-delay.conf" \
+  | sudo tee /etc/systemd/system/bluetooth.service.d/startup-delay.conf >/dev/null
+sudo systemctl enable bluetooth-late.timer 2>/dev/null || true
+
 # No swap: 8 GB RAM, and the default 2 GB swap file + 2 GB zram cost ~0.6 s of boot CPU.
 sudo mkdir -p /etc/rpi/swap.conf.d
 sudo install -m 644 "${PB}/rpi-swap.conf.d-90-boot-tuning.conf" /etc/rpi/swap.conf.d/90-boot-tuning.conf
+# Mechanism=none still leaves both generators and the vendor zram module preload.
+# Keep the packages installed, but suppress this unused work on the no-swap kiosk.
+sudo mkdir -p /etc/systemd/system-generators
+sudo ln -sfn /dev/null /etc/systemd/system-generators/zram-generator
+sudo ln -sfn /dev/null /etc/systemd/system-generators/rpi-swap-generator
+sudo ln -sfn /dev/null /etc/modules-load.d/20-zram-generator.conf
 
 # GPU modules in sysinit. A fast boot lets cage start before udev has loaded vc4; cage
 # then fails with "Found 0 GPUs" and HANGS (Restart=always never fires). See §22.2.
@@ -146,10 +192,33 @@ sudo install -m 644 "${PB}/modules-load.d-carplay-gpu.conf" /etc/modules-load.d/
 # /boot/firmware: automount on first access instead of holding up local-fs.target.
 sudo sed -i -E 's|^(PARTUUID=\S+\s+/boot/firmware\s+vfat\s+)defaults(\s+)0\s+2$|\1defaults,noauto,x-systemd.automount,nofail\20  0|' /etc/fstab
 
+# Use the same ARM64 kernel without firmware gzip decompression. Refresh atomically
+# after the distribution's z50-raspi-firmware hooks, including initramfs-only updates.
+# Keep the packaged kernel8.img for rollback and as the source after every update.
+sudo install -m 755 "${PB}/update-uncompressed-kernel" /usr/local/sbin/s660-update-uncompressed-kernel
+sudo ln -sfn /usr/local/sbin/s660-update-uncompressed-kernel /etc/kernel/postinst.d/zz-s660-uncompressed
+sudo ln -sfn /usr/local/sbin/s660-update-uncompressed-kernel /etc/initramfs/post-update.d/zz-s660-uncompressed
+sudo /usr/local/sbin/s660-update-uncompressed-kernel
+
+# Safety net (BUILD_NOTES §24/§25): nothing ties kernel8-uncompressed.img's freshness to
+# the currently-installed kernel/modules other than the two hooks above firing correctly.
+# If either silently fails after a future kernel upgrade (permissions, hook-ordering
+# change, a kernel installed via a path that bypasses standard triggers), the Pi would
+# otherwise keep booting a stale kernel image indefinitely -- a mismatch against newer
+# modules can hang cage on "Found 0 GPUs" with no display to diagnose it (BUILD_NOTES
+# §22.2). This timer re-runs the same idempotent refresh well after the kiosk is already
+# on screen (no boot-critical cost), bounding any such staleness to at most one bad boot
+# instead of forever. The script also now logs success/failure via `logger`, so a failure
+# here is findable with `journalctl -t s660-update-uncompressed-kernel` even though this
+# runs headless with no display.
+sudo install -m 644 "${PB}/kernel-refresh-late.timer" /etc/systemd/system/kernel-refresh-late.timer
+sudo install -m 644 "${PB}/kernel-refresh-late.service" /etc/systemd/system/kernel-refresh-late.service
+sudo systemctl enable kernel-refresh-late.timer 2>/dev/null || true
+
 # config.txt: no splash/boot pause; no initramfs (kernel has nvme+ext4+pcie built in);
 # no camera/DSI probing. hdmi_group/hdmi_mode/hdmi_force_hotplug are IGNORED under
 # vc4-kms-v3d + disable_fw_kms_setup=1 — the mode is pinned in cmdline.txt below.
-for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 display_auto_detect=0; do
+for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 display_auto_detect=0 kernel=kernel8-uncompressed.img force_eeprom_read=0 disable_poe_fan=1; do
   k=${kv%%=*}
   if grep -q "^$k=" /boot/firmware/config.txt; then
     sudo sed -i "s/^$k=.*/$kv/" /boot/firmware/config.txt
@@ -371,10 +440,10 @@ fi
 if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   echo ">>> PHASE 4B: carplay-dev-chromium.service (dev, installed but DISABLED)"
 
-  # Launch wrapper + static server + unit are VERSIONED in path-b/ (they are exactly what runs
-  # on the CM4, BUILD_NOTES §22). The wrapper serves the production build via serve-build.js,
-  # polls it every 100 ms, waits for the KMS connector (cage races vc4 on a fast boot), then
-  # execs cage + Chromium. Both processes live in this unit's cgroup, so a `systemctl stop`
+  # Launch wrapper + static server + unit are VERSIONED in path-b/ (BUILD_NOTES §22/24).
+  # Node and cage start together once the KMS connector exists. Cage's child invokes the
+  # wrapper's --browser branch, which waits for HTTP before execing Chromium. All processes
+  # live in this unit's cgroup, so a `systemctl stop`
   # (or the Conflicts= switch back to carplay.service) tears the web server down too.
   mkdir -p "${DEV_DIR}"
   install -m 775 "${PB}/run-chromium-kiosk.sh" "${DEV_DIR}/run-chromium-kiosk.sh"
