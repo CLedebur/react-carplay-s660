@@ -16,6 +16,13 @@ are stable; only one runs at a time.
 | Dongle link | Native USB | WebUSB |
 | Service | `carplay.service` | `carplay-dev-chromium.service` |
 
+A third option, **Path C**, is proposed but **not built**: native `node-carplay` over libusb
+feeding the CM4's hardware H.264 decoder (`/dev/video10`) through GStreamer straight to a
+DRM/KMS plane — no browser, no compositor. Both current paths decode video in *software*; Path C
+is the only one that would use the dedicated decode silicon this board already has. See
+[`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §27 for the architecture and the
+de-risking plan.
+
 **Path B is the currently running channel** on the reference build — see [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §8.5 for why. Video **decode** (as opposed to compositing) is still software either way; hardware H.264 decode needs a custom-patched Electron build and is not yet verified. This repo (Path A) is where that work — Electron 33 + Pi GPU flags — is happening; see [`CLAUDE.md`](CLAUDE.md) for the exact state of that effort.
 
 For the full build history, every non-obvious fix, and the reasoning behind each decision, read [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) — it is the source of truth for anything hardware-, boot-, or GPU-related.

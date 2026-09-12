@@ -23,7 +23,7 @@ Electron lacks (ref: electron/electron#34825). **A newer Electron alone does NOT
 those patches.** Real hardware decode needs a custom-patched Electron build (RPi
 `debian/patches` + GN args `use_v4l2_codec=true` / `use_v4l2_codec_rpi=true`).
 
-Two paths exist (see BUILD_NOTES §8.5):
+Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
 - **Path A** — the Electron app under `cage --disable-gpu` (software, stable).
 - **Path B (currently chosen)** — `carplay-web-app` in system Chromium (GPU compositing,
   confirmed via `chrome://gpu`).
@@ -44,9 +44,18 @@ Two paths exist (see BUILD_NOTES §8.5):
   deliberately requests startup 20 s after Linux starts (timer coalescing can delay it).
   Host Bluetooth is REQUIRED for the trackpad and starts at 15 s; a service delay also
   covers Chromium's early D-Bus activation. Do not disable the Bluetooth radio.
-  The kernel is an uncompressed copy, refreshed by post-update hooks; keep the packaged
-  kernel8.img and those hooks together. Graphics component preloads and the concurrent
-  Node/cage launcher are documented in §24.
+  The kernel is the stock packaged `kernel8.img`. An uncompressed-kernel optimisation with
+  refresh hooks existed briefly and was **reverted** (BUILD_NOTES §26) after a hard power cut
+  left the decompressed copy 0 bytes and the unit unbootable — do not reintroduce it.
+  Overlay FS is deliberately **disabled** (`overlayroot=disabled`, §26); enabling it via
+  raspi-config is what triggered that incident. Graphics component preloads and the concurrent
+  Node/cage launcher are documented in §24 and remain in place.
+- **Path C (PROPOSED, NOT BUILT)** — native `node-carplay` over libusb → GStreamer
+  `v4l2h264dec` → DRM/KMS, no browser or compositor. This is the only path that would use the
+  CM4's hardware H.264 decoder (`/dev/video10`); A and B both decode in software. It is a plan
+  only — see BUILD_NOTES §27 for the architecture, what carries over from the shared
+  `src/modules/` protocol code, and the three-step de-risking order. Do not start building it
+  without doing §27.5 step 1 first (prove hardware decode works on this box at all).
 
 ## State of THIS fork's code
 - Electron bumped **27 → 33** (Chromium 130 / Node 20). Pi GPU flags added in
