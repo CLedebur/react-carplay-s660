@@ -48,6 +48,11 @@ const config: Partial<DongleConfig> = {
 
 const RETRY_DELAY_MS = 30000
 
+// How often to re-check for the dongle via navigator.usb.getDevices() (cheap, no device I/O).
+// Backstops navigator.usb.ondisconnect, which was measured taking 15-30s to fire after a
+// physical unplug on this hardware/browser combo.
+const POLL_INTERVAL_MS = 2000
+
 // Status/error line shown on the splash screen (BUILD_NOTES-adjacent: previously these
 // conditions only ever reached console.error in a kiosk with no devtools — invisible).
 type StatusLevel = 'info' | 'warn' | 'error'
@@ -281,6 +286,7 @@ function App() {
         }
         carplayWorker.postMessage({ type: 'start', payload })
       } else {
+        carplayWorker.postMessage({ type: 'stop' })
         setDeviceFound(false)
         setStatus('Dongle not connected', 'warn')
       }
@@ -288,23 +294,25 @@ function App() {
     [carplayWorker, setStatus, clearStatus],
   )
 
-  // usb connect/disconnect handling and device check
+  // usb connect/disconnect handling and device check. `navigator.usb.ondisconnect` alone was
+  // measured taking 15-30s to fire after a physical unplug on this hardware/browser combo --
+  // this is Chromium/the kernel noticing the device is gone, not app logic, and isn't something
+  // we can speed up directly. POLL_INTERVAL_MS re-runs the same cheap getDevices()-based check
+  // on a short, predictable cadence so a real disconnect is never worse-case-bound by that OS
+  // event's own latency.
   useEffect(() => {
     navigator.usb.onconnect = async () => {
       checkDevice()
     }
 
     navigator.usb.ondisconnect = async () => {
-      const device = await findDevice()
-      if (!device) {
-        carplayWorker.postMessage({ type: 'stop' })
-        setDeviceFound(false)
-        setStatus('Dongle not connected', 'warn')
-      }
+      checkDevice()
     }
 
     checkDevice()
-  }, [carplayWorker, checkDevice, setStatus])
+    const pollId = setInterval(checkDevice, POLL_INTERVAL_MS)
+    return () => clearInterval(pollId)
+  }, [carplayWorker, checkDevice])
 
   const onClick = useCallback(() => {
     checkDevice(true)
