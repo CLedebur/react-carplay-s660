@@ -1326,18 +1326,77 @@ Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are i
 `systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;
 `apt install cloud-init` if it is ever wanted again (it is not).
 
+---
+
+## 23. 2026-09-12 — On-screen connection status/error UI, USB reset/reconnect fixes, and vendoring the app source
+
+**Error surfacing.** Path B's splash screen previously had zero visible failure indication —
+every dongle/USB/decode/render error went to `console.error` in a kiosk with no devtools, so a
+stuck unit gave no clue why. `carplay-web-app`'s `App.tsx` now renders a status/error line
+(white, bold, sized for the low-res 6" panel) driven by:
+- the dongle's own link-status `Command` codes (`scanningDevice`, `deviceFound`,
+  `deviceNotFound`, `connectDeviceFailed`, Bluetooth/Wi-Fi connect/pair/disconnect) —
+  previously received and silently discarded;
+- the driver's `'failure'` event, now carrying the actual error message instead of firing bare;
+- renderer-init and H.264 decode/render errors from the (previously unwatched) render Worker.
+
+**Real bugs found via the now-visible errors (all fixed):**
+1. `usbDevice.reset()` fails on this hardware (`"Unable to reset the device"` — the CM4's
+   onboard USB hub does not support a port reset for this dongle). It was wrongly treated as
+   fatal, aborting the whole connection sequence even though the dongle goes on to work fine.
+   Now caught on its own and reported as a non-fatal warning; the connection proceeds normally.
+2. The 30s reload-on-failure timer was never cancelled on a successful `'plugged'` — only on
+   `'requestBuffer'`/`'audio'`. Combined with (1) firing on every boot, this produced a hard
+   ~30s connect/reload loop: connects fine, then unconditionally reloads 30s after the earlier
+   (already-resolved) failure. Fixed: `'plugged'` now clears the retry timer too.
+3. The dongle's Wi-Fi handshake (`wifiConnect`, then `wifiPair` 15s later) was only ever sent
+   once, right after the initial USB claim. If the phone's Wi-Fi dropped and came back, nothing
+   re-triggered it — recovery required a physical USB unplug/replug of the dongle (impractical:
+   the CM4 lives in a hidden compartment). `CarplayWeb` now re-runs the same handshake every
+   time it sees `Unplugged`.
+
+Mic init failures (`getUserMedia` — this Pi has zero capture hardware, confirmed via
+`arecord -l`/`lsusb`) are deliberately left console-only: there is nothing actionable to show
+on screen until a mic is actually wired up (`micType: 'os'` stays the config; switch to
+`'box'` if the dongle itself ever gets a mic wired in).
+
+**Vendored the app source into this repo (one-stop-shop).** Path B's actual `carplay-web-app`
++ `node-carplay` source previously lived ONLY in an untracked, uncommitted clone on the Pi
+(`~/node-CarPlay`) — invisible to this repo and to anyone else building the S660 unit. It is
+now vendored at `hardware/path-b/node-CarPlay/` (MIT, modified from upstream
+`rhysmorgan134/node-CarPlay`; see that directory's `README.md`), with all of the above fixes
+plus the existing RHD/geometry/logo patches already applied in place.
+
+**`provision.sh` PHASE 3B simplified accordingly.** The old approach (§21) cloned upstream
+node-CarPlay fresh, pinned it to a commit SHA (`NODE_CARPLAY_REF`), and reconstructed the S660
+patches via an idempotent Python string-replace against that pristine clone — a reasonable
+call at the time, when the S660-specific delta was three small blocks across two files. That
+delta has since grown to span the `node-carplay` library itself (`DongleDriver.ts`,
+`CarplayWeb.ts`), not just `App.tsx`/`index.html`, and the reconstruction script had no
+knowledge of any of it — a fresh `provision.sh` run would have silently built an older,
+incomplete Path B. With the source now vendored, PHASE 3B just builds
+`hardware/path-b/node-CarPlay` directly: no separate clone, no SHA pin, no
+patch-reconstruction. There is only one copy of the code, so there is nothing left to drift.
+
+**On the Pi:** the standalone `~/node-CarPlay` clone that was actually running is superseded
+by `~/react-carplay-s660/hardware/path-b/node-CarPlay` — the deployed kiosk script and static
+server now point there (`hardware/path-b/run-chromium-kiosk.sh`, `serve-build.js`). The old
+`~/node-CarPlay` clone was left in place, with its own local commit as a safety-net snapshot
+of the pre-vendoring state, rather than deleted.
 
 ---
 
-*Last updated: 2026-09-06. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
+*Last updated: 2026-09-12. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
 (§22): kiosk service at 2.5 s, cage at 3.5 s, S660 logo page at ≈7 s after kernel start (26 s
 stopwatch from power-on to picture before the logo work), display forced to the car panel's
 720x480@59.94 via an EDID override (cage ignores `video=`; 576p50 looked stretched, §22.6), iOS
 rendering 848x480 squeezed into it to counter the 1.875:1 glass (§22.8), right-hand-drive layout requested
-from the dongle, black page + inline logo + black Chromium blank colour = no flashes. No
-network daemon on the boot path — Wi-Fi/SSH start 20 s after boot by design. The Carlinkit
-dongle's own ~11 s boot is the floor for CarPlay availability. Path A (Electron,
-`--disable-gpu`) remains a fallback and still uses the PAM-based unit. Open: confirm RHD
-layout, logo geometry and touch calibration on the real panel; wireless pairing re-check with
-`bluetooth.service` disabled; hardware video decode (V4L2 / custom Electron); regenerate the
-stale on-disk `carplay.service` (§20).*
+from the dongle, black page + inline logo + black Chromium blank colour = no flashes. On-screen
+connection status/error line and USB reset/reconnect fixes landed (§23), and the app source is
+now vendored into this repo at `hardware/path-b/node-CarPlay/` — no more separate untracked
+clone on the Pi, and `provision.sh` builds it directly. No network daemon on the boot path —
+Wi-Fi/SSH start 20 s after boot by design. The Carlinkit dongle's own ~11 s boot is the floor
+for CarPlay availability. Path A (Electron, `--disable-gpu`) remains a fallback and still uses
+the PAM-based unit. Open: confirm RHD layout, logo geometry and touch calibration on the real
+panel; wireless pairing re-check with `bluetooth.service` disabled; hardware video decode (V4L2
+/ custom Electron); regenerate the stale on-disk `carplay.service` (§20).*

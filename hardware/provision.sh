@@ -53,11 +53,10 @@ CARPLAY_USER="${USER}"                        # the user the kiosk runs as      
 RC_VERSION="4.0.5"                            # react-carplay AppImage version
 ARCH_SUFFIX="arm64"                           # AppImage arch (arm64 for 64-bit OS)
 # --- Path B (dev) only ---
-# PIN node-CarPlay (= package.json 4.3.0). The repo has NO git tags, so pin the COMMIT SHA —
-# "v4.3.0" is only the package.json version and is NOT checkout-able. This SHA is master HEAD
-# as of 2026-08-24 (committed 2025-06-08); it is the exact code the @types/node + typescript
-# pins in PHASE 3B (§11.3) are matched to. Re-pin only if you deliberately move node-CarPlay.
-NODE_CARPLAY_REF="670f19eda2a0b0047a5a538b9602b263f442433a"
+# node-carplay + carplay-web-app are VENDORED in this repo (hardware/path-b/node-CarPlay,
+# MIT, modified from upstream rhysmorgan134/node-CarPlay) as of 2026-09-12 — there is no
+# separate clone/pin to configure here any more. See BUILD_NOTES §23 and
+# hardware/path-b/node-CarPlay/README.md.
 # ============================================================================
 
 DEV_DIR="/home/${CARPLAY_USER}/carplay-dev"   # holds the Path B launch wrapper
@@ -282,242 +281,34 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
     sudo apt install -y nodejs
   fi
 
-  # Clone node-CarPlay (the web app lives inside it and references the parent by relative
-  # path, so we need the whole repo).
-  cd "/home/${CARPLAY_USER}"
-  if [ ! -d node-CarPlay ]; then
-    git clone https://github.com/rhysmorgan134/node-CarPlay.git
-    # Pin to the known-good ref INSIDE the clone guard: npm (below) dirties package.json, so
-    # a checkout on a later re-run would conflict. Fresh clone only. See NODE_CARPLAY_REF.
-    git -C node-CarPlay checkout "${NODE_CARPLAY_REF}"
-  fi
-  cd node-CarPlay
+  # node-carplay + carplay-web-app are VENDORED in this repo (hardware/path-b/node-CarPlay) —
+  # not a separate clone. All S660-specific changes (RHD/geometry/logo, on-screen connection
+  # status, USB reset/reconnect fixes — BUILD_NOTES §21, §22, §23) are already applied directly
+  # in that source, so building it IS applying them: there is nothing to reconstruct or keep in
+  # sync separately. See hardware/path-b/node-CarPlay/README.md.
+  NODE_CARPLAY_DIR="${PB}/node-CarPlay"
+  cd "${NODE_CARPLAY_DIR}"
 
-  # GOTCHA (the big one): the pinned node-CarPlay ref was written against OLDER type defs
-  # than a fresh Node 20 provides. package.json declares @types/node@^18.11.9 +
-  # typescript@^5.2.2, but the caret lets npm pull too-new patches that reintroduce
-  # Timer/SharedArrayBuffer type errors. Pin EXACTLY. See BUILD_NOTES 11.3.
-  npm install --save-dev @types/node@18.11.9 typescript@5.2.2
+  # GOTCHA, for context (BUILD_NOTES §11.3, §23): the library was originally written against
+  # older type definitions than a fresh Node 20 provides, and its package.json's caret ranges
+  # on @types/node/typescript can drift to versions that reintroduce Timer/SharedArrayBuffer
+  # type errors. The vendored package-lock.json here already pins the working versions, so a
+  # plain `npm install` (which honours the lockfile) should just work. If the lockfile is ever
+  # deleted/regenerated and this resurfaces, re-pin with:
+  #   npm install --save-dev --save-exact @types/node@18.11.9 typescript@5.2.2
+  npm install
 
-  # Build ONLY the web target. The Node target has type errors we do not need (the web
-  # app never uses the Node USB path — it uses WebUSB in the browser).
-  npx tsc --build ./src/web/tsconfig.json
+  # Build the library: modules (shared) first, then the web target the browser app imports.
+  # The Node target (src/node) has pre-existing type errors we don't need — the web app never
+  # uses the Node USB path — so it is deliberately not built here.
+  npx tsc --build ./tsconfig.build.json
+  npx tsc --build ./src/web/tsconfig.json     # should complete silently, 0 errors
 
   # Install the web app's deps. --ignore-scripts avoids re-triggering the parent's
   # "prepare": "npm run build", which runs the FULL (failing) build. See BUILD_NOTES 11.3.
   # DO NOT run `npm audit fix --force` afterwards — it breaks the build. See BUILD_NOTES 11.4.
-  cd "/home/${CARPLAY_USER}/node-CarPlay/examples/carplay-web-app"
+  cd "${NODE_CARPLAY_DIR}/examples/carplay-web-app"
   npm install --ignore-scripts
-
-  # ---- S660 patch: 16:9 video (848x480) squeezed into the 720x480 output, 30fps, RHD, seamless boot look (BUILD_NOTES §21, §22.4, §22.5, §22.8) ----
-  # Upstream requests DongleConfig{width,height,fps} from window.innerWidth/innerHeight @
-  # 60fps — i.e. it asks the DONGLE for whatever resolution the attached display reports, and
-  # the CM4 must then software-decode that (§17). A bench monitor (up to 3840x2160) silently
-  # inflates the decode workload 5-10x. The S660 glass is 135x72 mm (1.875:1) behind a TV-style
-  # scaler that only accepts 720x480/720x576 and stretches whatever it gets across the glass
-  # (§22.8). So: iOS renders wide — 848x480, i.e. 16:9, the widest Waze tolerates before its
-  # ultrawide layout pushes the speed-limit badge off the left edge (864 and 896 measured) — and
-  # the canvas is displayed squeezed into the 720x480 HDMI output; the panel's stretch then
-  # leaves only a 6 % residual instead of 25 %. Touch is normalised by the DISPLAY size (useCarplayTouch divides offsetX/Y by
-  # the constants it is given), so the container gets the display constants, the dongle config
-  # gets the video constants, and the canvas is CSS 100%x100% so the 896-wide frame is squeezed.
-  # 30fps is a match for a dash and halves decode load. hand: HandDriveType.RHD makes iOS put the CarPlay sidebar on
-  # the right (S660 is right-hand drive); it is read at dongle init. The "Plug-In Carplay
-  # Dongle and Press" button becomes an invisible full-screen tap target (its one job — the
-  # first-time WebUSB authorisation gesture — still works) and the big grey spinner becomes a
-  # small dim one at the bottom edge, so the boot logo behind them stays clean (§22.5).
-  # Idempotent: the grep guard skips sources already carrying the newest edit; each older
-  # edit is skipped individually if already present, so a partially patched tree heals.
-  APP_TSX="src/App.tsx"
-  if ! grep -q "DISPLAY_WIDTH" "${APP_TSX}"; then
-    python3 - "${APP_TSX}" << 'PY'
-import sys
-
-path = sys.argv[1]
-with open(path) as f:
-    src = f.read()
-
-replacements = [
-    (
-        "const width = window.innerWidth\nconst height = window.innerHeight",
-        "// Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a\n"
-        "// TV-style scaler that only accepts 720x480/720x576 and stretches whatever it gets across the\n"
-        "// glass. The HDMI output is 720x480 (EDID override + cmdline video=); iOS renders at the GLASS\n"
-        "// aspect, capped at 16:9 (848x480; wider makes Waze switch to an ultrawide layout that pushes its\n"
-        "// speed-limit badge off the left edge — 864/896 measured), and the canvas is displayed squeezed into\n"
-        "// 720x480, so the panel's stretch nearly restores square pixels (6% residual). Touch is normalised by the DISPLAY\n"
-        "// size. Hardcoded so the bench monitor (4K) cannot inflate window.innerWidth/innerHeight.\n"
-        "const DISPLAY_WIDTH = 720\n"
-        "const DISPLAY_HEIGHT = 480\n"
-        "const width = 848 // video: what the dongle / iOS renders\n"
-        "const height = 480",
-    ),
-    (
-        "const config: Partial<DongleConfig> = {\n"
-        "  width,\n"
-        "  height,\n"
-        "  fps: 60,\n"
-        "  mediaDelay: 300,\n"
-        "}",
-        "const config: Partial<DongleConfig> = {\n"
-        "  width,\n"
-        "  height,\n"
-        "  fps: 30, // 60 was heavy on top of software decode; 30 halves it again, plenty for a dash\n"
-        "  mediaDelay: 300,\n"
-        "  hand: HandDriveType.RHD, // S660 is right-hand drive: iOS puts the CarPlay sidebar on the right\n"
-        "}",
-    ),
-    (
-        "  DongleConfig,\n"
-        "  CommandMapping,\n"
-        "} from 'node-carplay/web'",
-        "  DongleConfig,\n"
-        "  CommandMapping,\n"
-        "  HandDriveType,\n"
-        "} from 'node-carplay/web'",
-    ),
-    (
-        "        style={{\n"
-        "          height: '100%',\n"
-        "          width: '100%',\n"
-        "          padding: 0,\n"
-        "          margin: 0,\n"
-        "          display: 'flex',\n"
-        "        }}",
-        "        style={{\n"
-        "          height: `${DISPLAY_HEIGHT}px`,\n"
-        "          width: `${DISPLAY_WIDTH}px`,\n"
-        "          padding: 0,\n"
-        "          margin: '0 auto',\n"
-        "          display: 'flex',\n"
-        "        }}",
-    ),
-    (
-        "          {deviceFound === false && (\n"
-        "            <button onClick={onClick} rel=\"noopener noreferrer\">\n"
-        "              Plug-In Carplay Dongle and Press\n"
-        "            </button>\n"
-        "          )}",
-        "          {deviceFound === false && (\n"
-        "            // S660 kiosk: the \"Plug-In Carplay Dongle and Press\" button is kept for its one job\n"
-        "            // (the first-time WebUSB authorisation needs a user gesture) but made an invisible\n"
-        "            // full-screen tap target, so the boot logo behind it stays clean.\n"
-        "            <button\n"
-        "              onClick={onClick}\n"
-        "              rel=\"noopener noreferrer\"\n"
-        "              aria-label=\"Authorise CarPlay dongle\"\n"
-        "              style={{\n"
-        "                position: 'absolute',\n"
-        "                inset: 0,\n"
-        "                width: '100%',\n"
-        "                height: '100%',\n"
-        "                opacity: 0,\n"
-        "                border: 0,\n"
-        "                padding: 0,\n"
-        "                background: 'transparent',\n"
-        "                cursor: 'inherit', // follow the page-level auto-hide (index.html)\n"
-        "              }}\n"
-        "            />\n"
-        "          )}",
-    ),
-    (
-        "          {deviceFound === true && (\n"
-        "            <RotatingLines\n"
-        "              strokeColor=\"grey\"\n"
-        "              strokeWidth=\"5\"\n"
-        "              animationDuration=\"0.75\"\n"
-        "              width=\"96\"\n"
-        "              visible={true}\n"
-        "            />\n"
-        "          )}",
-        "          {deviceFound === true && (\n"
-        "            // S660 kiosk: small, dim \"waiting for the phone\" indicator near the bottom edge\n"
-        "            // instead of a big grey spinner over the logo.\n"
-        "            <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>\n"
-        "              <RotatingLines\n"
-        "                strokeColor=\"#3a3a3a\"\n"
-        "                strokeWidth=\"4\"\n"
-        "                animationDuration=\"1\"\n"
-        "                width=\"28\"\n"
-        "                visible={true}\n"
-        "              />\n"
-        "            </div>\n"
-        "          )}",
-    ),
-    (
-        "  const sendTouchEvent = useCarplayTouch(carplayWorker, width, height)",
-        "  const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)",
-    ),
-    (
-        "          style={isPlugged ? { height: '100%' } : { display: 'none' }}",
-        "          style={isPlugged ? { width: '100%', height: '100%' } : { display: 'none' }} // squeeze 848 -> 720",
-    ),
-]
-
-for old, new in replacements:
-    count = src.count(old)
-    if count == 0 and new in src:
-        continue  # this edit is already in place (tree patched by an earlier provision run)
-    assert count == 1, f"expected exactly 1 match, got {count}: {old[:50]!r}..."
-    src = src.replace(old, new)
-
-with open(path, "w") as f:
-    f.write(src)
-
-print(f"Patched {path}: video 848x480 in a 720x480 display @ 30fps, RHD, invisible authorise button, small spinner.")
-PY
-  fi
-
-  # ---- S660 boot look: black page with the S660 logo inlined in public/index.html (§22.5) ----
-  # The logo is a data: URI so Chromium's FIRST page paint already contains it (a separate
-  # image request paints one black frame first); color-scheme dark; overflow hidden so the
-  # 720x480 CarPlay canvas never shows scrollbars. Idempotent via the marker comment.
-  INDEX_HTML="public/index.html"
-  if ! grep -q "S660 kiosk (BUILD_NOTES 22.5)" "${INDEX_HTML}"; then
-    LOGO_B64="$(base64 -w0 "${PB}/s660-logo.jpg")"
-    python3 - "${INDEX_HTML}" "${LOGO_B64}" << 'PY'
-import sys
-path, b64 = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    src = f.read()
-anchor = '    <meta name="theme-color" content="#000000" />'
-assert src.count(anchor) == 1, "index.html anchor not found — node-CarPlay re-pinned?"
-block = f"""{anchor}
-    <!-- S660 kiosk (BUILD_NOTES 22.5): dark colour scheme + black background, and the S660 logo
-         inlined as a data URI so Chromium's very first page paint already shows it (a separate
-         image request paints one black frame first). overflow:hidden — no scrollbars when the
-         720x480 CarPlay canvas appears. Same logo/geometry as the boot screen. -->
-    <meta name="color-scheme" content="dark" />
-    <style>
-      /* logo drawn 384x320 on the 720x480 output = its natural 800x566 aspect pre-squeezed by 720/848,
-         so it is round-true on the 1.875:1 glass (BUILD_NOTES 22.8) */
-      html, body {{ margin: 0; height: 100%; overflow: hidden; background: #000000 url("data:image/jpeg;base64,{b64}") center center / 384px 320px no-repeat; }}
-      #root {{ height: 100%; }}
-    </style>
-    <!-- Pointer auto-hide: no cursor over CarPlay unless a mouse actually moves; it disappears
-         again 2 s after the last movement. Touch input never shows it. -->
-    <script>
-      (function () {{
-        var t, root = document.documentElement;
-        root.style.cursor = 'none';
-        window.addEventListener('pointermove', function (e) {{
-          if (e.pointerType !== 'mouse') return;
-          root.style.cursor = '';
-          clearTimeout(t);
-          t = setTimeout(function () {{ root.style.cursor = 'none'; }}, 2000);
-        }}, {{ passive: true }});
-      }})();
-    </script>"""
-src = src.replace(anchor, block, 1).replace("<title>React App</title>", "<title>S660 CarPlay</title>", 1)
-with open(path, "w") as f:
-    f.write(src)
-print(f"Patched {path}: black background + inline S660 logo.")
-PY
-  fi
-
-  # Aspect calibration page (served at /calib.html; show it with a systemd drop-in
-  # Environment=KIOSK_URL=http://localhost:3000/calib.html on carplay-dev-chromium.service).
-  install -m 664 "${PB}/calib.html" public/calib.html
 
   # Production build. The kiosk wrapper serves build/ through serve-build.js (which sends the
   # COOP/COEP headers SharedArrayBuffer needs) instead of the CRA dev server, which recompiled
