@@ -34,6 +34,11 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
 - **Path A** — the Electron app under `cage --disable-gpu` (software, stable).
 - **Path B (currently chosen)** — `carplay-web-app` in system Chromium (GPU compositing
   confirmed via `chrome://gpu`; hardware H.264 decode confirmed via `fuser /dev/video10`).
+  The dongle's WebUSB access comes from the `WebUsbAllowDevicesForUrls` managed policy
+  (`hardware/path-b/chromium-policy-webusb-carlinkit.json` → `/etc/chromium/policies/managed/`),
+  **not** from a chooser grant in the browser profile — the profile is disposable and no
+  on-screen tap is ever needed (BUILD_NOTES §28). Never reintroduce a `requestDevice()` path
+  or a gesture-gated authorise button: this dash has no touchscreen.
   This is a **one-stop-shop repo**: the app source (`node-carplay` library +
   `carplay-web-app`, vendored/modified from upstream `rhysmorgan134/node-CarPlay`, MIT)
   lives in `hardware/path-b/node-CarPlay/`, alongside the kiosk script and static server
@@ -57,15 +62,10 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
   Overlay FS is deliberately **disabled** (`overlayroot=disabled`, §26); enabling it via
   raspi-config is what triggered that incident. Graphics component preloads and the concurrent
   Node/cage launcher are documented in §24 and remain in place.
-- **Path C (DOCUMENTED, NOT BUILT, NOT RECOMMENDED NOW)** — native `node-carplay` over libusb
-  → GStreamer `v4l2h264dec` → DRM/KMS, no browser or compositor. It was first proposed as a
-  hardware-decode play; §27.1 refuted that premise (Path B already hardware-decodes), so its
-  only remaining case is boot time/robustness (WebUSB grant, 12–30 s disconnect latency,
-  Chromium start-up) — against rebuilding input (evdev + cursor synthesis from a relative
-  trackpad), concurrent-stream audio mixing (no PipeWire runs, by design), and the status
-  overlay inside one DRM-master process. See BUILD_NOTES §27. The cheap moves are *inside*
-  Path B: the `WebUsbAllowDevicesForUrls` policy to kill the §23 tap-target hack, and living
-  with the disconnect latency (§27.5).
+- **Path C — SHELVED, not built.** A browser-free node-carplay + GStreamer design, written up
+  and then set aside once §27.1 showed Path B already hardware-decodes. BUILD_NOTES §27 keeps
+  the full analysis (including the real costs: input, audio mixing, overlay) if it's ever
+  revisited; don't re-derive it.
 
 ## State of THIS fork's code
 - Electron bumped **27 → 33** (Chromium 130 / Node 20). Pi GPU flags added in

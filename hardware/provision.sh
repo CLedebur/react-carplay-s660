@@ -325,8 +325,19 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   echo ">>> PHASE 3B: Path B dev (system Chromium + web app)"
 
   # System Chromium HAS the Raspberry Pi GBM/V4L2 patches upstream Electron lacks, so it
-  # composites on the GPU where Electron crashed. Package is "chromium" on Trixie.
+  # composites on the GPU where Electron crashed — and decodes H.264 on the hardware
+  # V4L2 decoder too (measured, BUILD_NOTES §27.1). Package is "chromium" on Trixie.
   sudo apt install -y chromium
+
+  # Pre-grant the Carlinkit dongle (1314:1520 / 1314:1521) to the kiosk origin via Chromium's
+  # WebUsbAllowDevicesForUrls managed policy (BUILD_NOTES §28). Without it, WebUSB only exposes
+  # devices the user once picked in a requestDevice() chooser, and that grant lives in the
+  # browser PROFILE — so any profile reset put the unit back to needing an on-screen tap on a
+  # dash with no touchscreen. A managed policy lives outside the profile, needs no user
+  # gesture, and makes navigator.usb.getDevices() return the dongle on first page load.
+  sudo install -d -m 755 /etc/chromium/policies/managed
+  sudo install -m 644 "${PB}/chromium-policy-webusb-carlinkit.json" \
+    /etc/chromium/policies/managed/s660-webusb-carlinkit.json
 
   # Node.js from NodeSource (NOT apt's nodejs — too old). Node 20 LTS.
   if ! command -v node >/dev/null 2>&1; then
@@ -351,14 +362,14 @@ if is_yes "${INSTALL_DEV_CHROMIUM}"; then
   #   npm install --save-dev --save-exact @types/node@18.11.9 typescript@5.2.2
   npm install
 
-  # Build the library: modules (shared) first, then the web target the browser app imports.
-  # The Node target (src/node) has pre-existing type errors we don't need — the web app never
-  # uses the Node USB path — so it is deliberately not built here.
+  # Build the library: tsconfig.build.json covers src/modules (shared) AND src/node (compiles
+  # clean — an older note here claimed it had type errors; it doesn't, BUILD_NOTES §27.4), then
+  # the web target the browser app imports.
   npx tsc --build ./tsconfig.build.json
   npx tsc --build ./src/web/tsconfig.json     # should complete silently, 0 errors
 
-  # Install the web app's deps. --ignore-scripts avoids re-triggering the parent's
-  # "prepare": "npm run build", which runs the FULL (failing) build. See BUILD_NOTES 11.3.
+  # Install the web app's deps. --ignore-scripts skips re-triggering the parent's
+  # "prepare": "npm run build", which would just redo the two tsc builds above.
   # DO NOT run `npm audit fix --force` afterwards — it breaks the build. See BUILD_NOTES 11.4.
   cd "${NODE_CARPLAY_DIR}/examples/carplay-web-app"
   npm install --ignore-scripts

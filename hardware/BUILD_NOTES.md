@@ -582,7 +582,10 @@ npm start                             # serves http://localhost:3000
 
 ### 11.5 WebUSB rules — why it must run ON the Pi
 WebUSB is only available on **`localhost` or HTTPS**, and needs a **user gesture** (a
-click) plus a device present. Consequences:
+click) plus a device present. **→ The gesture requirement no longer applies on this unit: a
+`WebUsbAllowDevicesForUrls` managed policy pre-grants the dongle to `http://localhost:3000`
+(§28), so `getDevices()` finds it on first load with nobody at the screen. The localhost/HTTPS
+rule still holds.** Consequences:
 - Viewing `http://<pi-ip>:3000` from another computer shows a **blank/non-working page** —
   remote HTTP disables WebUSB. This is correct behavior, not a bug.
 - The app MUST run in Chromium **on the Pi**, pointed at the Pi's own `localhost:3000`,
@@ -1176,7 +1179,9 @@ Display:
   `/usr/lib/udev/rules.d/60-ondemand-governor.rules`; a kernel-parameter governor would
   be overridden, and `performance` at idle costs heat in a dashboard. Left alone.
 - The Chromium profile (180 MB) was **not** wiped: there is no policy file granting the
-  WebUSB device, so the grant lives in the profile.
+  WebUSB device, so the grant lives in the profile. **→ Fixed 2026-09-12 (§28): a
+  `WebUsbAllowDevicesForUrls` managed policy now grants it outside the profile, which is
+  therefore disposable — verified by wiping it and reconnecting with no gesture.**
 - `BOOT_UART=0` in the EEPROM config would save a few hundred ms of bootloader time but
   requires an EEPROM flash (`rpi-eeprom-config --apply`) — do it on the bench, on purpose.
 - A one-off `initcall_debug` boot showed the two remaining kernel hogs:
@@ -1222,6 +1227,8 @@ WAYLAND_DISPLAY=wayland-0 grim out.png`). Findings:
 - Web app: the WebUSB button is now an invisible full-screen tap target (`opacity: 0`, kept
   because the first-time WebUSB authorisation needs a user gesture — tap anywhere on the logo);
   the 96 px grey spinner is a 28 px dim one at the bottom edge while waiting for the phone.
+  **→ The tap target was removed 2026-09-12 (§28): the grant now comes from a managed policy,
+  so there is no gesture to make and no button to make it with. The spinner change stands.**
 - All of it is in provision.sh PHASE 3B (App.tsx + index.html patches) and the kiosk script.
   `grim` is left installed as a diagnostic; `swayimg` was removed again.
 
@@ -1694,12 +1701,14 @@ read-only root) worked out. Not attempted here.
 
 ---
 
-## 27. 2026-09-12 — Path C (PROPOSED, NOT BUILT): native node-carplay, no browser — and the decode premise it was written on, refuted the same evening
+## 27. 2026-09-12 — Path C (SHELVED, NOT BUILT): native node-carplay, no browser — and the decode premise it was written on, refuted the same evening
 
-**Status: a plan, nothing is implemented.** Path B (Chromium) remains the shipping channel and
-is not affected by anything here. Path C would run alongside it the way Paths A and B already
-coexist (§14). **Read 27.1 before anything else: the reason this section was first drafted
-turned out to be false, and the recommendation at the end follows from that.**
+**Status: shelved the same day it was written.** Nothing is implemented; Path B (Chromium)
+remains the shipping channel. This section is kept as the record of the analysis — the
+architecture, what carries over, and the real costs — so it never has to be re-derived if the
+idea comes back. **Read 27.1 first: the reason this section was drafted turned out to be false,
+and the recommendation at the end follows from that.** The one concrete pain that motivated it
+(the WebUSB grant) was fixed *inside* Path B instead — see §28.
 
 ### 27.1 The premise — and its refutation
 
@@ -1868,6 +1877,69 @@ moves are the two Path-B fixes in 27.5, which cost hours, not a rewrite.
 
 ---
 
+## 28. 2026-09-12 — WebUSB grant moved out of the browser profile: `WebUsbAllowDevicesForUrls` policy
+
+**The problem, stated by the user:** "Chromium requires me to manually allowlist the dongle each
+time something changes, which is difficult to do on an LCD screen without a touchscreen while
+the car is moving." That was the strongest argument raised for leaving Chromium (§27), so it
+deserved a direct fix rather than a rewrite.
+
+**Why it happened.** WebUSB only exposes devices the origin was granted through a user-gesture
+`navigator.usb.requestDevice()` chooser, and Chromium stores that grant in the **browser
+profile**: `~/.config/chromium/Default/Preferences` →
+`profile.content_settings.exceptions.usb_chooser_data`, keyed on vendor/product/serial. Anything
+that recreates or resets the profile drops it, after which `getDevices()` returns nothing and
+the only way back was the invisible full-screen "tap to authorise" button — a *gesture* — on a
+dash with no touchscreen. §22.3 had recorded the root cause a week earlier ("there is no policy
+file granting the WebUSB device, so the grant lives in the profile") without acting on it.
+
+**The fix.** Chromium's managed-policy `WebUsbAllowDevicesForUrls` pre-grants devices to an
+origin with no gesture and lives **outside the profile**. `provision.sh` PHASE 3B now installs
+`hardware/path-b/chromium-policy-webusb-carlinkit.json` to
+`/etc/chromium/policies/managed/s660-webusb-carlinkit.json`:
+
+```json
+{ "WebUsbAllowDevicesForUrls": [ { "devices": [ { "vendor_id": 4884, "product_id": 5408 },
+                                                 { "vendor_id": 4884, "product_id": 5409 } ],
+                                    "urls": [ "http://localhost:3000" ] } ] }
+```
+(4884/5408/5409 = `0x1314`/`0x1520`/`0x1521`, the same IDs as the §6 udev rule; the URL is the
+kiosk's `KIOSK_URL`.) Policy JSON allows no comment keys — unknown keys show as policy errors —
+so the explanation lives here and in `provision.sh`.
+
+**Proof, deliberately the feared scenario — a brand-new profile:**
+1. Installed the policy; stopped the kiosk; **moved the entire `~/.config/chromium` aside**
+   (kept as `~/.config/chromium.bak-2026-09-12-policy-test`, deletable once comfortable).
+2. Started the kiosk. No tap, no chooser, nobody at the screen.
+3. 25 s later: `sudo fuser -v /dev/video10` → `s660 3274 F...m chromium` — the GPU process
+   decoding a live stream; `grim` showed Waze at 22:09. Zero policy-related lines in the
+   service journal.
+4. The new profile's `usb_chooser_data` is `{}` — Chromium's empty default — versus the old
+   profile's stored `chosen-objects` entry for "Auto Box". The grant came from the policy and
+   nowhere else. **The profile is now disposable.**
+
+**Then removed the hack.** `App.tsx` no longer imports `requestDevice`; `checkDevice()` takes no
+`request` flag and only calls `findDevice()`; the `onClick` callback and the `opacity: 0`
+full-screen `<button aria-label="Authorise CarPlay dongle">` are gone. With the dongle absent the
+splash now shows the logo and the §23 "Dongle not connected" line, nothing else. Rebuilt,
+redeployed, reconnects on restart with no gesture.
+
+**Boundary — what this does NOT fix.** The 12–30 s it takes `navigator.usb` to notice a physical
+unplug (§27.2) is unchanged; that is Chromium's device-tracking layer, and the 2 s poll backstop
+stays. The policy only removes the *authorisation* step.
+
+**If it ever stops working** (symptom: dongle present in `lsusb`, kiosk stuck on "Dongle not
+connected" forever, and no way to authorise on-screen because the button is gone): recovery is
+over SSH. Check `ls /etc/chromium/policies/managed/`, the service journal for "policy", and
+`chrome://policy` via remote debugging. If a future `chromium` package moves the policy
+directory, the historical alternative is `/etc/chromium-browser/policies/managed/`. Re-adding a
+`requestDevice()` path to the app is the wrong fix — it puts the gesture back on the dash.
+
+**Consequence for §27:** the one concrete pain that motivated a browser-free Path C is gone for
+the cost of one JSON file. Path C is shelved (§27 header), not deleted.
+
+---
+
 *Last updated: 2026-09-12. Path B Chromium is the enabled kiosk. §24's uncompressed-kernel
 optimization was reverted the same day after a field failure (§26) — see §26 for what's
 retained. Remaining boot-tuning figures from §24 (HDMI preload, Bluetooth delay, concurrent
@@ -1882,6 +1954,9 @@ explicitly disabled (§26) pending a proper isolated test. Trackpad wake/reconne
 physical confirmation. §27.1 established by measurement that **Path B already decodes H.264 in
 hardware** (`/dev/video10` held by Chromium's GPU process while streaming) — the long-standing
 "software either way" note from §8/§19/§20 was a pre-dongle inference, now annotated at source.
-§27 documents a browser-free Path C but does **not** recommend building it: with decode already
-in hardware, its remaining case (boot time, WebUSB grant, disconnect latency) does not cover the
-cost of rebuilding input, audio mixing, and the overlay. Path B remains the shipping channel.*
+§27 (a browser-free Path C) is **shelved**: with decode already in hardware, its case did not
+cover the cost of rebuilding input, audio mixing, and the overlay. §28 then fixed the one pain
+that had motivated it — the dongle's WebUSB grant now comes from a `WebUsbAllowDevicesForUrls`
+managed policy, not the browser profile: no on-screen authorisation is ever needed, the profile
+is disposable, and the invisible tap-target button is gone from the app. Path B remains the
+shipping channel.*

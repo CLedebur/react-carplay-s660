@@ -10,7 +10,6 @@ import { RotatingLines } from 'react-loader-spinner'
 import './App.css'
 import {
   findDevice,
-  requestDevice,
   DongleConfig,
   CommandMapping,
   HandDriveType,
@@ -275,9 +274,13 @@ function App() {
     }
   }, [renderWorker, setStatus])
 
+  // findDevice() -> navigator.usb.getDevices() only ever returns devices this origin is
+  // already permitted to use. That permission now comes from the WebUsbAllowDevicesForUrls
+  // managed policy provision.sh installs (BUILD_NOTES §28), not from a requestDevice() chooser
+  // -- so no user gesture is ever needed, and the old invisible "tap to authorise" button is gone.
   const checkDevice = useCallback(
-    async (request: boolean = false) => {
-      const device = request ? await requestDevice() : await findDevice()
+    async () => {
+      const device = await findDevice()
       if (device) {
         setDeviceFound(true)
         clearStatus()
@@ -314,10 +317,6 @@ function App() {
     return () => clearInterval(pollId)
   }, [carplayWorker, checkDevice])
 
-  const onClick = useCallback(() => {
-    checkDevice(true)
-  }, [checkDevice])
-
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
 
   const isLoading = !isPlugged
@@ -339,27 +338,6 @@ function App() {
             alignItems: 'center',
           }}
         >
-          {deviceFound === false && (
-            // S660 kiosk: the "Plug-In Carplay Dongle and Press" button is kept for its one job
-            // (the first-time WebUSB authorisation needs a user gesture) but made an invisible
-            // full-screen tap target, so the boot logo behind it stays clean.
-            <button
-              onClick={onClick}
-              rel="noopener noreferrer"
-              aria-label="Authorise CarPlay dongle"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                opacity: 0,
-                border: 0,
-                padding: 0,
-                background: 'transparent',
-                cursor: 'inherit', // follow the page-level auto-hide (index.html)
-              }}
-            />
-          )}
           {deviceFound === true && (
             // S660 kiosk: small, dim "waiting for the phone" indicator near the bottom edge
             // instead of a big grey spinner over the logo.

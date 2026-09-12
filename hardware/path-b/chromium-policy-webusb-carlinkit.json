@@ -1,0 +1,11 @@
+{
+  "WebUsbAllowDevicesForUrls": [
+    {
+      "devices": [
+        { "vendor_id": 4884, "product_id": 5408 },
+        { "vendor_id": 4884, "product_id": 5409 }
+      ],
+      "urls": [ "http://localhost:3000" ]
+    }
+  ]
+}
