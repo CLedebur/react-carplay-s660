@@ -282,7 +282,7 @@ function App() {
         carplayWorker.postMessage({ type: 'start', payload })
       } else {
         setDeviceFound(false)
-        setStatus('Dongle not found', 'warn')
+        setStatus('Dongle not connected', 'warn')
       }
     },
     [carplayWorker, setStatus, clearStatus],
@@ -299,7 +299,7 @@ function App() {
       if (!device) {
         carplayWorker.postMessage({ type: 'stop' })
         setDeviceFound(false)
-        setStatus('Dongle not found', 'warn')
+        setStatus('Dongle not connected', 'warn')
       }
     }
 
