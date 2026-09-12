@@ -57,6 +57,10 @@ ARCH_SUFFIX="arm64"                           # AppImage arch (arm64 for 64-bit 
 # MIT, modified from upstream rhysmorgan134/node-CarPlay) as of 2026-09-12 — there is no
 # separate clone/pin to configure here any more. See BUILD_NOTES §23 and
 # hardware/path-b/node-CarPlay/README.md.
+# Single source of truth for the Bluetooth boot-relative delay (BUILD_NOTES §24) — used to
+# template BOTH bluetooth-late.timer's OnBootSec= and the ExecStartPre delay math in
+# bluetooth.service.d-startup-delay.conf below, so tuning this one number can't desync them.
+BLUETOOTH_DELAY_SEC=15
 # ============================================================================
 
 DEV_DIR="/home/${CARPLAY_USER}/carplay-dev"   # holds the Path B launch wrapper
@@ -139,13 +143,37 @@ sudo systemctl enable NetworkManager-dispatcher.service network-late.timer 2>/de
 # automatic bluetooth.target start, preserve D-Bus activation, and start from a timer.
 # A service pre-start delay also covers Chromium's early D-Bus request for BlueZ.
 # Do not disable the radio or erase pairing data. See BUILD_NOTES section 24.
+# `apt update` first: every other package install in this script runs after PHASE 1's
+# `apt update`, but this one is early enough (PHASE 0) that a stale/pruned index on a
+# fresh image could fail it before seatd, the dongle udev rule, or either app stack
+# ever gets installed.
+sudo apt update
 sudo apt-get install -y --no-install-recommends bluez python3
-sudo systemctl disable bluetooth.service
-sudo ln -sfn /usr/lib/systemd/system/bluetooth.service /etc/systemd/system/dbus-org.bluez.service
-sudo install -m 644 "${PB}/bluetooth-late.timer" /etc/systemd/system/bluetooth-late.timer
+
+# `systemctl disable` removes ALL of bluetooth.service's declared [Install] aliases,
+# including the one D-Bus uses to activate it on demand -- not just the boot-target want.
+# Discover the ACTUAL declared alias from the installed unit file instead of hardcoding
+# "dbus-org.bluez.service", so a future bluez package that renames or drops it is caught
+# here (loudly) instead of silently breaking D-Bus activation with no error from `ln`.
+BLUEZ_UNIT_FILE="$(systemctl show bluetooth.service --property=FragmentPath --value 2>/dev/null || true)"
+BLUEZ_ALIAS="$(sed -n 's/^Alias=//p' "${BLUEZ_UNIT_FILE}" 2>/dev/null | head -1 || true)"
+if [ -z "${BLUEZ_ALIAS}" ]; then
+  echo "!!! bluetooth.service declares no [Install] Alias= (checked '${BLUEZ_UNIT_FILE:-<not found>}')." >&2
+  echo "!!! Falling back to the historically-known dbus-org.bluez.service. Verify Chromium's" >&2
+  echo "!!! early Bluetooth request (~5s after boot) still brings BlueZ up -- BUILD_NOTES §24." >&2
+  BLUEZ_ALIAS="dbus-org.bluez.service"
+fi
+sudo systemctl disable bluetooth.service 2>/dev/null || true
+sudo ln -sfn /usr/lib/systemd/system/bluetooth.service "/etc/systemd/system/${BLUEZ_ALIAS}"
+# bluetooth-late.timer / bluetooth.service.d-startup-delay.conf both reference
+# @BLUETOOTH_DELAY_SEC@ -- substitute the one BLUETOOTH_DELAY_SEC value from CONFIG above
+# so the timer and the D-Bus-activation delay can never drift out of sync (BUILD_NOTES §24).
+sed "s/@BLUETOOTH_DELAY_SEC@/${BLUETOOTH_DELAY_SEC}/g" "${PB}/bluetooth-late.timer" \
+  | sudo tee /etc/systemd/system/bluetooth-late.timer >/dev/null
 sudo mkdir -p /etc/systemd/system/bluetooth.service.d
-sudo install -m 644 "${PB}/bluetooth.service.d-startup-delay.conf" /etc/systemd/system/bluetooth.service.d/startup-delay.conf
-sudo systemctl enable bluetooth-late.timer
+sed "s/@BLUETOOTH_DELAY_SEC@/${BLUETOOTH_DELAY_SEC}/g" "${PB}/bluetooth.service.d-startup-delay.conf" \
+  | sudo tee /etc/systemd/system/bluetooth.service.d/startup-delay.conf >/dev/null
+sudo systemctl enable bluetooth-late.timer 2>/dev/null || true
 
 # No swap: 8 GB RAM, and the default 2 GB swap file + 2 GB zram cost ~0.6 s of boot CPU.
 sudo mkdir -p /etc/rpi/swap.conf.d
@@ -171,6 +199,21 @@ sudo install -m 755 "${PB}/update-uncompressed-kernel" /usr/local/sbin/s660-upda
 sudo ln -sfn /usr/local/sbin/s660-update-uncompressed-kernel /etc/kernel/postinst.d/zz-s660-uncompressed
 sudo ln -sfn /usr/local/sbin/s660-update-uncompressed-kernel /etc/initramfs/post-update.d/zz-s660-uncompressed
 sudo /usr/local/sbin/s660-update-uncompressed-kernel
+
+# Safety net (BUILD_NOTES §24/§25): nothing ties kernel8-uncompressed.img's freshness to
+# the currently-installed kernel/modules other than the two hooks above firing correctly.
+# If either silently fails after a future kernel upgrade (permissions, hook-ordering
+# change, a kernel installed via a path that bypasses standard triggers), the Pi would
+# otherwise keep booting a stale kernel image indefinitely -- a mismatch against newer
+# modules can hang cage on "Found 0 GPUs" with no display to diagnose it (BUILD_NOTES
+# §22.2). This timer re-runs the same idempotent refresh well after the kiosk is already
+# on screen (no boot-critical cost), bounding any such staleness to at most one bad boot
+# instead of forever. The script also now logs success/failure via `logger`, so a failure
+# here is findable with `journalctl -t s660-update-uncompressed-kernel` even though this
+# runs headless with no display.
+sudo install -m 644 "${PB}/kernel-refresh-late.timer" /etc/systemd/system/kernel-refresh-late.timer
+sudo install -m 644 "${PB}/kernel-refresh-late.service" /etc/systemd/system/kernel-refresh-late.service
+sudo systemctl enable kernel-refresh-late.timer 2>/dev/null || true
 
 # config.txt: no splash/boot pause; no initramfs (kernel has nvme+ext4+pcie built in);
 # no camera/DSI probing. hdmi_group/hdmi_mode/hdmi_force_hotplug are IGNORED under

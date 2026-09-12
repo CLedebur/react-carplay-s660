@@ -1528,9 +1528,107 @@ and [PoE fan probing](https://www.raspberrypi.com/documentation/computers/config
 
 ---
 
+## 25. 2026-09-12 — Code review of the §24 boot-optimization PR, and fixes
+
+The §24 PR (uncompressed kernel, HDMI module preload, delayed Bluetooth, concurrent
+Node/cage launch) was reviewed before merge. Two theorized risks were checked against the
+PR's own data and **refuted**: the HDMI module preload does not shrink the margin against
+the "Found 0 GPUs" hang (§22.2) -- §24's own trials show DRM readiness got *faster*
+(~3.3-3.5s to ~2.0s), not closer to the 15s ceiling; and Chromium is cage's direct child
+(via `exec`, not a fork), so environment variables including `KIOSK_URL` were never at risk
+of not propagating through the re-exec chain. Twelve other findings were confirmed or
+plausible and are fixed below.
+
+**Fixed in `run-chromium-kiosk.sh`:**
+- The `--browser` branch's HTTP-readiness timeout used to `exit 1`, which kills cage's only
+  client, which exits cage, which -- via `Restart=always` -- restarted the *whole unit*
+  (redoing the 15s DRM wait and Node startup) every ~62s for any persistently broken build.
+  It now loads Chromium anyway on timeout (showing Chromium's own error page) instead of
+  restart-looping the entire kiosk.
+- The backgrounded Node/npm-start process's PID is now exported (`NODE_PID`) and checked
+  each readiness-loop iteration, so a Node crash is detected immediately instead of only
+  showing up indirectly once the 60s HTTP timeout expires.
+- The readiness probe was hardcoded to `http://localhost:3000` while the final Chromium
+  launch respects `${KIOSK_URL:-http://localhost:3000}` (used for the calibration page) --
+  both now use the same variable.
+- `SCRIPT_PATH` resolution (needed for cage's `"$SCRIPT_PATH" --browser` re-invocation) used
+  a `$0`/`$PWD`-based fallback that's dead code today (ExecStart= always uses an absolute
+  path) but silently wrong if that ever changes. Replaced with the standard
+  `${BASH_SOURCE[0]}`-based absolute-path resolution, which needs no fallback branch.
+- The HDMI-connector-status wait forked `ls` every 50ms; replaced with bash's own glob
+  expansion (`shopt -s nullglob`), removing one process fork per tick from the boot-critical
+  window this whole PR is about shrinking.
+
+**Fixed in `carplay-dev-chromium.service`:** added `TimeoutStartSec=150` (comfortably above
+the ~75s worst-case internal wait budget, so systemd's 90s default start-timeout can't race
+the script's own timeout logic) and an explicit `KillMode=control-group` (already the
+default; pinned so a future edit can't silently change it and leak the backgrounded Node
+process across restarts).
+
+**Fixed in `update-uncompressed-kernel`:** `gzip.decompress()` had no exception handling,
+unlike the deliberate `SystemExit` for an invalid header a few lines later -- a truncated
+or corrupt `kernel8.img` raised an uncaught exception instead of a clean diagnostic, and
+(called from `provision.sh` with no error guard, under `set -e`) could abort the entire
+provisioning run before the kiosk service was installed. Verified two distinct real
+exception types needed catching: `gzip.BadGzipFile` (an `OSError` subclass, for a garbled
+header) **and** `EOFError` (NOT an `OSError` subclass -- confirmed by direct test -- for a
+truncated stream, which is the more realistic failure mode of the two). Both are now caught
+cleanly, and every outcome (success or failure) is mirrored to syslog via `logger`, so a
+failure during an unattended kernel-upgrade postinst hook is findable with
+`journalctl -t s660-update-uncompressed-kernel` instead of vanishing into apt/dpkg output
+nobody watches on a headless unit. Tested end-to-end against synthetic valid, corrupt,
+truncated, and already-uncompressed images -- all five cases behave as intended.
+
+**Added `kernel-refresh-late.timer`/`.service`:** nothing previously tied
+`kernel8-uncompressed.img`'s freshness to the currently-installed kernel/modules other than
+the postinst/initramfs hooks firing correctly. If either silently failed after a future
+kernel upgrade, the Pi would keep booting a stale kernel image indefinitely -- a mismatch
+against newer modules can hang cage on "Found 0 GPUs" with no display to diagnose it. This
+timer re-runs the same idempotent refresh ~25s after boot (well after the kiosk is already
+on screen -- no boot-critical cost), bounding any such staleness to at most one bad boot
+instead of forever. The dual postinst.d/initramfs.d hook installation was reviewed and kept
+as-is: both are cheap and each covers a different upgrade trigger path, and removing either
+on a guess would reduce redundancy rather than remove dead weight -- especially now that a
+third safety net (this timer) exists.
+
+**Fixed in `provision.sh`'s Bluetooth block:**
+- `apt-get install bluez python3` ran before `apt update` (every other install in the file
+  runs after PHASE 1's `apt update`) -- could fail outright on a fresh image with a stale
+  package index. `apt update` now runs first.
+- `systemctl disable bluetooth.service` removes bluez's own `dbus-org.bluez.service`
+  D-Bus-activation alias along with the boot-target want; the script manually recreated
+  that exact symlink with a bare `ln -sfn` that would "succeed" even if a future bluez
+  package renamed or dropped the alias, silently breaking D-Bus activation. The script now
+  reads the *actual* declared `Alias=` from the installed unit file and uses that, falling
+  back to the historical name with a loud warning if the unit ever stops declaring one.
+- The Bluetooth disable/timer-enable calls had dropped the `2>/dev/null || true` guard
+  every neighboring service/timer toggle in this phase uses -- restored for consistency.
+- The 15s Bluetooth delay was a literal duplicated in two places (the timer's `OnBootSec=`
+  and the `ExecStartPre` sleep script) with no shared source. Both files now reference a
+  single `BLUETOOTH_DELAY_SEC` config value in `provision.sh`, substituted in with `sed`
+  (the same templating pattern already used for `carplay-dev-chromium.service`).
+- `bluetooth.service.d-startup-delay.conf` also gained `Restart=on-failure`/`RestartSec=2`:
+  previously a single failure of the one-shot `ExecStartPre` sleep left Bluetooth -- and the
+  trackpad, this unit's only input device -- dead for the rest of that boot with no retry.
+
+**Not fixed, and why:** the §24 measurements and this review's fixes have still not been run
+through `provision.sh` wholesale on a fresh machine -- only syntax-checked
+(`bash -n`, `shellcheck`) and, for the kernel script, tested against synthetic inputs off-box.
+A true end-to-end dry run needs a spare SD card/Pi; doing it against the working car unit
+was judged too risky to script unattended. Test on spare hardware before relying on a fresh
+`provision.sh` run for this channel, and watch `journalctl -t s660-update-uncompressed-kernel`
+and `systemctl status bluetooth.service bluetooth-late.timer kernel-refresh-late.timer` after
+the first real boot.
+
+---
+
 *Last updated: 2026-09-12. Path B Chromium is the enabled kiosk. Latest reboot measurements
 and rollback are in §24: estimated firmware-plus-service launch 7.93 s, Chromium process
-~9.05 s; physical cold-power/first-paint timing remains unmeasured. Bluetooth is required
-for the trackpad and starts after 15 s of Linux uptime. Network startup is requested after
-20 s, with timer coalescing adding delay. Display geometry remains §22.8; application and
-USB reconnect fixes remain §23. Trackpad wake/reconnection needs physical confirmation.*
+~9.05 s; physical cold-power/first-paint timing remains unmeasured. §25 fixed twelve issues
+a review found in §24's changes (restart-loop-on-failure, unguarded kernel-image exceptions,
+a Bluetooth D-Bus alias fragility, a duplicated timing constant, an apt-update ordering bug,
+and others) -- none of it has been run through `provision.sh` end-to-end on real hardware yet.
+Bluetooth is required for the trackpad and starts after 15 s of Linux uptime. Network startup
+is requested after 20 s, with timer coalescing adding delay. Display geometry remains §22.8;
+application and USB reconnect fixes remain §23. Trackpad wake/reconnection needs physical
+confirmation.*

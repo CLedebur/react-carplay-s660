@@ -1,26 +1,81 @@
 #!/usr/bin/python3
-"""Refresh the CM4's uncompressed boot image after Raspberry Pi firmware hooks."""
+"""Refresh the CM4's uncompressed boot image after Raspberry Pi firmware hooks.
+
+Safe to run unconditionally and often: it always regenerates kernel8-uncompressed.img
+from whatever kernel8.img currently is. That's also what makes it a safety net -- a
+late-boot timer (kernel-refresh-late.timer/.service) re-runs this on every boot, well
+after the kiosk is already on screen, so a postinst/initramfs hook that silently failed
+to fire after a kernel upgrade only leaves the wrong kernel image in place for at most
+one boot cycle instead of indefinitely.
+"""
 import gzip
 import os
-from pathlib import Path
+import subprocess
+import sys
 import tempfile
+from pathlib import Path
 
-boot = Path('/boot/firmware')
-source = (boot / 'kernel8.img').read_bytes()
-image = gzip.decompress(source) if source[:2] == b'\x1f\x8b' else source
-if len(image) < 64 or image[56:60] != b'ARM\x64':
-    raise SystemExit('Refusing to install an invalid ARM64 kernel image')
+TAG = 's660-update-uncompressed-kernel'
 
-temporary = None
-try:
-    with tempfile.NamedTemporaryFile(dir=boot, prefix='.s660-kernel-', delete=False) as output:
-        temporary = Path(output.name)
-        output.write(image)
-        output.flush()
-        os.fsync(output.fileno())
-        os.fchmod(output.fileno(), 0o644)
-    temporary.replace(boot / 'kernel8-uncompressed.img')
-finally:
-    if temporary is not None and temporary.exists():
-        temporary.unlink()
-print('Refreshed kernel8-uncompressed.img from kernel8.img')
+
+def log(message: str, *, error: bool = False) -> None:
+    """Mirror to stderr/stdout and syslog/journal. A postinst or initramfs hook's own
+    stdout/stderr is only ever captured in apt/dpkg logs nobody watches on a headless car
+    unit -- `logger` puts a copy in the journal where `journalctl -t s660-update-...`
+    finds it."""
+    print(message, file=sys.stderr if error else sys.stdout)
+    try:
+        subprocess.run(
+            ['logger', '-t', TAG, '-p', 'user.err' if error else 'user.info', message],
+            check=False,
+        )
+    except OSError:
+        pass  # logger missing is not fatal -- the stderr/stdout copy above still applies.
+
+
+def main() -> int:
+    boot = Path('/boot/firmware')
+
+    try:
+        source = (boot / 'kernel8.img').read_bytes()
+    except OSError as err:
+        log(f'Refusing to refresh kernel8-uncompressed.img: cannot read kernel8.img ({err})', error=True)
+        return 1
+
+    try:
+        image = gzip.decompress(source) if source[:2] == b'\x1f\x8b' else source
+    except (OSError, EOFError) as err:
+        # gzip.decompress raises BadGzipFile (an OSError subclass) for a garbled header,
+        # but EOFError -- NOT an OSError subclass -- for a truncated stream (verified: a
+        # gzip-magic-prefixed but incomplete kernel8.img, e.g. from an interrupted prior
+        # write, is exactly this case). Both must be caught, or the realistic "truncated
+        # file" failure mode escapes uncaught while only the "garbled header" one doesn't.
+        log(f'Refusing to install an invalid ARM64 kernel image: kernel8.img is not valid gzip ({err})', error=True)
+        return 1
+
+    if len(image) < 64 or image[56:60] != b'ARM\x64':
+        log('Refusing to install an invalid ARM64 kernel image: bad Image header', error=True)
+        return 1
+
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=boot, prefix='.s660-kernel-', delete=False) as output:
+            temporary = Path(output.name)
+            output.write(image)
+            output.flush()
+            os.fsync(output.fileno())
+            os.fchmod(output.fileno(), 0o644)
+        temporary.replace(boot / 'kernel8-uncompressed.img')
+    except OSError as err:
+        log(f'Failed to refresh kernel8-uncompressed.img: {err}', error=True)
+        return 1
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+
+    log('Refreshed kernel8-uncompressed.img from kernel8.img')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

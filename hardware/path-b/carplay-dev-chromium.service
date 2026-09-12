@@ -22,6 +22,14 @@ StandardError=journal
 ExecStart=/home/s660/carplay-dev/run-chromium-kiosk.sh
 Restart=always
 RestartSec=2
+# Explicit (matches the systemd default, documented so a future edit doesn't drop it by
+# accident): kills the whole cgroup -- including the backgrounded Node server the launch
+# script starts -- on every stop/restart, not just the direct ExecStart process.
+KillMode=control-group
+# The launch script's own worst-case internal waits stack up to ~75s (15s HDMI/DRM wait +
+# 60s HTTP-readiness wait), before Chromium itself even starts. Set well above that so
+# systemd's own start timeout (90s default) never races the script's own timeout logic.
+TimeoutStartSec=150
 
 [Install]
 WantedBy=multi-user.target
