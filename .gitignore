@@ -17,3 +17,6 @@ out
 kicad-happy/
 pdb-circuit/**/.history/
 pdb-circuit/**/kicad-happy/
+pdb-circuit/**/*.thtbak
+pdb-circuit/**/_restore_backup_*/
+pdb-circuit/**/~*.lck
