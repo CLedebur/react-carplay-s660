@@ -275,15 +275,17 @@ function App() {
       const device = request ? await requestDevice() : await findDevice()
       if (device) {
         setDeviceFound(true)
+        clearStatus()
         const payload = {
           config,
         }
         carplayWorker.postMessage({ type: 'start', payload })
       } else {
         setDeviceFound(false)
+        setStatus('Dongle not found', 'warn')
       }
     },
-    [carplayWorker],
+    [carplayWorker, setStatus, clearStatus],
   )
 
   // usb connect/disconnect handling and device check
@@ -297,11 +299,12 @@ function App() {
       if (!device) {
         carplayWorker.postMessage({ type: 'stop' })
         setDeviceFound(false)
+        setStatus('Dongle not found', 'warn')
       }
     }
 
     checkDevice()
-  }, [carplayWorker, checkDevice])
+  }, [carplayWorker, checkDevice, setStatus])
 
   const onClick = useCallback(() => {
     checkDevice(true)
