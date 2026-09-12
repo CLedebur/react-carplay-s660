@@ -135,7 +135,7 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 - Installs `cage` (Wayland kiosk compositor) + `seatd`, and the udev rule that gives
   the Carlinkit dongle non-root USB/WebUSB access.
 - Installs whichever app stack(s) you selected (AppImage for Path A; system Chromium
-  + `node-CarPlay`'s `carplay-web-app`, pinned to a known-good toolchain, for Path B).
+  + this repo's vendored `node-CarPlay`/`carplay-web-app` source, for Path B).
 - Writes the systemd unit(s) that launch the kiosk on boot.
 - Uses an automatically refreshed uncompressed kernel, preloads the HDMI component
   drivers, and overlaps the web server and compositor startup. September 2026 reboot
@@ -147,6 +147,18 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 can delay it further. Nothing on the boot-critical path depends on the network,
 since Wi-Fi is never guaranteed inside the car. Don't "fix" this; it's intentional.
 If the Pi seems unreachable right after a reboot, give it a minute.
+
+## Developing this fork (Path B source — the currently running channel)
+
+Path B's app source (the `node-carplay` library + `carplay-web-app`, modified from
+upstream [`rhysmorgan134/node-CarPlay`](https://github.com/rhysmorgan134/node-CarPlay),
+MIT) is vendored directly into this repo at
+[`hardware/path-b/node-CarPlay/`](hardware/path-b/node-CarPlay/) — it is not a separate
+clone or npm/git dependency. Edit it in place, rebuild, and redeploy by pulling this
+repo onto the Pi and pointing the kiosk at
+`~/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app`. See that
+directory's own `README.md` and `hardware/BUILD_NOTES.md` §11 and §23 for the exact
+build/deploy commands and toolchain gotchas.
 
 ## Developing this fork (Path A source)
 
