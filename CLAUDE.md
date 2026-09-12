@@ -27,7 +27,14 @@ Two paths exist (see BUILD_NOTES §8.5):
 - **Path A** — the Electron app under `cage --disable-gpu` (software, stable).
 - **Path B (currently chosen)** — `carplay-web-app` in system Chromium (GPU compositing,
   confirmed via `chrome://gpu`).
-  The running unit, kiosk script and static server are versioned in `hardware/path-b/`.
+  This is a **one-stop-shop repo**: the app source (`node-carplay` library +
+  `carplay-web-app`, vendored/modified from upstream `rhysmorgan134/node-CarPlay`, MIT)
+  lives in `hardware/path-b/node-CarPlay/`, alongside the kiosk script and static server
+  in `hardware/path-b/`. It is not an npm/git dependency the Pi fetches separately —
+  edit it in place here, rebuild, and redeploy (see `hardware/path-b/node-CarPlay/README.md`
+  and BUILD_NOTES §11 for the exact commands). On the Pi it's deployed by pulling this
+  repo (`~/react-carplay-s660`) and pointing the kiosk at
+  `~/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app`.
   Boot is tuned (BUILD_NOTES §22): kiosk on screen ~5.7 s after kernel start, display
   forced to the car panel's 720x480@59.94 via an EDID override; the 1.875:1 glass stretches it, so iOS renders 848x480 (16:9, Waze's
   limit) and the web app squeezes it into 720 (§22.8) (`drm.edid_firmware`; cage

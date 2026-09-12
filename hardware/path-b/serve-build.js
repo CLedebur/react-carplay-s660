@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(process.argv[2] ||
-  path.join(process.env.HOME, 'node-CarPlay/examples/carplay-web-app/build'));
+  path.join(process.env.HOME, 'react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app/build'));
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const MIME = {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="$HOME/node-CarPlay/examples/carplay-web-app"
+APP_DIR="$HOME/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app"
 BUILD_DIR="$APP_DIR/build"
 
 if [ -f "$BUILD_DIR/index.html" ]; then

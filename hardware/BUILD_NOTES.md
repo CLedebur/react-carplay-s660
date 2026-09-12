@@ -528,37 +528,43 @@ node --version    # want v20.x
 npm --version
 ```
 
-### 11.3 Clone and build node-CarPlay — WITH THE TOOLCHAIN GOTCHA
+### 11.3 Build node-CarPlay — WITH THE TOOLCHAIN GOTCHA
 
 `carplay-web-app` lives inside the `node-CarPlay` repo and references the parent by
-relative path (`file:../../`), so clone the whole repo:
+relative path (`file:../../`). As of the S660 error-status/reconnect work, this whole
+repo is **vendored directly into `react-carplay-s660`** (MIT, modified from upstream
+`rhysmorgan134/node-CarPlay`) at `hardware/path-b/node-CarPlay/` — it is no longer a
+separate clone. Pull the whole `react-carplay-s660` repo onto the Pi (you need it there
+anyway for Path A) and build in place:
 ```bash
-cd ~
-git clone https://github.com/rhysmorgan134/node-CarPlay.git
-cd node-CarPlay
+cd ~/react-carplay-s660/hardware/path-b/node-CarPlay
+npm install
 ```
 
-**THE GOTCHA — read this before installing anything.** The repo (v4.3.0) was written
-against older type definitions than a fresh Node 20 provides. A plain build throws
-TypeScript errors (`Timer` vs `Timeout`, `Buffer`/`SharedArrayBuffer` mismatches). The
-`package.json` declares `@types/node@^18.11.9` + `typescript@^5.2.2`, but the caret (`^`)
-lets npm pull too-new patches that reintroduce the errors. **Pin them exactly:**
-```bash
-npm install --save-dev @types/node@18.11.9 typescript@5.2.2
-```
+**THE GOTCHA, for context.** The repo (v4.3.0) was originally written against older type
+definitions than a fresh Node 20 provides — a plain `npm install` on a brand-new clone of
+*upstream* throws TypeScript errors (`Timer` vs `Timeout`, `Buffer`/`SharedArrayBuffer`
+mismatches) because its `package.json` declares `@types/node@^18.11.9` +
+`typescript@^5.2.2` with carets that let npm drift to newer, incompatible patches. The
+vendored copy here already carries a `package-lock.json` with the working pinned
+versions resolved, so a plain `npm install` (which honors the lockfile) should just work.
+If you ever regenerate the lockfile from scratch (e.g. `rm package-lock.json && npm
+install`), you may hit this again — re-pin with
+`npm install --save-dev --save-exact @types/node@18.11.9 typescript@5.2.2` if so.
 
 Then build ONLY the web target (the Node target has errors we do not need — the web app
 never uses the Node USB path):
 ```bash
+npx tsc --build ./tsconfig.build.json       # rebuilds dist/modules (shared with the web target)
 npx tsc --build ./src/web/tsconfig.json     # should complete silently, 0 errors
 ```
-> Note: the parent `package.json` has `"prepare": "npm run build"`, which npm runs
+> Note: the `package.json` has `"prepare": "npm run build"`, which npm runs
 > automatically after any install and triggers the FULL (failing) build. That is why the
 > web app install below uses `--ignore-scripts`.
 
 ### 11.4 Install and run the web app
 ```bash
-cd ~/node-CarPlay/examples/carplay-web-app
+cd ~/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app
 npm install --ignore-scripts          # --ignore-scripts avoids re-triggering the parent's failing "prepare"
 ```
 > The install reports many "vulnerabilities" and deprecation warnings. These are in
