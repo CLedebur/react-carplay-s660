@@ -19,11 +19,18 @@ TAG = 's660-update-uncompressed-kernel'
 
 
 def log(message: str, *, error: bool = False) -> None:
-    """Mirror to stderr/stdout and syslog/journal. A postinst or initramfs hook's own
-    stdout/stderr is only ever captured in apt/dpkg logs nobody watches on a headless car
-    unit -- `logger` puts a copy in the journal where `journalctl -t s660-update-...`
-    finds it."""
+    """Print, and ALSO mirror to syslog/journal via `logger` -- but only when something
+    wouldn't otherwise land in the journal on its own. When systemd runs this (e.g.
+    kernel-refresh-late.service), $JOURNAL_STREAM is set and stdout/stderr already goes
+    straight to the journal -- calling `logger` too would just duplicate every line under
+    a second PID (confirmed live: this is exactly what a kernel-refresh-late.service run
+    looked like before this fix -- one 'Refreshed...' line per mechanism, not two runs).
+    When invoked from a postinst/initramfs hook or a bare interactive shell, JOURNAL_STREAM
+    is unset and dpkg/apt capture stdout/stderr somewhere nobody watches on a headless car
+    unit -- there, `logger` is what actually gets a copy into the journal."""
     print(message, file=sys.stderr if error else sys.stdout)
+    if 'JOURNAL_STREAM' in os.environ:
+        return
     try:
         subprocess.run(
             ['logger', '-t', TAG, '-p', 'user.err' if error else 'user.info', message],
