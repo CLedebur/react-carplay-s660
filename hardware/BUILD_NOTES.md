@@ -1421,7 +1421,7 @@ preserved; the earlier audit had observed a boot with different UART settings.
 
 ### 24.1 Retained changes
 
-- **Uncompressed kernel:** `kernel=kernel8-uncompressed.img` in `/boot/firmware/config.txt`.
+- **Uncompressed kernel — REVERTED, see §26.** `kernel=kernel8-uncompressed.img` in `/boot/firmware/config.txt`.
   This is the exact packaged ARM64 kernel decompressed from `kernel8.img`, with no driver
   or kernel build changes. Loading 24.2 MiB instead of the 9.8 MiB gzip file eliminates
   firmware decompression and accounts for most of the measured gain. The packaged image
@@ -1622,13 +1622,81 @@ the first real boot.
 
 ---
 
-*Last updated: 2026-09-12. Path B Chromium is the enabled kiosk. Latest reboot measurements
-and rollback are in §24: estimated firmware-plus-service launch 7.93 s, Chromium process
-~9.05 s; physical cold-power/first-paint timing remains unmeasured. §25 fixed twelve issues
-a review found in §24's changes (restart-loop-on-failure, unguarded kernel-image exceptions,
-a Bluetooth D-Bus alias fragility, a duplicated timing constant, an apt-update ordering bug,
-and others) -- none of it has been run through `provision.sh` end-to-end on real hardware yet.
-Bluetooth is required for the trackpad and starts after 15 s of Linux uptime. Network startup
-is requested after 20 s, with timer coalescing adding delay. Display geometry remains §22.8;
-application and USB reconnect fixes remain §23. Trackpad wake/reconnection needs physical
-confirmation.*
+## 26. 2026-09-12 — Reverted the uncompressed-kernel optimization after a field failure
+
+**What happened:** during unrelated Overlay FS testing, the CM4 was power-cycled via a hard
+unplug/replug — deliberately simulating this car's actual shutdown path (ignition cut, not a
+clean `shutdown`). The unit failed to boot afterward: no HDMI content beyond the firmware's
+generic startup screen, no network, and — even once a UART adapter was wired up and the
+console properly routed to serial — total silence. Filesystem checks on both partitions came
+back clean (`e2fsck -fn` on root showed only the expected unclean-shutdown artifacts;
+`fsck_msdos -n` on the boot partition reported no errors at all). The CM4's `rpiboot`/USB-mass-
+storage-gadget mode was used to mount the NVMe directly from a Mac and inspect it without
+pulling the SSD. The actual cause: `/boot/firmware/kernel8-uncompressed.img` — the file
+`config.txt`'s `kernel=` directive points at — was truncated to **0 bytes**. The bootloader had
+nothing valid to execute, and none of this is visible without exactly this kind of
+out-of-band access (no serial output is possible before a valid kernel loads).
+
+**Why the atomic-write design didn't save it:** `update-uncompressed-kernel` (§22, §24, §25)
+writes to a temp file, `fsync`s it, then does an atomic `Path.replace()` onto the real name,
+specifically to avoid ever leaving a truncated file in place. FAT32, unlike ext4, has no
+journal, so a `rename()` on it is not crash-safe against a hard power cut the same way — the
+directory-entry update for that rename can itself be interrupted. `fsck_msdos` has no way to
+know a structurally-valid zero-length file is wrong; it only checks structure, not content.
+Whether this happened during the initial write or a later `kernel-refresh-late.timer` run
+isn't fully certain, but the failure mode is real and isn't something an atomic rename alone
+protects against on this filesystem.
+
+**Recovery applied:** regenerated `kernel8-uncompressed.img` from the still-intact
+`kernel8.img` (same decompress + ARM64-header-validate logic as the script), via the `rpiboot`
+NVMe mount from the Mac. Confirmed a clean boot into CarPlay afterward.
+
+**Decision: reverted the whole feature, not just the immediate bug.** This car's normal
+shutdown path *is* a hard power cut — not a rare edge case for this project, the routine one,
+every single drive. A failure mode that can silently leave the unit permanently unbootable,
+recoverable only via a UART adapter, a Mac, `rpiboot`, and an hours-long diagnostic session, is
+not an acceptable trade for the roughly 2 s of boot time this feature was worth (it was the
+single largest contributor to §24's measured gain — see the "Uncompressed kernel" rows in the
+§24 table). Removed:
+- `hardware/path-b/update-uncompressed-kernel`, `kernel-refresh-late.timer`, `.service`
+  (deleted from the repo).
+- `provision.sh`'s installation of the above, and the `kernel=kernel8-uncompressed.img` line
+  from the `config.txt` settings loop.
+- On the live Pi: the `zz-s660-uncompressed` hook symlinks, the installed script,
+  `kernel-refresh-late.timer`/`.service`, `kernel8-uncompressed.img` itself, and the `kernel=`
+  line in `config.txt` (reverts to the default: firmware decompresses `kernel8.img` itself,
+  as before §24).
+
+**What's retained.** Every other §24/§25 change stays: HDMI/graphics module preloading,
+delayed Bluetooth activation, the concurrent Node/cage launcher, the no-swap generator
+cleanup, and `auto_initramfs=0`/hardware-probe skips. None of those showed any failure mode in
+this incident, and each is independently reversible via §24.3 if one ever does.
+
+**Also reconsidered, not yet decided: Overlay FS.** The original trigger for this whole
+incident was testing Raspberry Pi OS's Overlay FS (`raspi-config`'s root-overlay feature) —
+enabling it, rebooting, then a hard power cut as a real-world "compartment unplug" test.
+Overlay FS's actual purpose — protecting root from exactly this kind of routine power loss —
+is arguably a better fit for a car computer than most Pi projects. But it depends on the
+initramfs actually running (confirmed: the `overlayroot` package has no systemd unit, only
+classic `initramfs-tools` hooks), which this build disables by default via `auto_initramfs=0`
+— and this incident never produced a clean, isolated test of overlay plus initramfs together;
+the kernel-image bug above confounded every attempt this session. `overlayroot=disabled` is
+set on the live Pi and should stay that way until this gets a properly isolated test — rested,
+ideally on spare hardware rather than the working car unit — with initramfs restored and a
+maintenance-mode toggle (to let updates/the kernel hooks write to an overlaid, otherwise
+read-only root) worked out. Not attempted here.
+
+---
+
+*Last updated: 2026-09-12. Path B Chromium is the enabled kiosk. §24's uncompressed-kernel
+optimization was reverted the same day after a field failure (§26) — see §26 for what's
+retained. Remaining boot-tuning figures from §24 (HDMI preload, Bluetooth delay, concurrent
+launcher) are no longer directly comparable to the table there, since the largest single
+contributor (uncompressed kernel) is gone; a fresh baseline hasn't been measured post-revert.
+§25 fixed twelve issues a review found in §24's changes; most no longer apply since their
+subject (the kernel-refresh mechanism) was removed, except the Bluetooth/apt-ordering/timing
+fixes, which remain in effect. Bluetooth is required for the trackpad and starts after 15 s of
+Linux uptime. Network startup is requested after 20 s, with timer coalescing adding delay.
+Display geometry remains §22.8; application and USB reconnect fixes remain §23. Overlay FS is
+explicitly disabled (§26) pending a proper isolated test. Trackpad wake/reconnection needs
+physical confirmation.*

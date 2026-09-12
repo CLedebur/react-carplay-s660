@@ -192,33 +192,17 @@ sudo install -m 644 "${PB}/modules-load.d-carplay-gpu.conf" /etc/modules-load.d/
 # /boot/firmware: automount on first access instead of holding up local-fs.target.
 sudo sed -i -E 's|^(PARTUUID=\S+\s+/boot/firmware\s+vfat\s+)defaults(\s+)0\s+2$|\1defaults,noauto,x-systemd.automount,nofail\20  0|' /etc/fstab
 
-# Use the same ARM64 kernel without firmware gzip decompression. Refresh atomically
-# after the distribution's z50-raspi-firmware hooks, including initramfs-only updates.
-# Keep the packaged kernel8.img for rollback and as the source after every update.
-sudo install -m 755 "${PB}/update-uncompressed-kernel" /usr/local/sbin/s660-update-uncompressed-kernel
-sudo ln -sfn /usr/local/sbin/s660-update-uncompressed-kernel /etc/kernel/postinst.d/zz-s660-uncompressed
-sudo ln -sfn /usr/local/sbin/s660-update-uncompressed-kernel /etc/initramfs/post-update.d/zz-s660-uncompressed
-sudo /usr/local/sbin/s660-update-uncompressed-kernel
-
-# Safety net (BUILD_NOTES §24/§25): nothing ties kernel8-uncompressed.img's freshness to
-# the currently-installed kernel/modules other than the two hooks above firing correctly.
-# If either silently fails after a future kernel upgrade (permissions, hook-ordering
-# change, a kernel installed via a path that bypasses standard triggers), the Pi would
-# otherwise keep booting a stale kernel image indefinitely -- a mismatch against newer
-# modules can hang cage on "Found 0 GPUs" with no display to diagnose it (BUILD_NOTES
-# §22.2). This timer re-runs the same idempotent refresh well after the kiosk is already
-# on screen (no boot-critical cost), bounding any such staleness to at most one bad boot
-# instead of forever. The script also now logs success/failure via `logger`, so a failure
-# here is findable with `journalctl -t s660-update-uncompressed-kernel` even though this
-# runs headless with no display.
-sudo install -m 644 "${PB}/kernel-refresh-late.timer" /etc/systemd/system/kernel-refresh-late.timer
-sudo install -m 644 "${PB}/kernel-refresh-late.service" /etc/systemd/system/kernel-refresh-late.service
-sudo systemctl enable kernel-refresh-late.timer 2>/dev/null || true
-
 # config.txt: no splash/boot pause; no initramfs (kernel has nvme+ext4+pcie built in);
 # no camera/DSI probing. hdmi_group/hdmi_mode/hdmi_force_hotplug are IGNORED under
 # vc4-kms-v3d + disable_fw_kms_setup=1 — the mode is pinned in cmdline.txt below.
-for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 display_auto_detect=0 kernel=kernel8-uncompressed.img force_eeprom_read=0 disable_poe_fan=1; do
+# NOTE (BUILD_NOTES §26): this used to also set kernel=kernel8-uncompressed.img, with a
+# postinst/initramfs hook pair plus a late-boot safety-net timer keeping a decompressed
+# copy of kernel8.img in sync, to skip the firmware's own gzip decompression (~2s saved).
+# Reverted 2026-09-12: a hard power cut (this car's normal shutdown path, via ignition)
+# left that copy truncated to 0 bytes, which the bootloader silently refused to boot --
+# no display, no network, no serial -- with no way to recover short of pulling the NVMe.
+# Not worth ~2s against a failure mode this car will hit on every drive.
+for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 display_auto_detect=0 force_eeprom_read=0 disable_poe_fan=1; do
   k=${kv%%=*}
   if grep -q "^$k=" /boot/firmware/config.txt; then
     sudo sed -i "s/^$k=.*/$kv/" /boot/firmware/config.txt

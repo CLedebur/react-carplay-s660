@@ -137,9 +137,9 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 - Installs whichever app stack(s) you selected (AppImage for Path A; system Chromium
   + this repo's vendored `node-CarPlay`/`carplay-web-app` source, for Path B).
 - Writes the systemd unit(s) that launch the kiosk on boot.
-- Uses an automatically refreshed uncompressed kernel, preloads the HDMI component
-  drivers, and overlaps the web server and compositor startup. September 2026 reboot
-  trials reduced estimated board-boot-to-service time from 9.96 s to about 7.93 s.
+- Preloads the HDMI component drivers and overlaps the web server and compositor startup.
+  (An earlier version of this also shipped an auto-refreshed uncompressed kernel image for
+  a further ~2s savings; reverted after a field failure — see `BUILD_NOTES.md` §26.)
 - Starts host Bluetooth after 15 s for the trackpad, including when Chromium requests
   BlueZ through D-Bus. Pairing data and the Bluetooth radio remain available.
 
