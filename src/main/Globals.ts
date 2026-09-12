@@ -31,7 +31,8 @@ export interface KeyBindings {
   'play': string,
   'pause': string,
   'next': string,
-  'prev': string
+  'prev': string,
+  'siri': string
 }
 
 export interface CanMessage {

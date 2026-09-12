@@ -11,3 +11,9 @@ out
 # editor / OS cruft
 .idea
 .DS_Store
+
+# kicad temp files
+*.history/
+kicad-happy/
+pdb-circuit/**/.history/
+pdb-circuit/**/kicad-happy/

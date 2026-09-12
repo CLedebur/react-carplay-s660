@@ -28,9 +28,10 @@ const style = {
 
 function App() {
   const [receivingVideo, setReceivingVideo] = useState(false)
-  const [commandCounter, setCommandCounter] = useState(0)
-  const [keyCommand, setKeyCommand] = useState('')
   const [reverse, setReverse] = useStatusStore(state => [state.reverse, state.setReverse])
+  const keyCommand = useStatusStore(state => state.keyCommand)
+  const commandCounter = useStatusStore(state => state.commandCounter)
+  const triggerKeyCommand = useStatusStore(state => state.triggerKeyCommand)
   const settings = useCarplayStore((state) => state.settings)
 
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
@@ -55,15 +56,7 @@ function App() {
       )
       console.log(action)
       if(action !== undefined) {
-        setKeyCommand(action)
-        setCommandCounter(prev => prev +1)
-        if(action === 'selectDown') {
-          console.log('select down')
-          setTimeout(() => {
-            setKeyCommand('selectUp')
-            setCommandCounter(prev => prev +1)
-          }, 200)
-        }
+        triggerKeyCommand(action)
       }
     }
   }

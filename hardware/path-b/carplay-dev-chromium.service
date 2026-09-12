@@ -1,0 +1,27 @@
+[Unit]
+Description=S660 CarPlay DEV kiosk (cage + system Chromium, Path B / GPU) — toggles vs carplay.service
+After=local-fs.target seatd.service
+Wants=seatd.service
+Conflicts=carplay.service
+
+[Service]
+User=s660
+# boot-tuning 2026-09-05: no PAM/logind session (saves user@1000 + session bus);
+# cage talks to seatd directly. XDG_RUNTIME_DIR provided by RuntimeDirectory=.
+RuntimeDirectory=carplay-kiosk
+RuntimeDirectoryMode=0700
+Environment=XDG_RUNTIME_DIR=/run/carplay-kiosk
+Environment=NO_AT_BRIDGE=1
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+ExecStart=/home/s660/carplay-dev/run-chromium-kiosk.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

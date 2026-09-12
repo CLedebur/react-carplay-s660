@@ -31,7 +31,8 @@ export type KeyCommand = 'left' |
   'play' |
   'pause' |
   'next' |
-  'prev'
+  'prev' |
+  'siri'
 
 export type Command =
   | { type: 'stop' }

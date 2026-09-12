@@ -14,8 +14,11 @@ interface StatusStore {
   reverse: boolean,
   lights: boolean,
   isPlugged: boolean,
+  keyCommand: string,
+  commandCounter: number,
   setPlugged: (plugged: boolean) => void,
-  setReverse: (reverse: boolean) => void
+  setReverse: (reverse: boolean) => void,
+  triggerKeyCommand: (action: string) => void
 }
 
 export const useCarplayStore = create<CarplayStore>()((set) =>({
@@ -36,11 +39,21 @@ export const useStatusStore = create<StatusStore>()((set) => ({
   reverse: false,
   lights: false,
   isPlugged: false,
+  keyCommand: '',
+  commandCounter: 0,
   setPlugged: (plugged) => {
     set(() => ({isPlugged: plugged}))
   },
   setReverse: (reverse) => {
     set(() => ({reverse: reverse}))
+  },
+  triggerKeyCommand: (action) => {
+    set((state) => ({keyCommand: action, commandCounter: state.commandCounter + 1}))
+    if (action === 'selectDown') {
+      setTimeout(() => {
+        set((state) => ({keyCommand: 'selectUp', commandCounter: state.commandCounter + 1}))
+      }, 200)
+    }
   }
 }))
 
@@ -55,6 +68,10 @@ socket.on('settings', (settings: ExtraConfig) => {
 socket.on('reverse', (reverse) => {
   console.log("reverse data", reverse)
   useStatusStore.setState(() => ({reverse: reverse}))
+})
+
+socket.on('keyCommand', (command: string) => {
+  useStatusStore.getState().triggerKeyCommand(command)
 })
 
 

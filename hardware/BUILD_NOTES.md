@@ -369,6 +369,10 @@ compiled in.
 - `--ignore-gpu-blocklist` (NOT the older `--ignore-gpu-blacklist`).
 
 ### 8.5 Conclusion — Option 2 chosen and validated
+> **Update 2026-08-23:** a from-source **Electron 33** build was tested on the CM4 and
+> hits this exact `dma_buf` failure too — and `--ozone-platform=drm` isn't compiled into
+> stock Electron. So a newer Electron does NOT clear this wall. Full retest in §17.
+
 Option 1 (finding the right flags for the bundled Electron) is exhausted. No flag
 combination gives working, stable GPU acceleration with the bundled Electron 27 /
 Chrome 118. Path A's shipped config is `--disable-gpu` — software rendering, stable,
@@ -524,37 +528,43 @@ node --version    # want v20.x
 npm --version
 ```
 
-### 11.3 Clone and build node-CarPlay — WITH THE TOOLCHAIN GOTCHA
+### 11.3 Build node-CarPlay — WITH THE TOOLCHAIN GOTCHA
 
 `carplay-web-app` lives inside the `node-CarPlay` repo and references the parent by
-relative path (`file:../../`), so clone the whole repo:
+relative path (`file:../../`). As of the S660 error-status/reconnect work, this whole
+repo is **vendored directly into `react-carplay-s660`** (MIT, modified from upstream
+`rhysmorgan134/node-CarPlay`) at `hardware/path-b/node-CarPlay/` — it is no longer a
+separate clone. Pull the whole `react-carplay-s660` repo onto the Pi (you need it there
+anyway for Path A) and build in place:
 ```bash
-cd ~
-git clone https://github.com/rhysmorgan134/node-CarPlay.git
-cd node-CarPlay
+cd ~/react-carplay-s660/hardware/path-b/node-CarPlay
+npm install
 ```
 
-**THE GOTCHA — read this before installing anything.** The repo (v4.3.0) was written
-against older type definitions than a fresh Node 20 provides. A plain build throws
-TypeScript errors (`Timer` vs `Timeout`, `Buffer`/`SharedArrayBuffer` mismatches). The
-`package.json` declares `@types/node@^18.11.9` + `typescript@^5.2.2`, but the caret (`^`)
-lets npm pull too-new patches that reintroduce the errors. **Pin them exactly:**
-```bash
-npm install --save-dev @types/node@18.11.9 typescript@5.2.2
-```
+**THE GOTCHA, for context.** The repo (v4.3.0) was originally written against older type
+definitions than a fresh Node 20 provides — a plain `npm install` on a brand-new clone of
+*upstream* throws TypeScript errors (`Timer` vs `Timeout`, `Buffer`/`SharedArrayBuffer`
+mismatches) because its `package.json` declares `@types/node@^18.11.9` +
+`typescript@^5.2.2` with carets that let npm drift to newer, incompatible patches. The
+vendored copy here already carries a `package-lock.json` with the working pinned
+versions resolved, so a plain `npm install` (which honors the lockfile) should just work.
+If you ever regenerate the lockfile from scratch (e.g. `rm package-lock.json && npm
+install`), you may hit this again — re-pin with
+`npm install --save-dev --save-exact @types/node@18.11.9 typescript@5.2.2` if so.
 
 Then build ONLY the web target (the Node target has errors we do not need — the web app
 never uses the Node USB path):
 ```bash
+npx tsc --build ./tsconfig.build.json       # rebuilds dist/modules (shared with the web target)
 npx tsc --build ./src/web/tsconfig.json     # should complete silently, 0 errors
 ```
-> Note: the parent `package.json` has `"prepare": "npm run build"`, which npm runs
+> Note: the `package.json` has `"prepare": "npm run build"`, which npm runs
 > automatically after any install and triggers the FULL (failing) build. That is why the
 > web app install below uses `--ignore-scripts`.
 
 ### 11.4 Install and run the web app
 ```bash
-cd ~/node-CarPlay/examples/carplay-web-app
+cd ~/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app
 npm install --ignore-scripts          # --ignore-scripts avoids re-triggering the parent's failing "prepare"
 ```
 > The install reports many "vulnerabilities" and deprecation warnings. These are in
@@ -766,7 +776,9 @@ persistent-writable on a locked image.
 
 ## 15. Open questions / next session
 
-Arriving next session: the **Carlinkit dongle** and the **M.2 NVMe SSD**.
+> **Update 2026-08-24 (§18):** the **Carlinkit dongle** and the **M.2 NVMe SSD** have both
+> arrived and are installed — the Pi now boots from NVMe and runs live CarPlay. Items 1 and
+> 2 below are done or partly done (see §18); the rest of this plan still stands.
 
 **PRIMARY TRACK — fork react-carplay and build from source (see Section 7b):**
 
@@ -781,14 +793,18 @@ Arriving next session: the **Carlinkit dongle** and the **M.2 NVMe SSD**.
    - If it's still on an old Electron, bump the Electron devDependency to a current
      version with Pi GPU support and rebuild.
 
-1. **Video-decode test (with the dongle).** Whichever app path, plug in the dongle,
+1. **Video-decode test (with the dongle).** ⏳ PARTLY DONE 2026-08-24 (§18) — live CarPlay
+   runs on **Path A** (Electron, `--disable-gpu`) at poor framerate (software compositing +
+   decode, by design); a `chrome://gpu` reading awaits a Path B boot (no address bar under
+   the kiosk Electron). Whichever app path, plug in the dongle,
    connect the phone by cable, watch live CarPlay, and check `chrome://gpu` (or the
    Electron equivalent) for **Video Decode**: hardware (V4L2) or software. If software,
    try a V4L2 decode feature flag on the launch line. This is the last piece of the GPU
    story. (Path B / `carplay-web-app` in system Chromium remains the proven fallback.)
-2. **Re-image to NVMe.** Clone the working microSD to the NVMe (`rpi-clone`), then set
-   the boot order (`rpi-eeprom-config`) to prefer the NVMe. Keep the microSD as a
-   backup until the NVMe boot is proven over several days.
+2. **Re-image to NVMe.** ✅ DONE 2026-08-24 (§18) — done as a **fresh Pi OS Lite reinstall
+   onto the NVMe** rather than an `rpi-clone`; boot order set to the NVMe and the microSD
+   removed. (Original plan kept for reference: clone the working microSD to the NVMe with
+   `rpi-clone`, set `rpi-eeprom-config` to prefer the NVMe, keep the microSD as a backup.)
    - Confirm the NVMe fits the TOFU: 2242 size, B-M key. (M.2 Key M adapter is on hand.)
    - A fresh NVMe install is also the right moment to test `provision.sh` end-to-end.
 3. **Finalize the shipped service** for whichever app path wins (Section 9.1 / 11.7):
@@ -846,8 +862,541 @@ sudo reboot
 
 ---
 
-*Last updated: 2026-08-23. Status: Option 2 (system Chromium + carplay-web-app) validated
-— GPU compositing hardware-accelerated, web app reaches ready state on the Pi.
-Path A (Electron, software render) remains a working fallback. Open: video decode
-(needs dongle). Power-safety design set (graceful shutdown + OverlayFS, UPS dropped).
-carplay.service ready in 4.465s (microSD). Dongle + NVMe arriving next session.*
+## 17. 2026-08-23 — Electron-33 fork built from source + GPU retest on the CM4
+
+Forked react-carplay (CLedebur/react-carplay-s660), bumped Electron 27→33, and built it
+**from source on the CM4** (the §15 primary track). Then retested GPU under `cage`.
+
+**Build-from-source gotchas (Trixie / Node 20 / Python 3.13):**
+- The `github:` git-dependencies (`node-carplay`, `pcm-ringbuf-player`) fail their `tsc`
+  `prepare` build on modern TypeScript (5.7 typed-array generics — the §11.3 class of
+  bug, for real). **Fix: switched both to the prebuilt npm releases** —
+  `node-carplay@^4.1.0` (same repo, ≥ the main branch's 4.0.0) and
+  `pcm-ringbuf-player@^0.1.0` (gozmanyoni's canonical package, which rhys's was forked
+  from). *This is committed, and supersedes §7b's "track main via github" choice: npm
+  4.1.0 is newer than main's 4.0.0, so no regression, and the build stops depending on a
+  fragile source build.*
+- Native modules need node-gyp ≥10 (Python 3.13 removed `distutils`; the ancient bundled
+  `node-gyp@9.4.1` dies with `No module named 'distutils'`). node-gyp 13 needs Node 22;
+  **node-gyp 11 is the match for Node 20** (`overrides: {"node-gyp":"^11"}`).
+- `electron-builder install-app-deps` / `@electron/rebuild` **HANGS** on this Pi
+  (deadlocks in its own orchestration — node-gyp itself is fine). Workaround: rebuild each
+  native module directly: `cd node_modules/<m> && node-gyp rebuild --runtime=electron
+  --target=33.4.11 --arch=arm64 --dist-url=https://www.electronjs.org/headers`
+  (`usb` is N-API and needs no rebuild).
+- Bug: `src/main/index.ts` calls `systemPreferences.askForMediaAccess` unconditionally —
+  it's a macOS-only API and throws an UnhandledPromiseRejection on Linux. Needs a
+  `process.platform === 'darwin'` guard.
+
+**GPU retest result — the version bump does NOT help.** The built app under `cage` throws
+**16× the same `dma_buf` scanout failure** as Electron 27 (`gbm_wrapper.cc: Failed to
+export buffer to dma_buf` / `Failed to get fd for plane`). No GPU-process crash, no
+SwiftShader — but per-frame `dma_buf` fallback (the "renders, poor framerate" state).
+Also tried `--ozone-platform=drm` (direct-KMS, no cage, to skip the compositor handoff) →
+`FATAL: Invalid ozone platform: drm`: stock Electron ships only x11/wayland/headless
+Ozone backends (`drm` needs `ozone_platform_drm=true` at build time).
+
+**Conclusion (confirms §8.5, now for a modern Electron too):** stock Electron cannot
+cleanly GPU-composite on the CM4 at **any** version — the missing pieces (GBM scanout
+patch, `ozone_platform_drm`, V4L2 decode) live only in a **custom build** or in **system
+Chromium / Path B**. A bare Electron bump gives react-carplay's features on a modern stack
+but the same software-ish compositing as before.
+
+**Committed for now:** the git-deps→npm switch + this section. **Deferred** (pending an
+architecture decision — a move to Path B would run react-carplay's *renderer* in system
+Chromium behind a headless Node backend, which retires the Electron shell and its native-
+ABI machinery): the node-gyp override, the direct-rebuild script, and the
+`askForMediaAccess` guard.
+
+---
+
+## 18. 2026-08-24 — NVMe SSD in service; first live CarPlay on the CM4
+
+**Storage.** The M.2 NVMe SSD is installed on the TOFU. Raspberry Pi OS Lite was
+reinstalled **fresh onto the NVMe**; the build now boots from NVMe and the microSD has
+been removed. The system is stable and in normal working order. (This diverges from the
+§15.2 `rpi-clone` plan — a clean reinstall instead — which also sets up the first real
+end-to-end `provision.sh` run, still to be done with the reworked script.)
+
+**First live CarPlay — on Path A (Electron).** With the Carlinkit dongle + phone (wired),
+CarPlay comes up and renders on the dash — the first full end-to-end run of the stack. The
+running app is **Path A**: the Electron AppImage launched with `--disable-gpu`, so **both
+compositing and H.264 decode are in software by design**. **Framerate is poor**, which is
+the EXPECTED Path A trade (§8.5) — the stable "software everything" state, *not* the
+per-frame `dma_buf` fallback of §17 (the `--disable-gpu` flag exists precisely to avoid
+those GPU errors) and *not* the Path B GPU-composite path. Hardware (V4L2) decode is still
+unwired — that remains THE open item.
+
+**`provision.sh` reworked this session** (same PR; not yet run against the fresh NVMe
+install): a single script selected by `TARGET_PATH` (a = Electron/software, b = system
+Chromium/GPU), common phases run once, `node-CarPlay` pinned to a fixed ref, a hardened
+AppImage download, and an `ERR` trap. See the script header.
+
+**Still open (focus unchanged):**
+- Decode-mode measurement is **moot on Path A** (GPU is disabled, so it is software by
+  construction), and `chrome://gpu` is not reachable under the kiosk Electron (no address
+  bar). The meaningful readout comes when Path B is tried — `TARGET_PATH="b"` boots system
+  Chromium, where `chrome://gpu` → Video Decode and GPU compositing are both visible.
+- The HW-decode route (a V4L2 decode feature flag on the launch line, or the
+  custom-patched Electron of §8.5) is what turns "renders, poor framerate" into smooth video.
+- Then: finalize the shipped service (§11.7); re-test thermals in the enclosure; enable
+  OverlayFS read-only root LAST (§12 / §14).
+
+---
+
+## 19. 2026-08-24 — Stable/dev channel toggle: `carplay.service` + `carplay-dev-chromium.service`
+
+Realises the §14 dual-environment idea and the §11.7 "Path B service" TODO **without ever
+clobbering the working Electron install.** `provision.sh` now provisions two independent
+channels; both can coexist and you toggle at runtime:
+
+- **`carplay.service`** — Path A, Electron `--disable-gpu` (software). ENABLED, autostarts.
+  The stable channel; unchanged.
+- **`carplay-dev-chromium.service`** — Path B, system Chromium + carplay-web-app (GPU
+  compositing). Installed **DISABLED** — start it by hand to experiment. A launch wrapper
+  (`~/carplay-dev/run-chromium-kiosk.sh`) serves the web app (`npm start`, §11.4), waits for
+  `localhost:3000`, then execs `cage -- chromium … --kiosk`.
+- **`carplay-dev-electron.service`** — reserved name for a future custom-patched-Electron
+  channel (§8.5), if that route is taken. Not built yet.
+
+**Mutual exclusion.** Only one may own tty1 at a time. The dev unit declares
+`Conflicts=carplay.service` (systemd `Conflicts=` is symmetric), so starting either stops
+the other. `getty@tty1` stays disabled — SSH in for a shell.
+
+**Toggling — enable ONE + reboot.** The live `systemctl start` hot-switch is **CONFIRMED
+BROKEN** on the CM4 (the cage→cage handoff drops HDMI; screen blank until reboot — see §20):
+```bash
+# -> dev Chromium/GPU:
+sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chromium.service && sudo reboot
+# -> stable Electron:
+sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot
+```
+
+**`provision.sh` shape change.** The one-shot `TARGET_PATH="a|b"` selector is replaced by two
+independent flags — `INSTALL_STABLE_A` and `INSTALL_DEV_CHROMIUM` (yes/no) — because a single
+selector cannot express "both present, toggle between them." Common phases still run once. To
+add the dev channel to the existing NVMe box **without touching the stable install**, set
+`INSTALL_STABLE_A=no` + `INSTALL_DEV_CHROMIUM=yes`. Pin fix: node-CarPlay has **no git tags**,
+so `NODE_CARPLAY_REF` now targets the commit SHA `670f19e` (= package.json 4.3.0, master HEAD
+2025-06-08) — the earlier `"v4.3.0"` was only the package version and was not checkout-able.
+
+**Verified on hardware 2026-08-24 (§20)** — provisioned and booted the dev channel on the CM4;
+`cage` + system Chromium come up and load the web app. The live hot-switch does NOT work
+(§20); switch via enable+reboot as above.
+
+**Expectations (important).** Path B fixes *compositing* (GPU), not *decode* — the CarPlay
+H.264 stream stays software-decoded until the V4L2 / custom-Electron work (§8.5). So the dev
+channel should smooth the UI and give a real `chrome://gpu` readout, but may not by itself fix
+the CarPlay video framerate.
+
+---
+
+## 20. 2026-08-24 — Dev Chromium channel VERIFIED on hardware; live hot-switch is not viable
+
+Provisioned the dev channel on the CM4 (`INSTALL_STABLE_A=no INSTALL_DEV_CHROMIUM=yes`, over
+SSH — note the Pi's sudo needs a password, so the run is done by hand and the log read back).
+Result: **the Path B dev channel works.** After enabling `carplay-dev-chromium.service` and
+rebooting, `cage` + system Chromium come up and load the web app. **Performance is still
+limited** — GPU compositing is active but H.264 decode stays software (exactly the §19
+expectation); smoothing the CarPlay video is deferred to the V4L2 / custom-Electron work.
+
+**Live hot-switch is BROKEN — use enable+reboot.** Starting the dev service while the stable
+Electron kiosk was up (`systemctl start carplay-dev-chromium.service`) left a blank screen: the
+service and Chromium ran fine (`Result=success`, web server 200, `cage`+`chromium` up), but the
+**HDMI output went `disconnected`**. The journal showed the outgoing cage die with `failed to
+read Wayland events: Broken pipe` at the switch, then `HDMI: Unknown ELD version 0`. The
+cage→cage / DRM handoff does not re-modeset the display. The reliable switch is enable-one +
+reboot (clean modeset), now the only documented method (§19); `Conflicts=` is retained purely
+as a safety net. (WebUSB still needs a click to authorise the dongle — a USB keyboard/mouse on
+the Pi is enough.)
+
+**Deploy finding — the on-disk stable unit is stale.** The `carplay.service` currently on the
+NVMe predates this fork's fixes: its first line is corrupted (`4[Unit]`, so the entire `[Unit]`
+section — `After=`/`Wants=seatd`, `Description=` — is silently ignored), and its `ExecStart`
+lacks `--disable-gpu` (so stable Electron does GPU work and throws the §17 `dma_buf` errors at
+boot — the poor framerate seen in §18). `provision.sh` emits the correct unit; regenerate it
+with `INSTALL_STABLE_A=yes` to fix both. **TODO on the box.**
+
+---
+
+## 21. 2026-08-24 — Dev-channel perf fix: DongleConfig was requesting bench-monitor resolution
+
+**Root cause found.** `carplay-web-app`'s `App.tsx` builds its `DongleConfig` — the
+resolution + framerate it asks the **dongle** to encode, which the CM4 then has to
+software-decode (§17) — from `window.innerWidth` / `window.innerHeight`, at `fps: 60`. That
+is the *attached display's* size, not the S660's. The bench monitor used for testing
+negotiates up to **3840x2160** (§20), so the dev channel was silently asking for, and
+software-decoding, **5-10x more pixels/sec** than the car's real 800x480 screen will ever
+need. This — not just "decode is software" — was the dominant cause of the poor framerate
+in §20's first test.
+
+**Fix.** Hardcoded the `DongleConfig` to the S660's real screen: `width: 800, height: 480,
+fps: 30` (30fps is standard for a dash and halves the decode load again on top of the
+resolution cut). The `videoContainer` div's CSS box is resized to the same fixed 800x480
+(centered) **in the same edit** — `useCarplayTouch` normalizes touch coordinates by dividing
+the container's rendered pixel size by these same `width`/`height` constants, so the two
+must change together or touch mapping breaks. In the car this whole patch is a no-op: the
+kiosk window IS 800x480, so `innerWidth`/`innerHeight` already equal these values — it only
+matters on an oversized bench display.
+
+**Confirmed on hardware 2026-08-24:** visibly smoother at 800x480. 30fps "makes a lot of
+sense because of the screen itself" (the user's words) — not a compromise, a match to what
+the target hardware actually needs. Touch alignment was not meaningfully verifiable on this
+bench rig (mouse pointer on a non-touch monitor, no ground truth to compare against) —
+deferred to the real 800x480 touchscreen.
+
+**Persisted into `provision.sh`, not a fork.** `node-CarPlay` is upstream, pinned by exact
+commit SHA (§19) — no fork exists for it (unlike `react-carplay`, §7b/§17). Forking the whole
+repo for a 3-block patch was judged disproportionate, so PHASE 3B applies the fix as an
+**idempotent, assertion-guarded source patch** immediately after `npm install --ignore-scripts`
+(a `grep` marker skips already-patched sources; each replacement asserts exactly one match, so
+if `node-CarPlay` is ever re-pinned to a different SHA where this code has changed, the script
+fails loudly via the `ERR` trap instead of silently no-op'ing or corrupting the file).
+**Verified reproducible:** ran the exact embedded patch logic against a scratch copy of the
+pinned pre-patch source and diffed the result against the tested-on-hardware live file — byte
+identical.
+
+**Still open, unaffected by this fix:** hardware video decode (V4L2 / custom Electron, §17)
+remains the way to smooth CarPlay video further — this patch only removes a self-inflicted
+bench-monitor resolution tax, it does not add hardware decode.
+
+## 22. 2026-09-05 — Boot-time tuning for Path B (kiosk up in ~5.7 s instead of ~14.5 s)
+
+Goal: get `carplay-dev-chromium.service` (cage + system Chromium) on screen as early as
+possible after ACC-on, with **no network daemon anywhere on the boot path** (Wi-Fi is
+never guaranteed in the car). All work was done on the CM4 over SSH; every original file
+is backed up on the Pi in `/root/boot-tuning-backup-2026-09-05/`. The resulting files are
+versioned in **`hardware/path-b/`** (unit, kiosk script, static server, drop-ins).
+
+### 22.1 Where the time went (single-boot profile, times from kernel start)
+
+| Milestone | Before | After |
+|---|---|---|
+| Kernel done, `/init` runs | 2.82 s | 1.03 s |
+| initramfs | 1.1 s | none |
+| systemd queues first job | 5.04 s | 2.08 s |
+| `sysinit.target` | 7.31 s | 2.50 s |
+| kiosk service started | 7.44 s | 2.53 s |
+| cage launched (kiosk script done) | 11.20 s | 3.47 s |
+| Chromium browser process alive | ~14.5 s | ~5.7 s |
+| Web app claims + resets the Carlinkit dongle | 18.1 s | 11.5 s |
+| Dongle re-enumerated, CarPlay possible | 21.3 s | ~14.7 s (est.) |
+| `systemd-analyze` total | 4.09 + 5.95 = 10.05 s | 1.09 + 1.72 = 2.81 s |
+| SSH reachable (Wi-Fi) | ~10 s | ~30 s — **deliberate**, see 22.3 |
+
+Firmware time (before the kernel) is not visible from Linux and was not measured.
+
+**The dongle sets the floor.** The Carlinkit enumerates ~11.3 s after kernel start
+regardless of what the Pi does (it boots its own firmware), and `node-carplay` USB-resets
+it on open (+3 s). Before, the web app was not ready until 18 s, so the reset happened
+late. Now the app is waiting when the dongle appears and resets it at 11.5 s. Getting
+Chromium up any earlier than ~11 s buys nothing more for CarPlay itself.
+
+### 22.2 What changed on the Pi (and why)
+
+Critical path:
+- **Kiosk script polled once a second** for the local static server; Node is up in
+  ~0.2 s, so the loop wasted most of a second plus cold-exec time. Now polls every 100 ms
+  (`hardware/path-b/run-chromium-kiosk.sh`).
+- **initramfs dropped** (`auto_initramfs=0` in config.txt). The RPi kernel has ext4,
+  nvme, pcie-brcmstb and xhci built in (checked `modules.builtin`), so the 11.8 MB
+  initramfs only added load + unpack time. Root fsck now runs via `systemd-fsck-root`.
+- **Console quieted.** cmdline.txt had `console=serial0,115200` and no `quiet`; ~21 KB of
+  kernel text went out a 115200-baud UART before systemd even started (~1.9 s of
+  serial time, largely synchronous). Now `console=tty1 quiet loglevel=3
+  vt.global_cursor_default=0`. Kernel phase went 2.82 s → 1.03 s (this plus the
+  initramfs removal account for it; the 1.3 s "gap" seen before was the serial console).
+  To debug over serial again, put `console=serial0,115200` back temporarily.
+- **`systemd-binfmt` + `binfmt_misc` mount masked** — they sat on the kiosk's critical
+  chain and only registered python3.13.
+- **`/boot/firmware` is an automount** (`noauto,x-systemd.automount,nofail`, fsck pass 0)
+  so `local-fs.target` no longer waits for udev to enumerate the vfat partition and fsck
+  it. It mounts on first access (apt, `rpi-eeprom-update`, editing config.txt all work).
+- **Swap removed** (`/etc/rpi/swap.conf.d/90-boot-tuning.conf` → `Mechanism=none`):
+  8 GB RAM, a 2 GB loop-device swap file and a 2 GB zram both pointless for a kiosk.
+- **`keyboard-setup`, `console-setup` disabled**; **cloud-init purged** (its generator and
+  units still loaded every boot despite `cloud-init.disabled`). `apt autoremove` then
+  dropped ~30 dependency packages (gdisk, netcat-openbsd, eatmydata, python babel…).
+- **GPU modules loaded from `/etc/modules-load.d/carplay-gpu.conf`** (`vc4`, `v3d`).
+  With the boot this fast, cage started before udev had loaded vc4, failed with
+  `Found 0 GPUs` and — worse — **hung instead of exiting**, so `Restart=always` never
+  fired. modules-load runs inside sysinit, before the kiosk. The script also waits for
+  `/sys/class/drm/card*-HDMI-A-1` as a belt-and-braces guard.
+
+Contention (not on the chain, but the four cores were saturated during early boot):
+- **NetworkManager + wpa_supplicant no longer start at boot.** `network-late.timer`
+  starts NetworkManager 20 s after boot (Chromium is long up by then); a drop-in makes NM
+  `Wants=wpa_supplicant.service`. The D-Bus alias for wpa_supplicant and the
+  NetworkManager-dispatcher alias were re-created (disabling NM removes them). Nothing on
+  the boot path can wait for Wi-Fi.
+- **bluetooth.service + user `mpris-proxy` disabled** — the Carlinkit does its own BT.
+- **`rpi-eeprom-update.service` disabled.** It ran `rpi-eeprom-update -s -a` with
+  `RPI_EEPROM_IMMEDIATE_UPDATE=1`, i.e. it could flash the bootloader at boot **in the
+  car**; a power cut mid-flash means SD-card recovery. Update the EEPROM by hand on the
+  bench.
+- **Persistent timers** (`man-db`, `dpkg-db-backup`, `e2scrub_all`) disabled; `logrotate`
+  and `fstrim` kept but `Persistent=false`, so a car that sat overnight no longer runs
+  all of them in the first minute. `sshswitch`, `e2scrub_reap` disabled (the former also
+  touched `/boot/firmware` every boot).
+- **`upower.service` masked** (Chromium D-Bus-activated it); `NO_AT_BRIDGE=1` set.
+- **Kiosk unit runs without `PAMName=login`** — no logind session, no `user@1000`, no
+  session D-Bus. cage talks to seatd directly; `RuntimeDirectory=carplay-kiosk` provides
+  `XDG_RUNTIME_DIR`. Chromium logs a burst of harmless `Failed to connect to the bus`
+  errors at start (no session bus) — expected. **`carplay.service` (Path A) was left
+  untouched** and still uses PAM.
+
+Display:
+- The car panel (EDID: "Car Audio", mfr FTL) advertises **720x480@59.94 as its preferred
+  timing** and **CTA VIC 18 = 720x576@50 16:9** only as an alternative. `hdmi_group/hdmi_mode/
+  hdmi_force_hotplug` are **ignored** under `vc4-kms-v3d` with `disable_fw_kms_setup=1`.
+  `video=HDMI-A-1:720x576@50D` in cmdline.txt pins the **console** (fbcon) to 576p50 and
+  forces the connector on — but **cage/wlroots ignores it** and takes the connector's
+  EDID-preferred mode (measured 2026-09-06 with `grim`: cage was running the bench monitor at
+  3840x2160 while `fb0` said 720x576; in the car it would have picked 720x480). Fix: an
+  **EDID override** — the panel's own 256-byte EDID with the 576p50 DTD moved into the
+  preferred slot (`hardware/path-b/s660-edid.bin`, checksum recomputed, built from
+  `references/edid-hdmi.txt`), installed as `/lib/firmware/edid/s660.bin` and selected with
+  `drm.edid_firmware=HDMI-A-1:edid/s660.bin`. Now every consumer, bench or car, sees one
+  preferred mode: confirmed `mode: "720x576": 50` in the DRM state with cage running. VIC 17
+  (4:3) has identical timings; this class of panel stretches to its glass anyway. If the panel
+  is ever replaced, regenerate the override from the new EDID.
+- `camera_auto_detect=0`, `display_auto_detect=0` (no CSI camera, no DSI panel).
+
+### 22.3 Deliberately NOT done / gotchas
+- **SSH now comes up ~30 s after power-on**, because NetworkManager waits 20 s. Do not
+  "fix" this. If the Pi ever seems unreachable, wait a minute first.
+- `netplan.io` cannot be purged: Raspberry Pi's `network-manager` package depends on it.
+- The cpufreq governor is forced to `ondemand` by
+  `/usr/lib/udev/rules.d/60-ondemand-governor.rules`; a kernel-parameter governor would
+  be overridden, and `performance` at idle costs heat in a dashboard. Left alone.
+- The Chromium profile (180 MB) was **not** wiped: there is no policy file granting the
+  WebUSB device, so the grant lives in the profile.
+- `BOOT_UART=0` in the EEPROM config would save a few hundred ms of bootloader time but
+  requires an EEPROM flash (`rpi-eeprom-config --apply`) — do it on the bench, on purpose.
+- A one-off `initcall_debug` boot showed the two remaining kernel hogs:
+  `init_kprobe_trace` (0.46 s, kernel-config, not tunable) and `bcmgenet_driver_init`
+  (0.19 s — the Ethernet MAC). `initcall_blacklist=bcmgenet_driver_init` would save it
+  at the cost of the TOFU's RJ45 port. Not applied.
+- The `hdmi_enable_4kp60` warning from earlier boots was the 4K bench monitor; gone now.
+
+### 22.4 Right-hand drive + panel resolution in the web app (2026-09-05, same day)
+CarPlay supports RHD natively: the head unit sends a hand-drive value to the dongle at
+init and iOS moves the sidebar to the right. node-carplay exposes it as
+`DongleConfig.hand` (`HandDriveType.LHD = 0 | RHD = 1`, sent as `/tmp/hand_drive_mode`).
+`carplay-web-app/src/App.tsx` on the Pi now sets `hand: HandDriveType.RHD`, and its
+hardcoded canvas went **800x480 → 720x576** — the 800x480 "native S660 screen" was a
+pre-EDID guess and would have been cropped on the pinned 720x576 mode. Both are applied by the idempotent embedded source patch in provision.sh PHASE 3B (the §21
+mechanism, updated); **this supersedes §21's 800x480** — that figure was a pre-EDID guess.
+The setting is read at dongle init, so a reboot/service restart plus one phone
+reconnect is needed for it to show. **Not yet confirmed with a phone.**
+
+### 22.5 Boot logo and a seamless start (2026-09-06)
+Goal: S660 logo on screen while the unit boots, black page with the same logo as the web
+app's background, no visible "Plug-In Carplay Dongle and Press" button, no flashes.
+
+**What the screen actually does was measured with `grim` inside the cage session** (100 ms
+captures across a kiosk restart; `sudo -u s660 XDG_RUNTIME_DIR=/run/carplay-kiosk
+WAYLAND_DISPLAY=wayland-0 grim out.png`). Findings:
+- Chromium presents a **pure white frame (~0.3 s)** when its window maps, then a black frame,
+  then the page. On a black boot sequence that white flash is the single most visible defect.
+  Fix: `--default-background-color=000000` (present in Debian's Chromium 151 — checked with
+  `strings`), plus the logo inlined as a **data: URI** in `public/index.html` so the first page
+  paint already contains it (a separate image request painted one black frame first).
+  Result: black → logo, nothing in between (3.65 s after cage starts, ≈ 7 s after kernel start).
+- `html, body { overflow: hidden }`: the 720x576 CarPlay canvas produced scrollbars otherwise.
+- **A splash before/under cage cannot be seamless with this stack, so none was added.** Two
+  variants were built and measured, both rejected: (a) a framebuffer logo when `/dev/fb0`
+  appears — the kiosk unit's `TTYVTDisallocate` and cage's first (black) frame wipe it within
+  ~0.1 s of it appearing (fb0 registers at ~3.45 s, cage starts at ~3.5 s); (b) `swayimg`
+  showing the logo inside cage from 0.8 s, with Chromium started alongside — cage stacks the
+  newest toplevel on top, so Chromium's blank frame *covers* the logo when it maps (logo →
+  white/black blink → logo), and cage 0.2 has no layer-shell, so the splash cannot be kept
+  above Chromium. The logo therefore appears when Chromium's page does, ~2.5 s later than a
+  splash could show it, in exchange for zero flicker.
+- Web app: the WebUSB button is now an invisible full-screen tap target (`opacity: 0`, kept
+  because the first-time WebUSB authorisation needs a user gesture — tap anywhere on the logo);
+  the 96 px grey spinner is a 28 px dim one at the bottom edge while waiting for the phone.
+- All of it is in provision.sh PHASE 3B (App.tsx + index.html patches) and the kiosk script.
+  `grim` is left installed as a diagnostic; `swayimg` was removed again.
+
+### 22.6 In-car result: 576p50 looked stretched → 720x480@59.94 16:9 (2026-09-06)
+First test on the real panel: the picture was **horizontally stretched** at 720x576@50. The
+glass is 800x480 (5:3) behind a TV-style scaler board that only advertises 720x480 and 720x576
+(range limits: 49–61 Hz, 31–32 kHz, ≤30 MHz — no room for a real 800x480 timing, and the raw
+EDID re-read over the DDC bus in the car confirmed nothing hidden). 576 lines squeezed onto 480
+rows is a 1.2x vertical squash, which reads as a horizontal stretch. Switched to the panel's
+own preferred **720x480@59.94** (1:1 vertically; 720→800 is an 11% horizontal stretch, the
+usual anamorphic 16:9 SD look) and asked for the **16:9** flavour. Getting the kernel to tag
+the mode 16:9 took two tries: a detailed-timing (DTD) mode carries no aspect, and the kernel
+merges the CEA 16:9 twin *into* it, so with any 720x480 DTD present the AVI infoframe said 4:3
+(VIC 2). The override therefore has **no detailed timings at all** (both DTD slots are dummy
+descriptors) and a CTA video data block of just **VIC 3 (720x480 16:9, native) + VIC 1 (VGA)**.
+Nothing is flagged preferred; wlroots then takes the first mode in the kernel's sorted list,
+which is 720x480 — verified `mode: "720x480": 60 27027 ...` in the DRM state with cage up, and
+the transmitted AVI infoframe decoded from `/sys/kernel/debug/dri/1/HDMI-A-1/infoframes/avi`
+= `82 02 0d 2e 12 28 04 03 …` → PB2 M=2 (**16:9**), PB4 **VIC 3**. (The debugfs `mode:` line's
+flags field does NOT show aspect — it lives in a separate `picture_aspect_ratio`; check the
+infoframe, not the flags.) App canvas 720x480, cmdline `video=HDMI-A-1:720x480@60D` (console
+only). If CarPlay's UI still looks wide,
+the remaining 11% is the panel's pixel aspect and only a true 800x480 timing would remove it —
+possible to try as a custom DTD (~29 MHz CVT-RB, 30 kHz H — just outside the advertised range),
+at the risk of no picture.
+
+**Pointer auto-hide:** no cursor over CarPlay unless a mouse actually moves; it hides again 2 s
+after the last movement (small inline script in `public/index.html`; the invisible WebUSB
+button inherits the page cursor). cage itself has no cursor-hiding option.
+
+### 22.7 The cursor was Chromium's, not the page's — the Pi's HDMI-CEC receivers pose as pointers
+The §22.6 script never had a chance. On the real unit a static arrow sat in the middle of the
+screen (photo-confirmed on the glass) and it turned out to be **Chromium's default cursor**, set
+through a genuine `wl_pointer`. The unit has no mouse and no touchscreen HID — but the Pi's
+`vc4-hdmi` driver registers an HDMI-CEC remote-control receiver (`rc0`/`rc1`, one per HDMI
+port, created by the driver whether or not the panel speaks CEC — it doesn't) as an input
+device advertising `REL_X`/`REL_Y` and `INPUT_PROP_POINTING_STICK`. udev tags them
+`ID_INPUT_POINTINGSTICK=1` (`udevadm info -q property -n /dev/input/eventN`), libinput hands
+cage two "pointers", the Wayland seat gains pointer capability, Chromium binds a `wl_pointer`,
+gets pointer focus and sets its arrow. Nothing can ever move that pointer, so Chromium never
+re-evaluates the cursor against the page's `cursor: none` — and cage's own cursor theme is
+irrelevant, because the image on screen is the client's.
+
+Fix: `hardware/path-b/71-s660-libinput-ignore-cec.rules` sets `LIBINPUT_IGNORE_DEVICE=1` for
+every `vc4-hdmi-*` input device (PHASE 2 of provision.sh; these ARE udev-managed, so the rule
+applies at boot). No pointer → no `wl_pointer` → no cursor; cage draws none of its own without
+a pointer device, so nothing is left to hide. Consequence: the unit now has **zero** input
+devices, and wlroots' libinput backend refuses to start that way (`libinput initialization
+failed, no input devices` → `Unable to start the wlroots backend` → black screen, restart
+loop), so the wrapper exports `WLR_LIBINPUT_NO_DEVICES=1`. The Path A unit gets the same
+`Environment=` line in provision.sh (not exercised on the CM4 — Path A is not the running
+channel).
+
+Also set, `WLR_NO_HARDWARE_CURSORS=1` — not part of the fix, but what makes verification
+honest: a hardware cursor lives on the vc4 cursor plane, which `grim` cannot see, so a
+screenshot shows a clean frame while an arrow sits on the glass — exactly how a first attempt
+at this bug was "verified" and wrong. With software cursors, whatever is on the glass is in the
+frame. To check for real: `grim -c` (forces any cursor wlroots believes is enabled into the
+capture) plus `sudo grep -A6 '^plane\[' /sys/kernel/debug/dri/1/state` — only the primary
+plane (`plane-3`) may have a `crtc=`; the cursor plane (`plane-57`) must stay `fb=0`.
+**Confirmed on the glass 2026-09-06** after a cold reboot — the screenshot evidence above is what
+the panel showed too.
+
+Detours, so nobody repeats them: (1) a virtual `uinput` mouse "nudge" to hand Chromium one
+real motion event — the theory (Chromium only re-evaluates the cursor on real input) was right,
+but the nudge merely moved the cursor from software rendering onto the hardware plane, where
+the screenshot lost it; (2) a fully transparent Xcursor theme for cage — it loaded (proved with
+`inotifywait`; a magenta variant proved it was not what was on screen) but cage's theme was
+never the source. The §22.6 index.html script stays: harmless, and correct if a real mouse is
+ever attached.
+
+### 22.8 Aspect ratio root cause: the glass is 1.875:1, the output is 1.5:1 (2026-09-06, verified in the car)
+Second in-car look at 720x480 16:9: UI elements still **~20-25 % too wide** (Photoshop overlay
+of the correct UI against a photo). Measured the panel: **glass 135 x 72 mm = 1.875:1**
+(bezel 170 x 85). The picture fills the glass edge to edge. So the scaler board simply stretches
+the 720x480 (1.5:1) frame across a 1.875:1 glass — a 25 % horizontal stretch — and no HDMI
+aspect signalling changes that (§22.6 proved the AVI infoframe is ignored). The panel offers
+no wider timing (raw EDID: 720x480/720x576 only, 31-32 kHz, ≤30 MHz).
+
+**Fix (fix A, applied):** render wide and pre-squeeze. The web app displays the decoded frame
+squeezed into the 720x480 output (canvas CSS 100 % x 100 %, GPU resample); the panel's stretch
+then undoes the squeeze. The ideal width is the glass aspect, 480 x 1.875 = 900 → 896 — and it
+looked right — **but Waze clips its speed-limit badge above 16:9**: at 896 and 864 the red
+"50" moved from the top-right of the speedometer to the top-left, half off the frame (in the
+signal, not on the glass — checked with `grim`); at 848 and 800 it is back on the right.
+480 x 16/9 = 853, so Waze switches to an ultrawide layout past 16:9. **Chosen: 848x480**
+(1.767:1, multiple of 16): residual stretch on the glass 1.875/1.767 = **6 %**, down from 25 %,
+and every app's UI stays inside the frame. Confirmed in the car: "much, much better". Code: `DISPLAY_WIDTH/HEIGHT`
+(720x480, container + touch normalisation — `useCarplayTouch` divides `offsetX/Y` by the
+constants it is given, so it must get the display size) vs `width/height` (896x480, dongle
+config). The boot logo is drawn 384x320 on the output for the same reason. Cost: +18 % pixels
+to decode, a 0.85x horizontal resample. All in provision.sh PHASE 3B and applied to the CM4.
+
+**Calibration page** `hardware/path-b/calib.html` → `/calib.html`: a white frame touching the
+edges plus circles pre-squeezed by 0.74 … 1.00, each labelled with the render width it implies
+(W = 720 / f). Show it with a drop-in on `carplay-dev-chromium.service`
+(`Environment=KIOSK_URL=http://localhost:3000/calib.html`) and pick the round one; 0.80 (W 900)
+is the ruler's ideal; the kiosk deliberately stops at 848 (f = 0.85) for Waze's sake.
+
+**Fix B (not chosen):** a custom 800x480 timing (~29 MHz CVT-RB, 30 kHz H) is outside the
+board's advertised range and would still be 1.875:1 glass vs a 1.667:1 frame — wrong aspect
+anyway. The glass is not 800x480-square; whatever its pixel count, only its physical aspect
+matters here.
+
+### 22.9 Rollback
+Originals of config.txt, cmdline.txt, fstab, the unit and the kiosk script are in
+`/root/boot-tuning-backup-2026-09-05/` on the Pi, alongside the baseline
+`systemd-analyze` output. `systemctl unmask` / `enable` reverses the unit changes;
+`apt install cloud-init` if it is ever wanted again (it is not).
+
+---
+
+## 23. 2026-09-12 — On-screen connection status/error UI, USB reset/reconnect fixes, and vendoring the app source
+
+**Error surfacing.** Path B's splash screen previously had zero visible failure indication —
+every dongle/USB/decode/render error went to `console.error` in a kiosk with no devtools, so a
+stuck unit gave no clue why. `carplay-web-app`'s `App.tsx` now renders a status/error line
+(white, bold, sized for the low-res 6" panel) driven by:
+- the dongle's own link-status `Command` codes (`scanningDevice`, `deviceFound`,
+  `deviceNotFound`, `connectDeviceFailed`, Bluetooth/Wi-Fi connect/pair/disconnect) —
+  previously received and silently discarded;
+- the driver's `'failure'` event, now carrying the actual error message instead of firing bare;
+- renderer-init and H.264 decode/render errors from the (previously unwatched) render Worker.
+
+**Real bugs found via the now-visible errors (all fixed):**
+1. `usbDevice.reset()` fails on this hardware (`"Unable to reset the device"` — the CM4's
+   onboard USB hub does not support a port reset for this dongle). It was wrongly treated as
+   fatal, aborting the whole connection sequence even though the dongle goes on to work fine.
+   Now caught on its own and reported as a non-fatal warning; the connection proceeds normally.
+2. The 30s reload-on-failure timer was never cancelled on a successful `'plugged'` — only on
+   `'requestBuffer'`/`'audio'`. Combined with (1) firing on every boot, this produced a hard
+   ~30s connect/reload loop: connects fine, then unconditionally reloads 30s after the earlier
+   (already-resolved) failure. Fixed: `'plugged'` now clears the retry timer too.
+3. The dongle's Wi-Fi handshake (`wifiConnect`, then `wifiPair` 15s later) was only ever sent
+   once, right after the initial USB claim. If the phone's Wi-Fi dropped and came back, nothing
+   re-triggered it — recovery required a physical USB unplug/replug of the dongle (impractical:
+   the CM4 lives in a hidden compartment). `CarplayWeb` now re-runs the same handshake every
+   time it sees `Unplugged`.
+
+Mic init failures (`getUserMedia` — this Pi has zero capture hardware, confirmed via
+`arecord -l`/`lsusb`) are deliberately left console-only: there is nothing actionable to show
+on screen until a mic is actually wired up (`micType: 'os'` stays the config; switch to
+`'box'` if the dongle itself ever gets a mic wired in).
+
+**Vendored the app source into this repo (one-stop-shop).** Path B's actual `carplay-web-app`
++ `node-carplay` source previously lived ONLY in an untracked, uncommitted clone on the Pi
+(`~/node-CarPlay`) — invisible to this repo and to anyone else building the S660 unit. It is
+now vendored at `hardware/path-b/node-CarPlay/` (MIT, modified from upstream
+`rhysmorgan134/node-CarPlay`; see that directory's `README.md`), with all of the above fixes
+plus the existing RHD/geometry/logo patches already applied in place.
+
+**`provision.sh` PHASE 3B simplified accordingly.** The old approach (§21) cloned upstream
+node-CarPlay fresh, pinned it to a commit SHA (`NODE_CARPLAY_REF`), and reconstructed the S660
+patches via an idempotent Python string-replace against that pristine clone — a reasonable
+call at the time, when the S660-specific delta was three small blocks across two files. That
+delta has since grown to span the `node-carplay` library itself (`DongleDriver.ts`,
+`CarplayWeb.ts`), not just `App.tsx`/`index.html`, and the reconstruction script had no
+knowledge of any of it — a fresh `provision.sh` run would have silently built an older,
+incomplete Path B. With the source now vendored, PHASE 3B just builds
+`hardware/path-b/node-CarPlay` directly: no separate clone, no SHA pin, no
+patch-reconstruction. There is only one copy of the code, so there is nothing left to drift.
+
+**On the Pi:** the standalone `~/node-CarPlay` clone that was actually running is superseded
+by `~/react-carplay-s660/hardware/path-b/node-CarPlay` — the deployed kiosk script and static
+server now point there (`hardware/path-b/run-chromium-kiosk.sh`, `serve-build.js`). The old
+`~/node-CarPlay` clone was left in place, with its own local commit as a safety-net snapshot
+of the pre-vendoring state, rather than deleted.
+
+---
+
+*Last updated: 2026-09-12. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
+(§22): kiosk service at 2.5 s, cage at 3.5 s, S660 logo page at ≈7 s after kernel start (26 s
+stopwatch from power-on to picture before the logo work), display forced to the car panel's
+720x480@59.94 via an EDID override (cage ignores `video=`; 576p50 looked stretched, §22.6), iOS
+rendering 848x480 squeezed into it to counter the 1.875:1 glass (§22.8), right-hand-drive layout requested
+from the dongle, black page + inline logo + black Chromium blank colour = no flashes. On-screen
+connection status/error line and USB reset/reconnect fixes landed (§23), and the app source is
+now vendored into this repo at `hardware/path-b/node-CarPlay/` — no more separate untracked
+clone on the Pi, and `provision.sh` builds it directly. No network daemon on the boot path —
+Wi-Fi/SSH start 20 s after boot by design. The Carlinkit dongle's own ~11 s boot is the floor
+for CarPlay availability. Path A (Electron, `--disable-gpu`) remains a fallback and still uses
+the PAM-based unit. Open: confirm RHD layout, logo geometry and touch calibration on the real
+panel; wireless pairing re-check with `bluetooth.service` disabled; hardware video decode (V4L2
+/ custom Electron); regenerate the stale on-disk `carplay.service` (§20).*
