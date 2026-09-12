@@ -59,9 +59,18 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
   The kernel is the stock packaged `kernel8.img`. An uncompressed-kernel optimisation with
   refresh hooks existed briefly and was **reverted** (BUILD_NOTES §26) after a hard power cut
   left the decompressed copy 0 bytes and the unit unbootable — do not reintroduce it.
-  Overlay FS is deliberately **disabled** (`overlayroot=disabled`, §26); enabling it via
-  raspi-config is what triggered that incident. Graphics component preloads and the concurrent
-  Node/cage launcher are documented in §24 and remain in place.
+  **Overlay FS is deliberately ENABLED** (`overlayroot=tmpfs`) — required, since this unit loses
+  power via the car's ignition on every drive. It needs `initramfs initramfs8 followkernel` in
+  `config.txt` to actually run (`auto_initramfs=0` above means the firmware won't load one on
+  its own) and was properly isolated-tested and validated against a real hard power cut
+  (BUILD_NOTES §29) after the incident above — that incident's root cause (the kernel image
+  mechanism) is gone, and this is a separate, since-fixed concern, not the same risk recurring.
+  `/boot/firmware` is confirmed still normally writable (its automount means it isn't mounted
+  yet when the overlay's boot-time hook runs) — no maintenance-mode toggle is needed. **Not yet
+  in `provision.sh`** (§29.3) — a fresh install from this repo today still comes up with overlay
+  disabled; carrying the §29.1 steps into the script is a reasonable next step. Graphics
+  component preloads and the concurrent Node/cage launcher are documented in §24 and remain in
+  place.
 - **Path C — SHELVED, not built.** A browser-free node-carplay + GStreamer design, written up
   and then set aside once §27.1 showed Path B already hardware-decodes. BUILD_NOTES §27 keeps
   the full analysis (including the real costs: input, audio mixing, overlay) if it's ever
