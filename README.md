@@ -128,10 +128,16 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 # Script Details
 
 **What the script does**, in short (see the script's own comments and
-`hardware/BUILD_NOTES.md` §4, §22, and §24 for the full reasoning):
+`hardware/BUILD_NOTES.md` §4, §22, §24, and §29 for the full reasoning):
 
-- Trims ~10s off boot by disabling cloud-init, unneeded timers/services, swap, and
-  the initramfs, and by quieting the kernel console.
+- Trims ~10s off boot by disabling cloud-init, unneeded timers/services, swap, and the
+  firmware's own initramfs auto-detection, and by quieting the kernel console.
+- Enables Overlay FS: the real root filesystem is mounted read-only underneath a writable
+  tmpfs layer, so a hard power cut — this car's normal shutdown path, via ignition, on every
+  drive — can't corrupt it. Needs an initramfs to actually run (that's what the auto-detection
+  above skips; this one is loaded explicitly instead), which is installed and built during
+  provisioning. `/boot/firmware` stays normally writable throughout — verified against a real
+  hard power cut (`BUILD_NOTES.md` §29).
 - Installs `cage` (Wayland kiosk compositor) + `seatd`, the udev rule that gives the
   Carlinkit dongle non-root USB/WebUSB access, and (Path B) a Chromium managed policy that
   pre-grants the dongle to the kiosk page — no on-screen authorisation, ever, even after a

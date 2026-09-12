@@ -211,6 +211,24 @@ for kv in disable_splash=1 boot_delay=0 auto_initramfs=0 camera_auto_detect=0 di
   fi
 done
 
+# Overlay FS (BUILD_NOTES §29): protects the real ext4 root from corruption on a hard power
+# cut -- this car's normal shutdown path, via ignition, on EVERY drive, not the rare case it
+# is for most Pi projects. overlayroot's initramfs-tools hook is what actually mounts the
+# overlay, and auto_initramfs=0 above means the firmware won't load one on its own -- so it's
+# installed, freshly regenerated for whatever kernel is running right now, and loaded
+# explicitly. Verified (§29.2) surviving a genuine hard power cut with zero fsck activity:
+# nothing had actually written to the real disk to corrupt. /boot/firmware stays writable
+# throughout (it's `noauto,x-systemd.automount` -- not yet mounted when the overlay's
+# boot-time hook runs, so it's never swept into the read-only overlay); no maintenance-mode
+# toggle is needed for kernel updates or config.txt/cmdline.txt changes.
+sudo apt install -y overlayroot
+sudo update-initramfs -u -k "$(uname -r)"
+if grep -q "^initramfs " /boot/firmware/config.txt; then
+  sudo sed -i "s|^initramfs .*|initramfs initramfs8 followkernel|" /boot/firmware/config.txt
+else
+  echo "initramfs initramfs8 followkernel" | sudo tee -a /boot/firmware/config.txt >/dev/null
+fi
+
 # Display mode. The car panel is an 800x480 glass behind a TV-style scaler whose EDID offers
 # only 720x480@59.94 (preferred) and 720x576@50; the bench 4K monitor prefers 3840x2160.
 # `video=` on the cmdline only pins the kernel CONSOLE — cage/wlroots picks the connector's
@@ -223,12 +241,12 @@ done
 # or car, every consumer sees the same mode. If the panel is ever replaced, regenerate it.
 sudo install -D -m 644 "${PB}/s660-edid.bin" /lib/firmware/edid/s660.bin
 
-# cmdline.txt (ONE line): drop the 115200-baud serial console (~2 s of synchronous kernel
-# output), quiet the kernel, pin the console mode ("D" forces the connector on without
-# waiting for hotplug) and point DRM at the EDID override above. For serial debugging,
-# temporarily put "console=serial0,115200" back.
+# cmdline.txt (ONE line): overlayroot=tmpfs (see above), drop the 115200-baud serial console
+# (~2 s of synchronous kernel output), quiet the kernel, pin the console mode ("D" forces the
+# connector on without waiting for hotplug) and point DRM at the EDID override above. For
+# serial debugging, temporarily put "console=serial0,115200" back.
 ROOT_PARTUUID=$(sed -nE 's/.*root=(PARTUUID=[^ ]+).*/\1/p' /boot/firmware/cmdline.txt)
-echo "console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x480@60D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
+echo "overlayroot=tmpfs console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x480@60D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
   | sudo tee /boot/firmware/cmdline.txt >/dev/null
 
 sudo systemctl daemon-reload

@@ -1995,13 +1995,16 @@ isolated test, done properly this time.
   firmware hand-off, so it can't show the initramfs's true added cost the way §24's power-cycle
   methodology did). If a rigorous number is ever wanted, repeat §24's protocol.
 
-### 29.3 Current live state (and what a fresh `provision.sh` run does NOT yet do)
+### 29.3 Carried into `provision.sh`
 
-The Pi is running with overlay enabled via the manual steps in 29.1 above — `provision.sh` was
-**not** updated as part of this test, so a fresh install from this repo today would still come
-up with overlay disabled. Carrying this into `provision.sh` (installing `overlayroot` if
-missing, regenerating/shipping the initramfs, and setting both file changes above) is a
-reasonable next step given this is now a validated, working configuration — not done here.
+The manual steps in 29.1 are now in PHASE 0 (COMMON, so every fresh install gets this
+regardless of which app path is chosen): `apt install -y overlayroot`,
+`update-initramfs -u -k "$(uname -r)"` against whatever kernel the fresh image is actually
+running, the same `initramfs initramfs8 followkernel` line added to `config.txt`'s settings
+block, and `overlayroot=tmpfs` prepended to the `cmdline.txt` line PHASE 0 already generates.
+This is only re-run/re-verified on a fresh install, not re-tested against another hard power
+cut — the live Pi's validation in 29.1/29.2 stands as the evidence this configuration works;
+a fresh box gets the identical file contents.
 
 ---
 
@@ -2017,7 +2020,8 @@ Linux uptime. Network startup is requested after 20 s, with timer coalescing add
 Display geometry remains §22.8; application and USB reconnect fixes remain §23. Overlay FS was
 re-enabled and properly validated the same night (§29) — initramfs regenerated and explicitly
 loaded, and it survived a genuine hard power cut with zero filesystem errors, which is the
-whole reason it's needed on a car computer. Not yet carried into `provision.sh` (§29.3).
+whole reason it's needed on a car computer, and carried into `provision.sh` (§29.3) so a fresh
+install gets the identical configuration.
 Trackpad wake/reconnection needs physical confirmation. §27.1 established by measurement that
 **Path B already decodes H.264 in
 hardware** (`/dev/video10` held by Chromium's GPU process while streaming) — the long-standing

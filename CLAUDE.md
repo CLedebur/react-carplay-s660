@@ -66,11 +66,11 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
   (BUILD_NOTES §29) after the incident above — that incident's root cause (the kernel image
   mechanism) is gone, and this is a separate, since-fixed concern, not the same risk recurring.
   `/boot/firmware` is confirmed still normally writable (its automount means it isn't mounted
-  yet when the overlay's boot-time hook runs) — no maintenance-mode toggle is needed. **Not yet
-  in `provision.sh`** (§29.3) — a fresh install from this repo today still comes up with overlay
-  disabled; carrying the §29.1 steps into the script is a reasonable next step. Graphics
-  component preloads and the concurrent Node/cage launcher are documented in §24 and remain in
-  place.
+  yet when the overlay's boot-time hook runs) — no maintenance-mode toggle is needed. In
+  `provision.sh` PHASE 0 (§29.3) — a fresh install from this repo gets the identical
+  `overlayroot`-install/initramfs-regen/config.txt/cmdline.txt steps that were validated live.
+  Graphics component preloads and the concurrent Node/cage launcher are documented in §24 and
+  remain in place.
 - **Path C — SHELVED, not built.** A browser-free node-carplay + GStreamer design, written up
   and then set aside once §27.1 showed Path B already hardware-decodes. BUILD_NOTES §27 keeps
   the full analysis (including the real costs: input, audio mixing, overlay) if it's ever
