@@ -35,11 +35,18 @@ Two paths exist (see BUILD_NOTES §8.5):
   and BUILD_NOTES §11 for the exact commands). On the Pi it's deployed by pulling this
   repo (`~/react-carplay-s660`) and pointing the kiosk at
   `~/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app`.
-  Boot is tuned (BUILD_NOTES §22): kiosk on screen ~5.7 s after kernel start, display
+  Boot is tuned (BUILD_NOTES §24): measured software reboots reach the kiosk service
+  ~2.4 s after kernel start, following ~5.6 s of firmware time; Chromium starts ~3.5 s
+  after the kernel. These are internal timestamps, not cold-power-to-first-paint measurements. Display
   forced to the car panel's 720x480@59.94 via an EDID override; the 1.875:1 glass stretches it, so iOS renders 848x480 (16:9, Waze's
   limit) and the web app squeezes it into 720 (§22.8) (`drm.edid_firmware`; cage
   ignores `video=`), and NetworkManager
-  deliberately starts 20 s after boot — SSH to the Pi takes ~30 s after power-on.
+  deliberately requests startup 20 s after Linux starts (timer coalescing can delay it).
+  Host Bluetooth is REQUIRED for the trackpad and starts at 15 s; a service delay also
+  covers Chromium's early D-Bus activation. Do not disable the Bluetooth radio.
+  The kernel is an uncompressed copy, refreshed by post-update hooks; keep the packaged
+  kernel8.img and those hooks together. Graphics component preloads and the concurrent
+  Node/cage launcher are documented in §24.
 
 ## State of THIS fork's code
 - Electron bumped **27 → 33** (Chromium 130 / Node 20). Pi GPU flags added in

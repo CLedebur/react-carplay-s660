@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+"""Refresh the CM4's uncompressed boot image after Raspberry Pi firmware hooks."""
+import gzip
+import os
+from pathlib import Path
+import tempfile
+
+boot = Path('/boot/firmware')
+source = (boot / 'kernel8.img').read_bytes()
+image = gzip.decompress(source) if source[:2] == b'\x1f\x8b' else source
+if len(image) < 64 or image[56:60] != b'ARM\x64':
+    raise SystemExit('Refusing to install an invalid ARM64 kernel image')
+
+temporary = None
+try:
+    with tempfile.NamedTemporaryFile(dir=boot, prefix='.s660-kernel-', delete=False) as output:
+        temporary = Path(output.name)
+        output.write(image)
+        output.flush()
+        os.fsync(output.fileno())
+        os.fchmod(output.fileno(), 0o644)
+    temporary.replace(boot / 'kernel8-uncompressed.img')
+finally:
+    if temporary is not None and temporary.exists():
+        temporary.unlink()
+print('Refreshed kernel8-uncompressed.img from kernel8.img')

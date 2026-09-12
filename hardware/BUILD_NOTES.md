@@ -1386,17 +1386,151 @@ of the pre-vendoring state, rather than deleted.
 
 ---
 
-*Last updated: 2026-09-12. Status: Path B dev Chromium channel is the running kiosk, boot-tuned
-(§22): kiosk service at 2.5 s, cage at 3.5 s, S660 logo page at ≈7 s after kernel start (26 s
-stopwatch from power-on to picture before the logo work), display forced to the car panel's
-720x480@59.94 via an EDID override (cage ignores `video=`; 576p50 looked stretched, §22.6), iOS
-rendering 848x480 squeezed into it to counter the 1.875:1 glass (§22.8), right-hand-drive layout requested
-from the dongle, black page + inline logo + black Chromium blank colour = no flashes. On-screen
-connection status/error line and USB reset/reconnect fixes landed (§23), and the app source is
-now vendored into this repo at `hardware/path-b/node-CarPlay/` — no more separate untracked
-clone on the Pi, and `provision.sh` builds it directly. No network daemon on the boot path —
-Wi-Fi/SSH start 20 s after boot by design. The Carlinkit dongle's own ~11 s boot is the floor
-for CarPlay availability. Path A (Electron, `--disable-gpu`) remains a fallback and still uses
-the PAM-based unit. Open: confirm RHD layout, logo geometry and touch calibration on the real
-panel; wireless pairing re-check with `bluetooth.service` disabled; hardware video decode (V4L2
-/ custom Electron); regenerate the stale on-disk `carplay.service` (§20).*
+## 24. 2026-09-12 — Measured boot experiments on the CM4/TOFU/NVMe unit
+
+**Result:** twelve software reboots reduced estimated firmware-start-to-`carplay-dev-chromium`
+service launch from **9.96 s to 7.93 s (2.03 s, 20.4%)**. The service's Linux timestamp
+alone improved from 2.50 s to 2.35 s. Chromium process creation also moved earlier, from
+approximately 11.70 s to 9.05 s including firmware. These use the median of two baseline
+and two final runs; intermediate changes generally have only one trial.
+
+**Measurement limits:** firmware time comes from `vclog --msg`'s `Starting ARM` timestamp;
+Linux service launch comes from the boot journal's monotonic timestamp. Adding these is an
+estimate, not a physical ACC-on measurement. Cage readiness uses seatd's client connection
+(the shell's PID survives `exec`, so its process start time cannot measure Cage readiness).
+Chromium uses its process start time, **not first paint or usable CarPlay**. Cold power-on,
+panel first paint, and phone/dongle connection latency need separate physical measurements.
+The historical §22 timings used different milestones and are not the comparison baseline.
+In particular, `enable_uart=0` was already on disk when these experiments began and was
+preserved; the earlier audit had observed a boot with different UART settings.
+
+| Trial (cumulative changes) | Firmware, s | Service after Linux, s | Estimated total, s | Cage seat after Linux, s | Chromium process after Linux, s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Baseline 1 | 7.458 | 2.489 | 9.947 | 3.572 | 4.27 |
+| Baseline 2 | 7.461 | 2.506 | 9.966 | 3.441 | 4.21 |
+| Uncompressed kernel 1 | 5.660 | 2.538 | 8.198 | 3.372 | 4.15 |
+| Uncompressed kernel 2 | 5.598 | 2.558 | 8.156 | 3.549 | 4.28 |
+| Skip HAT EEPROM probe | 5.573 | 2.513 | 8.086 | 3.382 | 4.16 |
+| Skip PoE fan probe | 5.574 | 2.495 | 8.069 | 3.644 | 4.33 |
+| Bluetooth timer only | 5.574 | 2.510 | 8.083 | 3.459 | 4.17 |
+| Bluetooth activation delay | 5.573 | 2.521 | 8.094 | 3.500 | 4.22 |
+| HDMI component preloads | 5.574 | 2.541 | 8.115 | 3.308 | 4.08 |
+| Suppress unused swap generators | 5.574 | 2.349 | 7.923 | 3.153 | 3.91 |
+| Concurrent Node/Cage launch | 5.573 | 2.375 | 7.947 | 2.591 | 3.40 |
+| Final repeat | 5.573 | 2.331 | 7.905 | 2.551 | 3.55 |
+
+### 24.1 Retained changes
+
+- **Uncompressed kernel:** `kernel=kernel8-uncompressed.img` in `/boot/firmware/config.txt`.
+  This is the exact packaged ARM64 kernel decompressed from `kernel8.img`, with no driver
+  or kernel build changes. Loading 24.2 MiB instead of the 9.8 MiB gzip file eliminates
+  firmware decompression and accounts for most of the measured gain. The packaged image
+  remains intact. `path-b/update-uncompressed-kernel`, installed as
+  `/usr/local/sbin/s660-update-uncompressed-kernel`, validates the ARM64 header and replaces
+  the sibling image atomically. `zz-s660-uncompressed` symlinks in both
+  `/etc/kernel/postinst.d/` and `/etc/initramfs/post-update.d/` run after the distribution's
+  `z50-raspi-firmware` hooks. Both hook lists and decompressed byte equality were checked.
+  Initial trials used the one-boot `tryboot` mechanism; the temporary `tryboot.txt` is removed.
+- **Hardware probes:** `force_eeprom_read=0` and `disable_poe_fan=1`. Their individual timing
+  benefit is small/unproven in these trials. They express that this board has no automatically
+  configured HAT or PoE fan. Ordinary GPIO remains usable. A future HAT that depends on its
+  EEPROM for automatic configuration needs probing restored or its overlays configured
+  explicitly; this is not a blanket GPIO disable.
+- **Bluetooth remains REQUIRED for the trackpad.** `bluetooth-late.timer` requests BlueZ at
+  15 seconds after Linux starts, without a kiosk dependency. The normal boot target link is
+  disabled, but the D-Bus alias is retained. A timer alone did not work: Chromium requested
+  BlueZ over D-Bus at ~5.4 s. `bluetooth.service.d/startup-delay.conf` therefore delays any
+  activation until boot time 15 s; later restarts do not sleep. BlueZ became active at
+  15.10–15.12 s in subsequent tests. No pairing data or radio configuration was erased.
+- **Graphics:** preload `i2c_brcmstb` and `snd_soc_hdmi_codec` ahead of `vc4` and `v3d` via
+  `modules-load.d-carplay-gpu.conf`. HDMI components are runtime dependencies that otherwise
+  waited on general udev coldplug. DRM readiness moved from ~3.3–3.5 s to 2.26 s, then
+  ~2.02 s after the swap change. The launcher's existing DRM readiness guard remains.
+- **No-swap cleanup:** `Mechanism=none` already disabled swap, but unused generator/module
+  work remained. Local `/dev/null` symlinks mask `zram-generator` and `rpi-swap-generator`
+  under `/etc/systemd/system-generators/`, plus `/etc/modules-load.d/20-zram-generator.conf`.
+  This reduced Linux launch time by about 0.19 s in the immediate comparison. Packages
+  remain installed; there are no active swaps or zram block devices.
+- **Concurrent launcher:** Node starts in the background, then Cage starts once DRM exists.
+  Cage invokes the script's `--browser` branch, which waits for HTTP before executing
+  Chromium. This overlaps server/compositor initialization and preserves the distribution's
+  Chromium wrapper and existing graphics flags. HTTP timeout now fails explicitly after
+  approximately 60 seconds. All processes remain in the service cgroup.
+- **One kiosk at boot:** `carplay.service` (Electron) was disabled before the matched
+  baselines; `carplay-dev-chromium.service` is enabled. Their conflicting units should not
+  both be enabled. Disabling Electron is not counted as a gain in the table.
+
+These changes are reproduced in `provision.sh`; it was syntax-checked but was **not** run
+wholesale on the working unit. Only the relevant runtime files were deployed during trials.
+The application build, USB handshake, Chromium profile, display geometry, CPU governor,
+EEPROM configuration, and kernel command line were not changed by these experiments.
+
+### 24.2 Validation and remaining measurements
+
+All twelve boots reached an active/running kiosk with zero automatic restarts. Final checks
+found zero failed systemd units, no swap, and `get_throttled=0x0`. Systemd unit verification
+and shell/Python syntax checks passed. A final 720x480 compositor capture showed CarPlay
+rendering Waze successfully. The paired HID device remained paired/bonded/trusted; it was
+not connected when checked, including before the experiments. Physical trackpad wake and
+pointer movement still require user confirmation; service health alone does not prove input.
+
+The next useful measurement is a cold power cycle filmed from power application through
+first visible page and usable CarPlay. Repeat with the phone in the same state. Do not
+interpret process creation as picture availability or the dongle's historical ~11 s estimate
+as a measured lower bound for this configuration.
+
+EEPROM `BOOT_UART=1` and boot-order tuning remain possible follow-up experiments. They
+were not changed: the installed CM4 flashing path requires SPI access/setup not currently
+available as `/dev/spidev*`. That additional setup was deferred after the lower-risk gains.
+
+### 24.3 Rollback
+
+On the Pi, originals are in `/root/boot-experiments-2026-09-12/`:
+`config.txt.initial`, `cmdline.txt.initial`, `carplay-gpu.conf.initial`,
+`run-chromium-kiosk.sh.initial`, and `eeprom-config.initial`. No EEPROM flash was performed.
+To reverse individual experiments (root commands; reboot after boot configuration changes):
+
+```sh
+# Return to the original boot settings and GPU preload list.
+cp /root/boot-experiments-2026-09-12/config.txt.initial /boot/firmware/config.txt
+cp /root/boot-experiments-2026-09-12/carplay-gpu.conf.initial /etc/modules-load.d/carplay-gpu.conf
+# The original packaged kernel8.img was never overwritten.
+# After reverting config.txt, the new kernel and its refresh hooks can be removed.
+rm -f /etc/kernel/postinst.d/zz-s660-uncompressed /etc/initramfs/post-update.d/zz-s660-uncompressed
+rm -f /usr/local/sbin/s660-update-uncompressed-kernel /boot/firmware/kernel8-uncompressed.img
+
+# Restore sequential server/compositor startup.
+cp /root/boot-experiments-2026-09-12/run-chromium-kiosk.sh.initial /home/s660/carplay-dev/run-chromium-kiosk.sh
+
+# Restore normal early Bluetooth startup, retaining pairings.
+systemctl disable --now bluetooth-late.timer
+rm -f /etc/systemd/system/bluetooth-late.timer /etc/systemd/system/bluetooth.service.d/startup-delay.conf
+systemctl daemon-reload
+systemctl enable bluetooth.service
+
+# Restore vendor generator/module-loading behavior; Mechanism=none remains as before.
+rm -f /etc/systemd/system-generators/zram-generator /etc/systemd/system-generators/rpi-swap-generator
+rm -f /etc/modules-load.d/20-zram-generator.conf
+systemctl daemon-reload
+```
+
+Keep the Chromium kiosk enabled during rollback. To deliberately switch to Electron later,
+stop/disable the Chromium unit first. Restoring both conflicting units is not recommended.
+Revert the corresponding provision/source edits too before provisioning again.
+
+Local raw measurements are in `/private/tmp/s660-experiments-2026-09-12/`; these are temporary
+working files. The table above is the durable record. The original read-only audit is also
+historical and predates the matched baseline.
+
+Firmware reference: Raspberry Pi documents [kernel image configuration](https://www.raspberrypi.com/documentation/computers/config_txt.html#kernel),
+[HAT EEPROM probing](https://www.raspberrypi.com/documentation/computers/config_txt.html#force_eeprom_read),
+and [PoE fan probing](https://www.raspberrypi.com/documentation/computers/config_txt.html#disable_poe_fan).
+
+---
+
+*Last updated: 2026-09-12. Path B Chromium is the enabled kiosk. Latest reboot measurements
+and rollback are in §24: estimated firmware-plus-service launch 7.93 s, Chromium process
+~9.05 s; physical cold-power/first-paint timing remains unmeasured. Bluetooth is required
+for the trackpad and starts after 15 s of Linux uptime. Network startup is requested after
+20 s, with timer coalescing adding delay. Display geometry remains §22.8; application and
+USB reconnect fixes remain §23. Trackpad wake/reconnection needs physical confirmation.*

@@ -1,0 +1,10 @@
+[Unit]
+Description=Start Bluetooth after the CarPlay kiosk launch window
+
+[Timer]
+OnBootSec=15s
+AccuracySec=1s
+Unit=bluetooth.service
+
+[Install]
+WantedBy=timers.target

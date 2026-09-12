@@ -1,6 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cage runs this branch once its Wayland display is ready. Starting the compositor
+# alongside Node overlaps their cold startup, while Chromium still waits for HTTP.
+if [ "${1:-}" = "--browser" ]; then
+  ready=false
+  deadline=$((SECONDS + 60))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if curl -sf --max-time 1 -o /dev/null http://localhost:3000; then
+      ready=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [ "$ready" != true ]; then
+    echo 'CarPlay HTTP server did not become ready' >&2
+    exit 1
+  fi
+
+  # Preserve the system Chromium wrapper and its Raspberry Pi graphics settings.
+  # Black background avoids the white flash before the first page paint.
+  # KIOSK_URL may select the aspect calibration page using a systemd drop-in.
+  exec chromium \
+    --ozone-platform=wayland --kiosk --no-sandbox \
+    --disable-background-networking --disable-component-update --disable-sync \
+    --disable-breakpad --no-first-run --password-store=basic \
+    --default-background-color=000000 \
+    "${KIOSK_URL:-http://localhost:3000}"
+fi
+
+case "$0" in
+  /*) SCRIPT_PATH="$0" ;;
+  *) SCRIPT_PATH="$PWD/$0" ;;
+esac
+
 APP_DIR="$HOME/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app"
 BUILD_DIR="$APP_DIR/build"
 
@@ -14,14 +47,6 @@ else
   cd "$APP_DIR"
   BROWSER=none npm start &
 fi
-
-# Wait for the local server to answer before handing the display to Chromium.
-# boot-tuning 2026-09-05: poll every 100 ms (was 1 s) — the server is up in ~0.2 s,
-# so the old loop wasted most of a second on every boot. 60 s ceiling.
-for _ in $(seq 1 600); do
-  if curl -sf -o /dev/null http://localhost:3000; then break; fi
-  sleep 0.1
-done
 
 # boot-tuning 2026-09-05: vc4 is loaded via /etc/modules-load.d/carplay-gpu.conf, but never let
 # cage race the KMS device — it fails with "Found 0 GPUs" and hangs. Wait for the HDMI
@@ -47,18 +72,4 @@ export WLR_LIBINPUT_NO_DEVICES=1
 # a screenshot-"verified" fix once already.
 export WLR_NO_HARDWARE_CURSORS=1
 
-# WebUSB requires a localhost origin — which this is. Full-screen kiosk, GPU compositing.
-# Kiosk hygiene flags: no background networking (kills GCM/update/translate pings), no
-# component updates, sync, crash reporting, first-run, or keyring lookups — none of which
-# a locked-down offline kiosk needs. GPU/Wayland/kiosk flags are unchanged.
-# --default-background-color=000000: the colour Chromium presents in the ~0.3 s between
-# mapping its window and the first page paint. Default is WHITE — a visible flash on a
-# black boot sequence (measured with grim, BUILD_NOTES 22.5).
-# KIOSK_URL override (systemd drop-in Environment=) is for the aspect calibration page,
-# http://localhost:3000/calib.html — see BUILD_NOTES 22.8.
-exec cage -- chromium \
-  --ozone-platform=wayland --kiosk --no-sandbox \
-  --disable-background-networking --disable-component-update --disable-sync \
-  --disable-breakpad --no-first-run --password-store=basic \
-  --default-background-color=000000 \
-  "${KIOSK_URL:-http://localhost:3000}"
+exec cage -- "$SCRIPT_PATH" --browser

@@ -128,7 +128,7 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 # Script Details
 
 **What the script does**, in short (see the script's own comments and
-`hardware/BUILD_NOTES.md` §4 and §22 for the full reasoning):
+`hardware/BUILD_NOTES.md` §4, §22, and §24 for the full reasoning):
 
 - Trims ~10s off boot by disabling cloud-init, unneeded timers/services, swap, and
   the initramfs, and by quieting the kernel console.
@@ -137,9 +137,14 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 - Installs whichever app stack(s) you selected (AppImage for Path A; system Chromium
   + `node-CarPlay`'s `carplay-web-app`, pinned to a known-good toolchain, for Path B).
 - Writes the systemd unit(s) that launch the kiosk on boot.
+- Uses an automatically refreshed uncompressed kernel, preloads the HDMI component
+  drivers, and overlaps the web server and compositor startup. September 2026 reboot
+  trials reduced estimated board-boot-to-service time from 9.96 s to about 7.93 s.
+- Starts host Bluetooth after 15 s for the trackpad, including when Chromium requests
+  BlueZ through D-Bus. Pairing data and the Bluetooth radio remain available.
 
-**By design, Wi-Fi/SSH come up ~20–30s after power-on**, well after the kiosk is on
-screen — nothing on the boot-critical path is allowed to depend on the network,
+**By design, networking is requested 20 s after Linux starts**, and timer coalescing
+can delay it further. Nothing on the boot-critical path depends on the network,
 since Wi-Fi is never guaranteed inside the car. Don't "fix" this; it's intentional.
 If the Pi seems unreachable right after a reboot, give it a minute.
 
