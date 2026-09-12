@@ -389,7 +389,7 @@ Pi's **system Chromium** (installed as the `chromium` package on Trixie; binary 
 | Rasterization | Hardware accelerated ✓ |
 | WebGL / WebGL2 | Hardware accelerated ✓ |
 | Canvas | Hardware accelerated ✓ |
-| **Video Decode** | **Software only** — the last open item, needs the dongle to fix/test |
+| **Video Decode** | **Software only** — the last open item, needs the dongle to fix/test. **→ Superseded 2026-09-12: measured HARDWARE with the dongle streaming (Chromium's GPU process holds `/dev/video10`); see §27.1.** |
 
 The system Chromium carries the Raspberry Pi Foundation's downstream GBM and V4L2
 patches that upstream Electron lacks. Under `cage`, it renders with **zero `dma_buf`
@@ -401,7 +401,9 @@ See Section 11 for the full Option 2 build steps.
 - **Video decode (Problem 2): open.** `chrome://gpu` shows "Software only." Fixing this
   likely needs an explicit V4L2 decode feature flag on Chromium's launch line, and can
   only be *tested* with the dongle streaming real H.264. This is the top task for the
-  next session.
+  next session. **→ Resolved 2026-09-12 (§27.1): HARDWARE, with no extra flag.** The
+  "Software only" reading above predates the dongle and was never re-tested; `fuser` on
+  `/dev/video10` during a live stream shows the decoder held by Chromium's GPU process.
 
 **Do not decide video performance from a static screen.** The web app currently reaches
 its "Plug-In Dongle" state — proof the stack runs, but it tells us nothing about live
@@ -987,7 +989,8 @@ so `NODE_CARPLAY_REF` now targets the commit SHA `670f19e` (= package.json 4.3.0
 **Expectations (important).** Path B fixes *compositing* (GPU), not *decode* — the CarPlay
 H.264 stream stays software-decoded until the V4L2 / custom-Electron work (§8.5). So the dev
 channel should smooth the UI and give a real `chrome://gpu` readout, but may not by itself fix
-the CarPlay video framerate.
+the CarPlay video framerate. **→ This expectation was wrong: measured 2026-09-12, Path B
+decodes in hardware (§27.1). It was an inference from §8's pre-dongle reading, not a test.**
 
 ---
 
@@ -999,6 +1002,9 @@ Result: **the Path B dev channel works.** After enabling `carplay-dev-chromium.s
 rebooting, `cage` + system Chromium come up and load the web app. **Performance is still
 limited** — GPU compositing is active but H.264 decode stays software (exactly the §19
 expectation); smoothing the CarPlay video is deferred to the V4L2 / custom-Electron work.
+**→ The decode half of this was never measured and is wrong (§27.1): decode is hardware. The
+framerate limit seen here was later traced to the dongle being asked for bench-monitor
+resolution (§21), not to decode.**
 
 **Live hot-switch is BROKEN — use enable+reboot.** Starting the dev service while the stable
 Electron kiosk was up (`systemctl start carplay-dev-chromium.service`) left a blank screen: the
@@ -1688,107 +1694,177 @@ read-only root) worked out. Not attempted here.
 
 ---
 
-## 27. 2026-09-12 — Path C (PROPOSED, NOT BUILT): native node-carplay + V4L2 hardware decode
+## 27. 2026-09-12 — Path C (PROPOSED, NOT BUILT): native node-carplay, no browser — and the decode premise it was written on, refuted the same evening
 
 **Status: a plan, nothing is implemented.** Path B (Chromium) remains the shipping channel and
-is not affected by anything in this section. Path C is an experiment to run alongside it, the
-same way Path A and Path B already coexist (§14), not a replacement.
+is not affected by anything here. Path C would run alongside it the way Paths A and B already
+coexist (§14). **Read 27.1 before anything else: the reason this section was first drafted
+turned out to be false, and the recommendation at the end follows from that.**
 
-### 27.1 The motivating fact
+### 27.1 The premise — and its refutation
 
-`/dev/video10` on this CM4 is `bcm2835-codec-decode` — the Pi 4's **hardware H.264 decoder** —
-and neither existing path uses it. Path A does software decode under Electron; Path B does
-software decode under Chromium (§8, and CLAUDE.md's summary: Chromium buys GPU *compositing*,
-not decode). The single most expensive operation in this whole stack is being done on the CPU
-while the dedicated silicon for it sits idle. Everything else below follows from that.
+This section was first drafted on the belief, recorded since §8 and repeated in §19, §20,
+CLAUDE.md and the README, that *neither* path uses the CM4's hardware H.264 decoder
+(`/dev/video10`, `bcm2835-codec-decode`) — that Chromium bought GPU *compositing* only and
+decode stayed on the CPU. **Measured the same evening, that is wrong for Path B.**
 
-Two incidental costs of Chromium, both measured this session (§28-adjacent work on the status
-UI), reinforce the case:
-- **WebUSB permission model.** `navigator.usb.getDevices()` only returns devices the origin was
-  previously granted via a user-gesture `requestDevice()` chooser. On a kiosk with no touch and
-  no keyboard that grant is awkward to obtain and easy to lose (§23's invisible full-screen tap
-  target exists solely to make it obtainable at all).
-- **Device-tracking latency.** A physical dongle unplug is logged by the kernel instantly, but
-  took **12-30 s** to surface through `navigator.usb` — via `ondisconnect` *and* via polling
-  `getDevices()` every 2 s, which showed the same stale answer. That floor is inside Chromium's
-  USB layer; no amount of application-level polling gets under it.
-
-### 27.2 Architecture sketch
+The test, 2026-09-12 21:39, with the dongle plugged in and Waze streaming live (screenshot
+confirmed the same minute):
 
 ```
-node-carplay (src/node/CarplayNode.ts, libusb via the `usb` package's webusb shim)
-  ├─ H.264 Annex-B elementary stream ─→ GStreamer: fdsrc ! h264parse ! v4l2h264dec ! kmssink
-  │                                      (hardware decode → DRM/KMS plane, zero-copy dmabuf)
-  ├─ PCM audio ───────────────────────→ ALSA/PipeWire directly
-  └─ knob/button input (MITM) ────────→ node-carplay send* commands
+$ sudo fuser -v /dev/video10
+                     USER  PID   ACCESS COMMAND
+/dev/video10:        s660  1919  F...m  chromium        # F = open fd, m = mmap'd buffers
+$ # every /dev/video* fd held by any Chromium process:
+pid 1919 [type=gpu-process]: /dev/video10                # only the GPU process, only the decoder
 ```
 
-No browser, no Electron, no Node/V8 in the video path at all after the USB read — and
-potentially **no compositor**: `kmssink` can drive a DRM plane directly, so `cage`/Wayland
-becomes optional rather than load-bearing.
+That is the stateful V4L2 decoder in active use. Three supporting facts explain why:
 
-### 27.3 Two corrections to the original framing
+- The installed Chromium is **Raspberry Pi's build**, not Debian's:
+  `1:152.0.7977.82-1~deb13u1+rpt2` from `archive.raspberrypi.com`. Its changelog is about this
+  exact hardware — "Cap concurrent V4L2 decoders on bcm2835-codec", "Keep polling the V4L2
+  stateful decoder after POLLERR", "Count V4L2 stateful decoder instances exactly once" — and
+  the binary contains `V4L2StatefulVideoDecoder`.
+- The web app decodes through **WebCodecs `VideoDecoder`**
+  (`examples/carplay-web-app/src/worker/render/Render.worker.ts:71`) and `getDecoderConfig`
+  sets **no `hardwareAcceleration`**, so WebCodecs' default `no-preference` applies: use the
+  platform decoder whenever the browser has one.
+- The kiosk launch line carries no `--disable-accelerated-video-decode`.
 
-- **Vulkan is not the relevant API here.** Vulkan 1.3 on the Pi is for 3D/compositing; the
-  Vulkan Video *decode* extensions are not supported by the Pi's V3D driver. Hardware H.264
-  decode on this board is V4L2 stateful M2M via `bcm2835-codec` (`/dev/video10`), reached
-  through GStreamer's `v4l2h264dec`, ffmpeg's `h264_v4l2m2m`, or raw V4L2 ioctls.
-- **This is CM4/Pi 4-specific, and that is an argument for doing it now.** The Pi 5 **removed**
-  the hardware H.264 decoder and does H.264 in software. So this approach does not port forward
-  to a Pi 5 board; it is specifically a win on the silicon this unit already has.
+Why the lore was wrong: §8's `chrome://gpu` "Software only" reading was taken **before the
+dongle existed** — §8.5 itself says decode "can only be *tested* with the dongle streaming real
+H.264" and lists it as the top task for the next session. That test was never run; §19 and §20
+then restated the §8 reading as an *expectation* ("exactly the §19 expectation"), and CLAUDE.md
+and the README inherited it as fact. Those four places are now annotated at source and
+corrected. CPU while streaming with hardware decode active measured **~36% total across all
+Chromium processes** — that is compositing, JS, and WebUSB buffer copying, not decode.
 
-**GStreamer, not mpv.** mpv is a media *player* — buffering, seeking, and playback timing
-assumptions that fight a live interactive stream even under `--profile=low-latency`, and
-adapting it means forking it. GStreamer is a pipeline framework built for exactly this case,
-needs no fork, and `v4l2h264dec ! kmssink` is a well-trodden Pi path. (`ffmpeg` with
-`-c:v h264_v4l2m2m` is a viable third option, mainly useful for quick bring-up testing.)
+**Consequence: Path C is not a decode play.** The one thing this board's dedicated silicon can
+do, Path B is already doing. Everything that follows has to be justified on other grounds.
 
-### 27.4 What carries over, and what has to be rebuilt
+### 27.2 What a browser-free path would actually buy — the honest list
 
-Carries over free:
-- `src/modules/` — the whole dongle protocol layer, `DongleDriver.ts` included, is shared
-  between the node and web variants. The §25/§23 driver fixes (error plumbing, `lastError`)
-  are already in the common code.
-- The dongle handshake/config work (RHD, geometry, fps, `DongleConfig`) is protocol-level.
+- **The WebUSB grant.** `navigator.usb.getDevices()` only returns devices this origin was
+  previously granted through a user-gesture `requestDevice()` chooser, which is why §23's
+  invisible full-screen tap target exists. libusb has no such model (confirmed:
+  `CarplayNode.findDevice()` is a chooser-free `requestDevice` retry loop). **But a far cheaper
+  fix exists inside Chromium:** the `WebUsbAllowDevicesForUrls` policy pre-grants a
+  vendor/product ID to a URL. §22.3 already notes "there is no policy file granting the WebUSB
+  device" — the grant lives in the profile only because nobody wrote the policy. That is a
+  one-file change, not a rewrite.
+- **Disconnect latency.** A physical unplug is logged by the kernel instantly but took
+  **12–30 s** to surface through `navigator.usb` — via `ondisconnect` *and* via polling
+  `getDevices()` every 2 s, which returned the same stale answer (measured this session; the 2 s
+  poll is kept as a backstop only). That floor is inside Chromium's USB layer. libusb hotplug,
+  and `LIBUSB_ERROR_NO_DEVICE` on the already-open handle, would be near-instant. Real — but a
+  dongle unplug mid-drive is not a routine event on a unit whose dongle lives in a compartment.
+- **Chromium's start-up, memory and the `cage`/seatd session.** Much of §22/§24 exists to manage
+  these (Chromium process ~3.5 s after kernel; kiosk on screen ~8 s from power). A single Node
+  process plus a GStreamer pipeline could plausibly beat that. **Unmeasured.**
 
-Has to be rebuilt or ported:
-- **`src/web/CarplayWeb.ts` fixes are web-only.** `restartPairing()` (§23's Wi-Fi reconnect fix),
-  the non-fatal `reset()` warning path, and the failure-reason plumbing live in the *web*
-  variant. `src/node/CarplayNode.ts` is a parallel implementation and needs the same treatment.
-- **The Node build target currently does not compile.** §11.3 documents that only the web target
-  is built (`tsc --build ./tsconfig.build.json ./src/web/tsconfig.json`) because the node target
-  has pre-existing TypeScript errors. Fixing those is step zero for Path C.
-- **Status/splash UI.** The §23 status line and the boot logo are React in `App.tsx`. Without a
-  browser they need a new home — most likely a second DRM plane (vc4 supports overlay planes)
-  or a pre-video framebuffer splash, with video on its own plane.
-- **Audio.** `useCarplayAudio` is Web Audio. Node-side this becomes direct ALSA/PipeWire output
-  plus mic capture (moot here: this unit has no capture hardware, §23).
+### 27.3 Architecture sketch
 
-### 27.5 De-risking order (cheap experiments before any rewrite)
+```
+node-carplay (src/node/CarplayNode.ts — libusb via the `usb` package's WebUSB shim)
+  │  Node parses the dongle's message framing and writes each H.264 Annex-B payload to a pipe
+  ├─ video ─→ GStreamer: fdsrc ! h264parse ! v4l2h264dec ! kmssink   (V4L2 decode → DRM/KMS plane)
+  ├─ audio ─→ one mixing sink (see 27.4 — this is not "ALSA directly")
+  └─ input ─→ evdev, read by Node (see 27.4 — this does not exist today)
+```
 
-Each step answers one question and is independently abandonable. Do them on the bench, with
-Path B still installed and enabled as the fallback:
+Node **is** in the video path — it is the demuxer, and every frame passes through V8 on its way
+to the pipe. Fine at CarPlay's bitrate, but the earlier "no Node/V8 in the video path" wording
+was false.
 
-1. **Does the decoder actually work on this box?** `apt install gstreamer1.0-tools
-   gstreamer1.0-plugins-{base,good,bad}`, feed a known H.264 sample through
-   `fdsrc ! h264parse ! v4l2h264dec ! kmssink`, confirm it plays and measure CPU. If hardware
-   decode doesn't engage here, Path C's entire premise is gone — stop at step 1.
-2. **Does native USB work without a browser?** A small Node script using `node-carplay/node`
-   that opens the dongle via libusb and dumps the raw H.264 to a file. Proves the permission
-   model and the device-tracking latency problems both disappear, and yields a real capture.
-3. **Join them and measure.** Pipe (2) into (1) live. The number that decides Path C is
-   **glass-to-glass latency** versus Path B, plus CPU headroom. CarPlay is interactive; a
-   decode win that costs 200 ms of added latency is not a win.
+Two corrections to the original framing stand:
+- **Vulkan is not the relevant API.** Vulkan 1.3 on the Pi is 3D/compositing; the Vulkan Video
+  decode extensions are not implemented by the V3DV driver. Decode here is V4L2 stateful M2M via
+  `bcm2835-codec`, reached through `v4l2h264dec`, ffmpeg's `h264_v4l2m2m`, or raw ioctls.
+- **CM4-specific, in this board's favour.** The Pi 5 removed the hardware H.264 decoder. This
+  approach does not port forward; it is a property of the silicon already fitted.
 
-Only after 1-3 pass does building out audio, input, status UI, and a `carplay-native.service`
-(with `Conflicts=` against the other two, per §14's pattern) make sense.
+**GStreamer over mpv — for the right reason.** The earlier claim that adapting mpv "means forking
+it" was overstated: mpv reads raw H.264 from a pipe (`--demuxer-lavf-format=h264 --untimed
+--no-cache`) and has `--vo=drm` / `--hwdec=v4l2m2m`. GStreamer is preferred because video, the
+status overlay, and mixed audio all have to be composed inside **one DRM-master process** — a
+pipeline problem, not a playback problem. `gstreamer1.0-plugins-good 1.26.2` (Trixie) provides
+`v4l2h264dec`; `gst-plugins-good`/`bad`/`tools` are one `apt install` away.
 
-### 27.6 Why this is attractive beyond decode
+### 27.4 What carries over, and what has to be rebuilt — weighted honestly
 
-If it works, Path C collapses most of what §22/§24 spent effort tuning around: no Chromium
-start-up, no `cage`/seatd session, no WebUSB grant to preserve in a browser profile, a far
-smaller memory footprint, and a boot path that is essentially "systemd starts one Node process."
-The parts of this repo that exist to manage Chromium's quirks would simply not apply.
+**Carries over:**
+- `src/modules/` — the entire dongle protocol layer, `DongleDriver.ts` included, is shared by
+  the node and web variants; the §23/§25 driver fixes are already in it. `DongleConfig` work
+  (RHD, geometry, fps) is protocol-level.
+- **The node build target compiles clean today** (`tsc --noEmit -p tsconfig.build.json` exits 0;
+  `dist/node/` is emitted on every `npm install`). An earlier draft of this section claimed it
+  did not compile and called fixing it "step zero" — **that was wrong.** `tsconfig.build.json`
+  excludes only `src/web/*`; §11.3's "errors" were the `@types/node` `Timer`/`Timeout` mismatch,
+  already resolved by the pinned lockfile.
+
+**Must be ported into `src/node/CarplayNode.ts`** (the §23 fixes were made to the *web* variant):
+- Line 119: `await device.reset()` is **unguarded**. §23 established that `reset()` throws on
+  this CM4's USB hub ("Unable to reset the device"), so `CarplayNode.start()` fails on this
+  hardware exactly as it stands.
+- `restartPairing()` on `Unplugged` (§23's Wi-Fi reconnect fix) — the node variant arms the
+  15 s `wifiPair` fallback only once, in `start()`.
+- Failure-reason plumbing — its `'failure'` message carries no reason.
+- Upstream bug, line 174: `clearFrameInterval()` nulls `_pairTimeout` instead of `_frameInterval`.
+
+**The three rebuilds — this is the bulk of Path C, not a footnote:**
+
+1. **Input (the largest gap, absent from the first draft).** Today: Bluetooth trackpad →
+   `cage`/libinput → Chromium pointer events → `useCarplayTouch` → `TouchAction` to the dongle.
+   Remove the compositor and *none of that exists.* Node would read `/dev/input/event*` (four
+   devices present) and synthesize an **absolute cursor from a trackpad's relative motion** —
+   acceleration, clamping to 720×480, mapping into the dongle's 848×480 space, show/hide. The
+   MITM knob/button input the first draft named is future hardware.
+2. **Audio mixing.** `decodeTypeMap` defines **seven** PCM formats — 44.1 kHz stereo media,
+   16/24 kHz mono navigation prompts, 8/16 kHz call audio — and they arrive **concurrently**
+   (a prompt over music). Web Audio mixes and resamples them for free. The Pi has raw ALSA only
+   (`vc4hdmi0`/`vc4hdmi1`); no PipeWire or PulseAudio runs, **by design** (§22: no user session).
+   Path C needs either PipeWire back — reversing a boot-tuning decision — or an in-pipeline
+   `audiomixer` with per-stream `audioconvert ! audioresample`.
+3. **DRM master vs. the status overlay.** `kmssink` takes DRM master; a *separate* process cannot
+   drive "a second plane" while it holds it (short of DRM leases). The §23 status line and the
+   boot logo must live inside the same pipeline — gst overlay elements composite on the CPU,
+   which breaks the zero-copy claim for that path — or in a custom libdrm program. `kmssink`
+   also cannot coexist with `cage`: "compositor optional" means **compositor removed**, which is
+   what creates gap 1. A middle path exists — keep `cage`, drop Chromium, `waylandsink` (dmabuf
+   on wlroots) plus a tiny Wayland status client — but a sink surface forwards no pointer events
+   to Node, so gap 1 remains.
+
+Also unaccounted for in the first draft: §22.8's 848→720 horizontal squeeze must be reproduced
+via `kmssink` plane scaling / `render-rectangle`; and "zero-copy" holds only if `v4l2h264dec`
+and `kmssink` negotiate `memory:DMABuf` caps in a plane-accepted format (NV12/I420) — verify,
+don't assume.
+
+### 27.5 De-risking order — revised after 27.1
+
+**Step 0 — done 2026-09-12: is Path B's decode software?** No. Premise gone.
+
+That changes the recommendation. **Do not start Path C on decode grounds — there are none.**
+Before any Path C work, take the two cheap fixes *inside* Path B:
+- (a) Write the `WebUsbAllowDevicesForUrls` policy and delete the §23 tap-target hack.
+- (b) Accept the disconnect latency; the 2 s poll backstop stays.
+
+Only if Chromium's start-up/memory footprint becomes the *binding* constraint does the rest of
+this section apply, and then in this order, each step abandonable, Path B enabled throughout:
+1. `v4l2h264dec ! kmssink` standalone on a captured H.264 sample — CPU, DMABuf caps actually
+   negotiated, and whether it can be brought up at all while `cage` owns the display.
+2. `node-carplay/node` dumping raw H.264 to a file — after porting the line-119 `reset()` guard,
+   or it will not get past `start()` on this hub.
+3. Join them live and measure **glass-to-glass latency** against Path B. CarPlay is interactive;
+   a start-up win that costs interactive latency is not a win.
+4. Only then: input, audio mixing, overlay, `carplay-native.service` with `Conflicts=` (§14).
+
+### 27.6 Bottom line
+
+Path C is a **robustness and boot-time option with a large, now well-understood cost** (input,
+audio mixing, the overlay), not a performance option — the performance was already there. It is
+kept documented as an alternative and is **not recommended to build now**. The correct next
+moves are the two Path-B fixes in 27.5, which cost hours, not a rewrite.
 
 ---
 
@@ -1803,5 +1879,9 @@ fixes, which remain in effect. Bluetooth is required for the trackpad and starts
 Linux uptime. Network startup is requested after 20 s, with timer coalescing adding delay.
 Display geometry remains §22.8; application and USB reconnect fixes remain §23. Overlay FS is
 explicitly disabled (§26) pending a proper isolated test. Trackpad wake/reconnection needs
-physical confirmation. §27 proposes a Path C (native node-carplay + V4L2 hardware decode,
-no browser) — a plan only, nothing built; Path B remains the shipping channel.*
+physical confirmation. §27.1 established by measurement that **Path B already decodes H.264 in
+hardware** (`/dev/video10` held by Chromium's GPU process while streaming) — the long-standing
+"software either way" note from §8/§19/§20 was a pre-dongle inference, now annotated at source.
+§27 documents a browser-free Path C but does **not** recommend building it: with decode already
+in hardware, its remaining case (boot time, WebUSB grant, disconnect latency) does not cover the
+cost of rebuilding input, audio mixing, and the overlay. Path B remains the shipping channel.*

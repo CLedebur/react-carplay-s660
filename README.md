@@ -16,14 +16,14 @@ are stable; only one runs at a time.
 | Dongle link | Native USB | WebUSB |
 | Service | `carplay.service` | `carplay-dev-chromium.service` |
 
-A third option, **Path C**, is proposed but **not built**: native `node-carplay` over libusb
-feeding the CM4's hardware H.264 decoder (`/dev/video10`) through GStreamer straight to a
-DRM/KMS plane — no browser, no compositor. Both current paths decode video in *software*; Path C
-is the only one that would use the dedicated decode silicon this board already has. See
-[`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §27 for the architecture and the
-de-risking plan.
+A third option, **Path C**, is documented but **not built and not currently recommended**:
+native `node-carplay` over libusb feeding GStreamer (`v4l2h264dec`) straight to a DRM/KMS plane —
+no browser, no compositor. It was first proposed on the belief that neither path used the CM4's
+hardware H.264 decoder; that turned out to be wrong (Path B already does — see below), so its
+remaining case is boot time and robustness, against a large cost in rebuilding input, audio
+mixing, and the status overlay. See [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §27.
 
-**Path B is the currently running channel** on the reference build — see [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §8.5 for why. Video **decode** (as opposed to compositing) is still software either way; hardware H.264 decode needs a custom-patched Electron build and is not yet verified. This repo (Path A) is where that work — Electron 33 + Pi GPU flags — is happening; see [`CLAUDE.md`](CLAUDE.md) for the exact state of that effort.
+**Path B is the currently running channel** on the reference build — see [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §8.5 for why. On Path B, video **decode** is in **hardware** as well as compositing: measured 2026-09-12 with CarPlay streaming, Chromium's GPU process holds `/dev/video10` (the CM4's `bcm2835-codec` H.264 decoder) — the Raspberry Pi Chromium build carries the V4L2 patches, and the web app's WebCodecs decoder picks it up with no extra flags (BUILD_NOTES §27.1). Path A (Electron) still decodes in software; hardware decode there would need a custom-patched Electron build. This repo (Path A) is where that work — Electron 33 + Pi GPU flags — is happening; see [`CLAUDE.md`](CLAUDE.md) for the exact state of that effort.
 
 For the full build history, every non-obvious fix, and the reasoning behind each decision, read [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) — it is the source of truth for anything hardware-, boot-, or GPU-related.
 
