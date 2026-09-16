@@ -278,16 +278,23 @@ function App() {
   // already permitted to use. That permission now comes from the WebUsbAllowDevicesForUrls
   // managed policy provision.sh installs (BUILD_NOTES §28), not from a requestDevice() chooser
   // -- so no user gesture is ever needed, and the old invisible "tap to authorise" button is gone.
+  // Last-seen dongle presence, so the POLL_INTERVAL_MS re-check reacts only to CHANGES.
+  // Previously checkDevice() ran clearStatus() on EVERY successful poll (every 2s), which
+  // wiped the dongle's own link-status line ("Scanning for phone…", "Phone not connected")
+  // within 2s of it appearing -- the single piece of diagnostic text this headless dash can
+  // show, and exactly what would have said "the phone never joined the dongle's Wi-Fi". On an
+  // unchanged poll we now leave the status (and the already-started, idempotent worker) alone;
+  // the worker's own link-status / plugged / unplugged / failure events drive the line from here.
+  const devicePresentRef = useRef<boolean | null>(null)
   const checkDevice = useCallback(
     async () => {
-      const device = await findDevice()
-      if (device) {
+      const present = !!(await findDevice())
+      if (present === devicePresentRef.current) return // no change -- don't touch the status
+      devicePresentRef.current = present
+      if (present) {
         setDeviceFound(true)
         clearStatus()
-        const payload = {
-          config,
-        }
-        carplayWorker.postMessage({ type: 'start', payload })
+        carplayWorker.postMessage({ type: 'start', payload: { config } })
       } else {
         carplayWorker.postMessage({ type: 'stop' })
         setDeviceFound(false)
