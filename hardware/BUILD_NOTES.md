@@ -2032,3 +2032,114 @@ that had motivated it — the dongle's WebUSB grant now comes from a `WebUsbAllo
 managed policy, not the browser profile: no on-screen authorisation is ever needed, the profile
 is disposable, and the invisible tap-target button is gone from the app. Path B remains the
 shipping channel.*
+
+## 30. 2026-09-25/26 — Physical controls: the audio switch panel's OPERA link, tapped and decoded
+
+**Goal.** Replace the Bluetooth-trackpad stopgap (§23) with the car's own centre-console audio
+switch panel, by sitting a Raspberry Pi Pico 2 (RP2350, SC1634) between the panel and the audio
+unit (MITM). Phase 1, this section: *listen only* — tap the wires, capture what the panel
+sends, decode it. Phase 2 (not started): cut in, forward/replace messages, present the
+controls to the CM4 as a USB keyboard. The steering-wheel controls (resistor ladders) are
+deliberately out of scope.
+
+### 30.1 The link (schematics p.41 / p.47, `references/S660 Electrical schematics .pdf`)
+
+The panel ↔ audio unit link is Honda's **OPERA** serial bus — a UART, not a resistor ladder.
+Identical wiring on the centre-display and navi-package cars:
+
+| Panel pin | Signal | Wire | Audio unit pin | Measured (vs pin 9) |
+|---|---|---|---|---|
+| 1 | OPERA TX | green (shielded pair) | B16 | 5 V idle, dips to 4.3–4.8 V on the meter while controls are used; 5 V with the car off |
+| 2 | OPERA RX | yellow (shielded pair) | B3 | 4.98 V, no activity seen yet |
+| — | shield | grey | B2 | grounded at the audio unit only |
+| 12 | OPERA CONT | green | B1 | **10.2–11 V** (battery level; never straight into a Pico pin) |
+| 3 | PWR SW | red | B13 | 5 V pulled up in the audio unit; ~0 V pressed; 0 V car off |
+| 6 | +B BACK UP | white | fuse 33 | 12 V constant |
+| 7 | ILLUMI+ | pink | — | 12 V lights on |
+| 9 | GND | black | G503 | — |
+
+Both TX and PWR SW are held high **by the audio unit**; the panel only pulls them low. RX is
+presumably driven by the audio unit (not proven yet — nothing has been seen on it).
+
+### 30.2 The tap hardware
+
+A non-destructive Y-harness (male + female panel connectors into a screw terminal block) keeps
+the panel wired straight to the audio unit; the taps hang off the block. Pico on a Pimoroni
+Omnibus (PIM556), USB to the CM4 so everything is driven over SSH.
+
+- **TX, RX** → 10k/15k divider → GP2, GP3 (5 V → 3.0 V). 10k∥15k = 6 kΩ source impedance,
+  under the RP2350-**E9** limit (~8.2 kΩ) — this chip is an A2 and has the fault.
+- **CONT** → 68k/15k divider + 1N5227B 3.6 V zener (band on the junction) → GP26/A0.
+  10.2 V → ~1.5 V. The zener leaks a little below 3.6 V, so the divider reads lower than the
+  pure ratio; fine, CONT is only being watched for state changes.
+- **PWR SW** → **2N7000 gate buffer**, not a divider. *Lesson:* the audio unit senses **load**
+  on this line — with the 25 kΩ divider attached it read 3.7 V and the head unit treated the
+  switch as pressed / dead. Real pull-up is ~9 kΩ, not the 1 kΩ first inferred. Gate via 10k,
+  drain to GP4 with a 10k pull-up to 3V3, source to GND. Zero load on the car; the signal is
+  **inverted** (GP4 low idle, high pressed). This is the input stage the interceptor will keep.
+- **GND** → terminal 9 → breadboard rail → Pico GND. One common ground.
+- Things that cost an evening: a breadboard with internal shorts and loose rows (replaced), a
+  zener that died after being reversed across 10 V (replaced), the 3V3 lead falling out, the
+  GND lead falling out. **Phase 2 goes on soldered perfboard** — the combined phase-1+2 layout
+  (7 × 9 cm board, G5V-2-H1 bypass relays, 2N7000 drivers, reset line) is in
+  `hardware/opera-mitm/tap-board.md`.
+
+### 30.3 Pi-side tooling (overlay FS was disabled for the installs)
+
+- `picotool` 2.1.1 (Trixie package; its udev rules already cover the RP2350).
+- `sigrok-cli` **0.8.0-git** built from source into `/usr/local` — Trixie's 0.7.2 does not speak
+  to `sigrok-pico`. Build script: `~/src/build-sigrok.sh`.
+- Pico firmware: `sigrok-pico` `pico2_baseline.uf2` (21 digital + 3 analog), at `~/pico-fw/`.
+  Flashed with `picotool load -v -x`. Enumerates as `/dev/ttyACM0`, `2e8a:0009`.
+- Driver quirks: channels must be enabled **contiguously from D2**; the **software trigger is
+  unreliable** (never fired on a real burst; once "fired" at exactly 3.000 s on nothing) — use
+  plain timed windows. With all three analog channels enabled the CSV columns come out in an
+  order that fooled the first parse; check the header.
+
+### 30.4 The protocol, decoded
+
+**19200 baud, 8 data bits**, idle-high, on TX (panel → audio unit). Framing is DLE/STX …
+DLE/ETX with an XOR checksum:
+
+```
+10 02  LEN  PAYLOAD…  10 03  CK        CK = XOR of (LEN PAYLOAD 10 03)
+```
+
+Every message captured so far (`hardware/opera-mitm/captures/`):
+
+| Control | Message | Notes |
+|---|---|---|
+| Knob clockwise | `10 02 02 42 0A 10 03 59` | type 0x42, value 0x0A; no release message |
+| Knob anticlockwise | `10 02 02 42 0B 10 03 58` | value 0x0B |
+| Knob push | `10 02 07 41 00 6E 00 00 00 00 10 03 3B` | type 0x41 = key report, key 0x6E |
+| Back | `… 41 00 6C 00 00 00 00 … 39` | key 0x6C |
+| Mode | `… 41 00 6B 00 00 00 00 … 3E` | key 0x6B |
+| Phone | `… 41 00 AA 00 00 00 00 … FF` | key 0xAA |
+| any button released | `10 02 07 41 00 00 00 00 00 00 10 03 55` | ~150–190 ms after the press message |
+
+The 0x41 report looks like a 6-slot "keys currently held" list (HID-style), so simultaneous
+presses should show up as multiple non-zero slots — untested. **Press and release are separate
+messages**, which is what the Back+Power mode-toggle idea needs. **PWR SW carries nothing on
+OPERA** — it's a plain switch line, seen on GP4 only. **RX was silent** through all 60 s of
+control use.
+
+### 30.5 Open questions for the next capture session
+
+1. Press-and-hold: repeat messages, or just press + release?
+2. Two buttons at once: does the 0x41 report list both?
+3. DLE stuffing: if a payload byte is 0x10, is it doubled? (No 0x10 payload seen yet.)
+4. What, if anything, does RX carry — at power-on, on Mode changes, illumination?
+5. Does CONT ever change state (wake/enable), or is it just battery voltage?
+6. What does the audio unit do with a *release-only* or *press-only* message — needed to decide
+   whether the interceptor can hide a Back press it has already forwarded.
+
+### 30.6 CM4 hard-reset line for the 3-second power hold (TOFU schematic, sheet 4)
+
+`references/TOFU schematics.pdf` (rev 1.3) sheet 4, "Not Fitted headers": **J1**, a 1×3
+2.54 mm footprint with no header soldered — **pin 1 GLOBAL_EN, pin 2 GND, pin 3 RUN_PG**.
+`RUN_PG` is the CM4's RUN pin (open-drain, pulled up on the module): pulling it to GND resets
+the CM4 exactly like a power cut, which Overlay FS (§29) already makes safe. `GLOBAL_EN` low
+would power the whole module down instead — not what we want. So the Pico's reset output is a
+2N7000 with drain on J1 pin 3 and source on J1 pin 2, gate via 1k from a Pico GPIO, plus a
+pull-down so it can't fire while the Pico boots. Pulse ~200 ms. J1's position isn't dimensioned
+on the mechanical drawing (`references/TOFU drawing.pdf`); find the "J1" silkscreen on the board.
