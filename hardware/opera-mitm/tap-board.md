@@ -219,3 +219,22 @@ ILLUMI stay joined as before.
 Idle check with ACC on, Pico plugged in: TXh and PWh at the terminal block read ~5 V (drivers
 off); the head unit is quiet. With the Pico unplugged they still read ~5 V but the panel does
 nothing — that's the fail-open.
+
+### Breadboard row map (as built, 2026-09-27)
+
+Rows are the breadboard's numbers, `a`/`j` the outer columns. Car-side taps land in column `a`,
+Pico jumpers in column `j`. Referenced by every bench and in-car test.
+
+| Row | Column a (car side) | Column j (Pico) |
+|---|---|---|
+| 1 | VBUS · Pico pin 40 (feeds both 10k pull-ups) | |
+| 5 | TXp — pin 1, panel wire | GP5 · pin 7 |
+| 11 | TXh — pin 1, head-unit wire | |
+| 13 | | **GP4 · pin 6** (TX driver gate) |
+| 17 | RX — pin 2, both wires | GP13 · pin 17 |
+| 19 | PWp — pin 3, panel wire | 3V3 · pin 36 |
+| 20 | | GP2 · pin 4 |
+| 24 | PWh — pin 3, head-unit wire | |
+| 26 | | GP3 · pin 5 |
+| 30 | CONT — pin 12, both wires | GP26 · pin 31 |
+| rails | GND — pin 9 → ground rail → Pico GND (pin 38) | |
