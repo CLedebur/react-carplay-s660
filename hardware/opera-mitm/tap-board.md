@@ -188,3 +188,32 @@ Then with a bench supply (negative to I34):
 | 5 V → H34, 3.3 V → J34, 3.3 V → C34 | D2 | pulled to ~0 V (needs a pull-up on D2 to see it: 10k to 5 V) |
 | 3.3 V → K34, 3.3 V through 10k onto S2 | S2 | ~0 V |
 | nothing on K34 | S2 | stays high (R14 holds Q4 off) |
+
+## Appendix — provisional MITM on the breadboard (no relays, fails OPEN)
+
+For trying the interceptor before the perfboard and relays exist. Same input stages as
+phase 1, plus the two output drivers, wired to the **final pin map** so the firmware is the
+same. **No bypass:** if the Pico is unplugged or crashes, the panel's TX and PWR SW are
+disconnected from the head unit and the controls are dead until the wires are re-joined at the
+terminal block. Fine for a driveway test, not for driving.
+
+At the terminal block, move the head-unit-side wires of **pin 1 (TX)** and **pin 3 (PWR SW)**
+into their own positions so panel side and head-unit side are separate. RX, CONT, GND, +B and
+ILLUMI stay joined as before.
+
+| Signal | Wiring | Pico |
+|---|---|---|
+| TXp (panel TX) | 10k/15k divider (as phase 1) → junction | **GP5** |
+| TXp | 10k from TXp to **VBUS (pin 40)** — replaces the head unit's pull-up | |
+| TXh (head-unit TX) | 2N7000 drain; source → GND; gate ← 1k ← | **GP4** |
+| PWp (panel PWR) | 2N7000 buffer (as phase 1), drain + 10k to 3V3 → | **GP2** |
+| PWp | 10k from PWp to **VBUS** | |
+| PWh (head-unit PWR) | 2N7000 drain; source → GND; gate ← 1k ← | **GP3** |
+| RX | 10k/15k divider (as phase 1) → junction | **GP13** |
+| CONT | 68k/15k + zener (as phase 1) → junction | **GP26** |
+| RUN_PG (TOFU J1 pin 3) | 2N7000 drain; source → J1 pin 2; gate ← 1k ← , 68k gate→GND | **GP7** (optional) |
+| GND | terminal 9 → rail → Pico GND | |
+
+Idle check with ACC on, Pico plugged in: TXh and PWh at the terminal block read ~5 V (drivers
+off); the head unit is quiet. With the Pico unplugged they still read ~5 V but the panel does
+nothing — that's the fail-open.
