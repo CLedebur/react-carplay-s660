@@ -2163,3 +2163,15 @@ would power the whole module down instead — not what we want. So the Pico's re
 2N7000 with drain on J1 pin 3 and source on J1 pin 2, gate via 1k from a Pico GPIO, plus a
 pull-down so it can't fire while the Pico boots. Pulse ~200 ms. J1's position isn't dimensioned
 on the mechanical drawing (`references/TOFU drawing.pdf`); find the "J1" silkscreen on the board.
+
+### 30.7 Phase-2 firmware (started 2026-09-26)
+
+`hardware/opera-mitm/firmware/` — Pico SDK 2.1.1, C, built on the Pi (`arm-none-eabi-gcc`
+14.2, cmake, ninja, SDK in `~/src/pico-sdk` with the TinyUSB submodule). `build.sh` builds and
+`build.sh flash` reflashes over USB via picotool. The Pico enumerates as a **USB keyboard +
+CDC console**. Modes: CARPLAY at boot (panel → HID keys to the CM4, nothing to the head unit)
+and HEADUNIT (transparent byte forwarding + PWR SW mirroring). Back-held + Power toggles the
+mode and is never passed on; Power held 3 s pulses RUN_PG (§30.6). Watchdog 2 s. The parser
+(`src/opera.c`) is SDK-free and unit-tested (`tests/`) against the captured frames. Pin map:
+`src/config.h` = `tap-board.md`. **Do not flash it onto a board still wired for phase 1** —
+GP4 becomes an output (TX_out) and would drive into the PWR SW buffer's pull-up.
