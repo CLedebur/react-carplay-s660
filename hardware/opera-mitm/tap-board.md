@@ -191,6 +191,8 @@ Then with a bench supply (negative to I34):
 
 ## Appendix — provisional MITM on the breadboard (no relays, fails OPEN)
 
+![Provisional breadboard wiring](provisional-breadboard.svg)
+
 For trying the interceptor before the perfboard and relays exist. Same input stages as
 phase 1, plus the two output drivers, wired to the **final pin map** so the firmware is the
 same. **No bypass:** if the Pico is unplugged or crashes, the panel's TX and PWR SW are
