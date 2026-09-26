@@ -2123,15 +2123,35 @@ messages**, which is what the Back+Power mode-toggle idea needs. **PWR SW carrie
 OPERA** — it's a plain switch line, seen on GP4 only. **RX was silent** through all 60 s of
 control use.
 
-### 30.5 Open questions for the next capture session
+### 30.5 Second capture session — hold, multi-key, power-on, steering wheel (later the same evening)
 
-1. Press-and-hold: repeat messages, or just press + release?
-2. Two buttons at once: does the 0x41 report list both?
-3. DLE stuffing: if a payload byte is 0x10, is it doubled? (No 0x10 payload seen yet.)
-4. What, if anything, does RX carry — at power-on, on Mode changes, illumination?
-5. Does CONT ever change state (wake/enable), or is it just battery voltage?
-6. What does the audio unit do with a *release-only* or *press-only* message — needed to decide
-   whether the interceptor can hide a Back press it has already forwarded.
+Captures `2026-09-26-acc-on-hold-multikey-wheel.sr` (120 s, car off → ACC → scripted sequence)
+and `2026-09-26-back-plus-power.sr` (30 s). Answers to the open questions:
+
+1. **Press-and-hold repeats.** While a button is held the panel re-sends the *same* key report
+   every **192 ms**; the all-zero release message follows the last repeat. (Back held 3 s = 19
+   repeats.)
+2. **Two buttons at once.** The report lists both: Back + knob push gave
+   `41 00 6C 00 6E 00 00`, so the six payload bytes are **three 16-bit key slots**
+   (`006C`, `006E`, `0000`). Releasing one key goes back to a single-slot report; releasing
+   the last gives the zero report.
+3. **Power-on.** At ACC-on the RX and PWR SW lines rise to 5 V together. **RX stayed silent
+   even then** — in ~5 minutes of captures the head unit has never sent the panel a byte. One
+   lone `55` byte appeared on TX 10 s after ACC-on, unframed; possibly a sync/heartbeat,
+   harmless. **PWR SW sits at 0 V with the car off** (reads as "pressed" through the buffer):
+   firmware must gate on ACC/CONT before trusting it.
+4. **Steering-wheel Input / Mode / Vol+**: nothing on TX or RX. Resistor ladder into the audio
+   unit, as expected — out of scope.
+5. **Back + Power (the planned mode toggle)**: Back repeats stream on TX; the PWR line drops
+   for ~200–250 ms in the middle of them; Back release follows. In listen-only mode the head
+   unit toggled the HDMI input on the Power tap both with and without Back held, and holding
+   Back alone does nothing in HDMI mode (user). In phase 2 the Pico owns the PWR wire, so it
+   swallows the tap and the head unit only ever sees the harmless Back repeats.
+6. **CONT**: sigrok-pico's analog channel reads ~**0.45×** actual (0.75 V shown for 1.66 V
+   at the pin, meter-verified). Don't trust its analog values; CONT's real behaviour waits for
+   the phase-2 firmware's own ADC.
+
+Still open: DLE stuffing (no payload byte of `0x10` has occurred yet).
 
 ### 30.6 CM4 hard-reset line for the 3-second power hold (TOFU schematic, sheet 4)
 
