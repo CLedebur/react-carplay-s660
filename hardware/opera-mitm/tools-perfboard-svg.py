@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Pad-accurate build drawings for the OPERA MITM perfboards.
 
-  python3 tools-perfboard-svg.py main        > main-board.svg       (7 x 9 cm, cols A-Z, rows 1-34)
-  python3 tools-perfboard-svg.py mezz        > pico-mezzanine.svg   (7 x 3 cm, cols 1-27, rows A-K)
-  python3 tools-perfboard-svg.py main-table  > markdown wire/bridge tables for the main board
-  python3 tools-perfboard-svg.py mezz-table
+  python3 tools-perfboard-svg.py main        > main-board.svg   (7 x 9 cm, cols A-Z, rows 1-34)
+  python3 tools-perfboard-svg.py main-table  > markdown wire/bridge tables
 
 Drawings show parts, solder bridges (grey bars) and WIRE ENDPOINTS as numbered tags; the same
 numbers are in the tables. A wire is one insulated jumper soldered between its two tagged pads
@@ -168,7 +166,7 @@ class Board:
 def main_board():
     cols = list(string.ascii_uppercase)
     rows = [str(i) for i in range(1, 35)]
-    b = Board(cols, rows, 'OPERA MITM — main board, 7 × 9 cm perfboard, seen from the component side (column letters along the bottom)')
+    b = Board(cols, rows, 'OPERA MITM — 7 × 9 cm perfboard, component side. Pico 2 W plugs into the two 1×20 sockets at the bottom.')
     b.grid(top_letters=False)
     b.terminal('B', '2', ['TXp', 'TXh', 'RX', 'PWp', 'PWh', 'CONT', 'GND'], ['pin 1 panel', 'pin 1 HU', 'pin 2', 'pin 3 panel', 'pin 3 HU', 'pin 12', 'pin 9'])
     b.terminal('P', '2', ['RUN', 'GND'], ['J1 pin 3', 'J1 pin 2'])
@@ -201,13 +199,21 @@ def main_board():
     b.bridge('I', '19', 'J', '19'); b.bridge('J', '19', 'J', '20'); b.resistor('J', '20', 'J', '23', '10k')
     b.bridge('U', '19', 'V', '19'); b.bridge('V', '19', 'V', '20'); b.resistor('V', '20', 'V', '23', '10k')
 
-    # mezzanine sockets
-    b.zone('A', '24', 'Z', '34', 'Pico mezzanine sits over rows 24–34 — keep this area clear', '#333', label_at=('B', '29'))
-    pins = ['GND', 'VBUS', '3V3', 'GP2', 'GP3', 'GP4', 'GP5', 'GP6', 'GP7', 'GP13', 'GP26', 'GND']
-    b.socket('F', 'Q', '24', '1×12 female header (mezzanine signals)', pins)
-    b.socket('X', 'Z', '34', '', ['GND', 'nc', 'nc'])
-    b.text(b.cx('W') - 6, b.cy('34') + 4, '1×3 female (mezzanine support) →', 10, anchor='end')
-    b.bridge('G', '23', 'G', '24')
+    # Pico sockets: two 1x20 female headers, rows 26 and 33, columns D..W. Pin 1 / pin 40 at column D (USB end).
+    b.zone('A', '24', 'Z', '34', 'Pico 2 W plugs in here — USB end at the left edge', '#333', label_at=('B', '30'))
+    colsP = list('DEFGHIJKLMNOPQRSTUVW')
+    top = [str(n) for n in range(1, 21)]            # pins 1..20
+    bot = [str(n) for n in range(40, 20, -1)]       # pins 40..21
+    names = {'3': 'GND', '4': 'GP2', '5': 'GP3', '6': 'GP4', '7': 'GP5', '8': 'GND', '9': 'GP6', '10': 'GP7', '13': 'GND', '17': 'GP13', '18': 'GND',
+             '40': 'VBUS', '39': 'VSYS', '38': 'GND', '36': '3V3', '33': 'GND', '31': 'GP26', '28': 'GND', '23': 'GND'}
+    b.socket('D', 'W', '26', '', None)
+    b.socket('D', 'W', '33', '', None)
+    for c, pn in zip(colsP, top):
+        lab = f'p{pn}' + (f' {names[pn]}' if pn in names else '')
+        b.add(f'<text x="{b.cx(c)}" y="{b.cy("26")-13}" text-anchor="middle" font-size="7.5" fill="#222" transform="rotate(-60 {b.cx(c)} {b.cy("26")-13})">{lab}</text>')
+    for c, pn in zip(colsP, bot):
+        lab = f'p{pn}' + (f' {names[pn]}' if pn in names else '')
+        b.add(f'<text x="{b.cx(c)}" y="{b.cy("33")+16}" text-anchor="middle" font-size="7.5" fill="#222" transform="rotate(60 {b.cx(c)} {b.cy("33")+16})">{lab}</text>')
 
     # ---- wires (numbered) ----
     b.wire('A', '3', 'G', '16', CAR, 'TXp → K1 NC-A');       b.bridge('B', '3', 'A', '3')
@@ -235,18 +241,18 @@ def main_board():
     b.wire('C', '19', 'L', '20', SIG, 'coil drive → D1 anode')
     b.wire('C', '16', 'C', '23', VBUS, 'K1 coil → VBUS bus')
     b.wire('O', '16', 'O', '23', VBUS, 'K2 coil → VBUS bus')
-    b.wire('F', '24', 'E', '14', GND, 'socket GND → GND bus')
-    b.wire('Q', '24', 'O', '14', GND, 'socket GND → GND bus')
-    b.wire('X', '34', 'X', '14', GND, 'support socket GND → GND bus')
-    b.wire('I', '13', 'H', '24', V33, 'buffer pull-up → 3V3')
-    b.wire('J', '10', 'I', '24', SIG, 'buffer out → GP2')
-    b.wire('W', '9', 'J', '24', SIG, 'GP3 → Q2 gate resistor')
-    b.wire('R', '9', 'K', '24', SIG, 'GP4 → Q1 gate resistor')
-    b.wire('C', '8', 'L', '24', SIG, 'TX junction → GP5')
-    b.wire('O', '13', 'M', '24', SIG, 'GP6 → Q3 gate resistor')
-    b.wire('Z', '13', 'N', '24', SIG, 'GP7 → Q4 gate resistor')
-    b.wire('G', '8', 'O', '24', SIG, 'RX junction → GP13')
-    b.wire('N', '8', 'P', '24', SIG, 'CONT junction → GP26')
+    b.wire('F', '26', 'E', '14', GND, 'Pico pin 3 GND → GND bus')
+    b.wire('F', '33', 'O', '14', GND, 'Pico pin 38 GND → GND bus')
+    b.wire('D', '33', 'D', '23', VBUS, 'Pico pin 40 VBUS → VBUS bus')
+    b.wire('I', '13', 'H', '33', V33, 'buffer pull-up → Pico pin 36 3V3')
+    b.wire('J', '10', 'G', '26', SIG, 'buffer out → Pico pin 4 GP2')
+    b.wire('W', '9', 'H', '26', SIG, 'Pico pin 5 GP3 → Q2 gate resistor')
+    b.wire('R', '9', 'I', '26', SIG, 'Pico pin 6 GP4 → Q1 gate resistor')
+    b.wire('C', '8', 'J', '26', SIG, 'TX junction → Pico pin 7 GP5')
+    b.wire('O', '13', 'L', '26', SIG, 'Pico pin 9 GP6 → Q3 gate resistor')
+    b.wire('Z', '13', 'M', '26', SIG, 'Pico pin 10 GP7 → Q4 gate resistor')
+    b.wire('G', '8', 'T', '26', SIG, 'RX junction → Pico pin 17 GP13')
+    b.wire('N', '8', 'M', '33', SIG, 'CONT junction → Pico pin 31 GP26')
     # temporary links on the relay pads
     b.wire('E', '16', 'I', '16', LINK, 'TEMP: K1 COM-A → NO-A (remove when K1 is fitted)')
     b.wire('E', '19', 'I', '19', LINK, 'TEMP: K1 COM-B → NO-B (remove when K1 is fitted)')
@@ -265,49 +271,10 @@ def main_board():
     return b
 
 
-def mezzanine():
-    cols = [str(i) for i in range(1, 28)]
-    rows = list('ABCDEFGHIJK')
-    b = Board(cols, rows, 'OPERA MITM — Pico mezzanine, 7 × 3 cm perfboard, component side. Pico 2 W plugs into rows B/I (pin 1 and pin 40 at column 4, USB end). Male pins point DOWN from rows A and K.')
-    b.grid()
-    picoB = [f'{n}' for n in range(1, 21)]
-    picoI = [f'{n}' for n in range(40, 20, -1)]
-    b.socket('4', '23', 'B', '', None)
-    b.socket('4', '23', 'I', '', None)
-    for i, c in enumerate(range(4, 24)):
-        if picoB[i] in ('1', '3', '4', '5', '6', '7', '9', '10', '17', '18', '20'):
-            b.text(b.cx(str(c)), b.cy('B') - 12, 'p' + picoB[i], 8, '#333', 'middle')
-        if picoI[i] in ('40', '38', '36', '31', '23', '21'):
-            b.text(b.cx(str(c)), b.cy('I') + 22, 'p' + picoI[i], 8, '#333', 'middle')
-    hdr = ['GND', 'VBUS', '3V3', 'GP2', 'GP3', 'GP4', 'GP5', 'GP6', 'GP7', 'GP13', 'GP26', 'GND']
-    b.socket('6', '17', 'K', '', hdr)
-    b.text(b.cx('18') + 14, b.cy('K') + 4, '← 1×12 male, pins down → main row 24 F…Q', 10)
-    b.socket('24', '26', 'A', '', None)
-    b.text(b.cx('23') - 12, b.cy('A') + 4, '1×3 male, pins down → main row 34 X…Z  →', 10, anchor='end')
-    # wires: Pico socket pad -> header pad   (row B: pin n at column n+3 ; row I: pin m at column 44-m)
-    b.wire('6', 'B', '6', 'K', GND, 'Pico pin 3 GND → header GND')
-    b.wire('4', 'I', '7', 'K', VBUS, 'Pico pin 40 VBUS → header VBUS')
-    b.wire('8', 'I', '8', 'K', V33, 'Pico pin 36 3V3 → header 3V3')
-    b.wire('7', 'B', '9', 'K', SIG, 'Pico pin 4 GP2 → header GP2')
-    b.wire('8', 'B', '10', 'K', SIG, 'Pico pin 5 GP3 → header GP3')
-    b.wire('9', 'B', '11', 'K', SIG, 'Pico pin 6 GP4 → header GP4')
-    b.wire('10', 'B', '12', 'K', SIG, 'Pico pin 7 GP5 → header GP5')
-    b.wire('12', 'B', '13', 'K', SIG, 'Pico pin 9 GP6 → header GP6')
-    b.wire('13', 'B', '14', 'K', SIG, 'Pico pin 10 GP7 → header GP7')
-    b.wire('20', 'B', '15', 'K', SIG, 'Pico pin 17 GP13 → header GP13')
-    b.wire('13', 'I', '16', 'K', SIG, 'Pico pin 31 GP26 → header GP26')
-    b.wire('6', 'I', '17', 'K', GND, 'Pico pin 38 GND → header GND')
-    b.wire('24', 'A', '21', 'B', GND, 'support header pin 1 → Pico pin 18 GND')
-    return b
-
-
 if __name__ == '__main__':
     which = sys.argv[1] if len(sys.argv) > 1 else 'main'
-    if which.startswith('main'):
-        b = main_board()
-    else:
-        b = mezzanine()
+    b = main_board()
     if which.endswith('table'):
         print(b.tables())
     else:
-        sys.stdout.write(b.svg(extra_right=420 if which.startswith('main') else 80))
+        sys.stdout.write(b.svg(extra_right=420))
