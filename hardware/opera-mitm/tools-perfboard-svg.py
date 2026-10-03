@@ -2,7 +2,8 @@
 """Pad-accurate build drawings for the OPERA MITM perfboards.
 
   python3 tools-perfboard-svg.py main        > main-board.svg   (7 x 9 cm, cols A-Z, rows 1-31)
-  python3 tools-perfboard-svg.py main-table  > markdown wire/bridge tables
+  python3 tools-perfboard-svg.py main-table      > markdown wire/bridge tables
+  python3 tools-perfboard-svg.py main-checklist  > wiring-checklist.md
 
 Drawings show parts, solder bridges (grey bars) and WIRE ENDPOINTS as numbered tags; the same
 numbers are in the tables. A wire is one insulated jumper soldered between its two tagged pads
@@ -154,6 +155,34 @@ class Board:
                 f'<text x="16" y="24" font-size="14" font-weight="500" fill="#111">{self.title}</text>'
                 + ''.join(self.out) + '</svg>')
 
+    def checklist(self):
+        groups = [('Bus wires (bare, solder side)', None), ('GND wires', GND), ('VBUS wires', VBUS), ('3V3 wire', V33),
+                  ('Car-side wires (terminal → relay pads)', CAR), ('Signal wires', SIG), ('Temporary links (purple) — remove when the relays are fitted', LINK)]
+        out = ['# OPERA MITM — wiring checklist (26 × 31 board)', '',
+               'Coordinates are column letter + row number, as printed on `main-board.svg`. Tick each wire after',
+               'soldering **both** ends and tug-testing it. Wire numbers match the tags on the drawing.', '']
+        out += ['## Bus wires (bare, solder side)', '', '- [ ] GND bus: bare wire along row **13**, A13 → Z13, soldered at every pad that a GND wire or lead lands on',
+                '- [ ] VBUS bus: bare wire along row **21**, A21 → Z21, soldered at C21, D21, J21, L21, O21, V21', '']
+        for title, col in groups[1:]:
+            out.append(f'## {title}'); out.append('')
+            for n, a, b_, c, what in self.wires:
+                if c == col: out.append(f'- [ ] **{n}** · `{a}` → `{b_}` — {what}')
+            out.append('')
+        out += ['## Solder bridges (flow solder across two neighbouring pads)', '']
+        for a, b_ in self.bridges: out.append(f'- [ ] `{a}`–`{b_}`')
+        out += ['', '## Off-board wires', '',
+                '- [ ] Harness pin 1, **panel-side** wire → terminal **TXp** (B2)',
+                '- [ ] Harness pin 1, **head-unit-side** wire → terminal **TXh** (D2)',
+                '- [ ] Harness pin 2 (both wires still joined) → terminal **RX** (F2)',
+                '- [ ] Harness pin 3, **panel-side** wire → terminal **PWp** (H2)',
+                '- [ ] Harness pin 3, **head-unit-side** wire → terminal **PWh** (J2)',
+                '- [ ] Harness pin 12 (both wires joined) → terminal **CONT** (L2)',
+                '- [ ] Harness pin 9 → terminal **GND** (N2)',
+                '- [ ] TOFU **J1 pin 3 (RUN_PG)** → terminal **RUN** (P2) — optional until the headers are in',
+                '- [ ] TOFU **J1 pin 2 (GND)** → terminal **GND** (R2) — optional, goes with RUN',
+                '- [ ] Pico USB → TOFU USB', '']
+        return '\n'.join(out)
+
     def tables(self):
         s = ['| # | From | To | Kind | What |', '|---|---|---|---|---|']
         for n, a, b, col, what in self.wires:
@@ -269,5 +298,7 @@ if __name__ == '__main__':
     b = main_board()
     if which.endswith('table'):
         print(b.tables())
+    elif which.endswith('checklist'):
+        print(b.checklist())
     else:
         sys.stdout.write(b.svg(extra_right=420))
