@@ -13,30 +13,29 @@ script, so drawing and table always agree. **Numbered tags on the drawing are th
 one wire; grey bars are solder bridges between neighbouring pads.** A pad may carry one
 component lead plus one wire; wires can be soldered on either side.
 
-Count the holes first: the layout assumes **26 columns (A–Z) × 34 rows**. If yours differs by
-one, anchor to the top-left corner (A1); nothing uses column Z or row 34 except the Q4 gate
-resistor's end at Z13, which can move to Y13 with the 1k shortened by one hole.
+The board is **26 columns (A–Z) × 31 rows** (counted). Everything is anchored to the top-left
+corner, A1.
 
 ![Main board](main-board.svg)
 
-## Pico pins used (sockets at rows 26 and 33, columns D → W; pin 1 and pin 40 at column D, USB end)
+## Pico pins used (sockets at rows 23 and 30, columns D → W; pin 1 and pin 40 at column D, USB end)
 
 | Pad | Pico | Dir | Signal |
 |---|---|---|---|
-| F26 | pin 3 GND | — | |
-| G26 | pin 4 GP2 | in | PW_in — buffer output, **inverted** (low idle, high pressed) |
-| H26 | pin 5 GP3 | out | PW_out — Q2, fake Power press to the head unit |
-| I26 | pin 6 GP4 | out | TX_out — Q1 (UART1 TX, inverted at the pad) |
-| J26 | pin 7 GP5 | in | TX_in — panel OPERA TX (UART1 RX) |
-| L26 | pin 9 GP6 | out | RLY — Q3, energises both relays |
-| M26 | pin 10 GP7 | out | RST — Q4, pulls CM4 RUN_PG low |
-| T26 | pin 17 GP13 | in | RX_in — head-unit OPERA RX (UART0 RX) |
-| D33 | pin 40 VBUS | — | 5 V for relay coils and panel pull-ups |
-| F33 | pin 38 GND | — | |
-| H33 | pin 36 3V3 | — | buffer pull-up |
-| M33 | pin 31 GP26 | in | CONT (ADC0) |
+| F23 | pin 3 GND | — | |
+| G23 | pin 4 GP2 | in | PW_in — buffer output, **inverted** (low idle, high pressed) |
+| H23 | pin 5 GP3 | out | PW_out — Q2, fake Power press to the head unit |
+| I23 | pin 6 GP4 | out | TX_out — Q1 (UART1 TX, inverted at the pad) |
+| J23 | pin 7 GP5 | in | TX_in — panel OPERA TX (UART1 RX) |
+| L23 | pin 9 GP6 | out | RLY — Q3, energises both relays |
+| M23 | pin 10 GP7 | out | RST — Q4, pulls CM4 RUN_PG low |
+| T23 | pin 17 GP13 | in | RX_in — head-unit OPERA RX (UART0 RX) |
+| D30 | pin 40 VBUS | — | 5 V for relay coils and panel pull-ups |
+| F30 | pin 38 GND | — | |
+| H30 | pin 36 3V3 | — | buffer pull-up |
+| M30 | pin 31 GP26 | in | CONT (ADC0) |
 
-Row 26 holds pins 1 → 20 left to right (pin *n* at column index 3 + *n*); row 33 holds pins
+Row 23 holds pins 1 → 20 left to right (pin *n* at column index 3 + *n*); row 30 holds pins
 40 → 21 (pin *m* at column index 44 − *m*). The USB connector overhangs the left board edge.
 
 ## Parts
@@ -44,14 +43,14 @@ Row 26 holds pins 1 → 20 left to right (pin *n* at column index 3 + *n*); row 
 | Qty | Part | Where |
 |---|---|---|
 | 9 positions | 5.08 mm screw terminals (7 + 2) | row 2 |
-| 2 | 1×20 female header | rows 26 and 33, D → W |
+| 2 | 1×20 female header | rows 23 and 30, D → W |
 | 6 | 10k | R1 R3 R5 R6 + two panel pull-ups |
 | 3 | 15k | R2 R4 R8 |
 | 2 | 68k | R7 + Q4 gate pull-down |
 | 4 | 1k | gate resistors |
 | 5 | 2N7000 | Q1 TX driver, Q2 PWR driver, Q3 relay driver, Q4 reset, Q5 PWR buffer |
 | 1 | 1N5227B 3.6 V zener | Z1, band towards row 8 |
-| 1 | 1N4007 | D1, band towards row 22 |
+| 1 | 1N4007 | D1, band towards row 21 |
 | 2 | Omron G5V-2-H1 DC5 | K1, K2 — **later** |
 | ~1 m | thin insulated wire + two bare wires for the buses | |
 
@@ -63,23 +62,23 @@ Row 26 holds pins 1 → 20 left to right (pin *n* at column index 3 + *n*); row 
 | R1 10k / R2 15k | B3–B7 / B8–B12 | TX divider |
 | R3 10k / R4 15k | F3–F7 / F8–F12 | RX divider |
 | R5 10k | H3–H8 | buffer gate resistor |
-| Q5 2N7000 | G10 S · H10 G · I10 D | buffer |
-| R6 10k | I11–I13 | buffer pull-up |
+| Q5 2N7000 | G9 S · H9 G · I9 D | buffer |
+| R6 10k | I10–I12 | buffer pull-up |
 | R7 68k / R8 15k | L3–L7 / L8–L12 | CONT divider |
 | Z1 | M8 band · M12 plain | |
 | Q1 / Q2 | Q5 S · R5 G · S5 D / V5 S · W5 G · X5 D | TX / PWR drivers |
 | R15 / R16 1k | R6–R9 / W6–W9 | gates |
-| Q3 / Q4 | Q12 S · R12 G · S12 D / V12 S · W12 G · X12 D | relay / reset drivers |
-| R17 1k | R13–O13 (horizontal) | Q3 gate |
-| R18 1k | W13–Z13 (horizontal) | Q4 gate |
-| R14 68k | W11–T11 (horizontal) | Q4 gate pull-down |
-| K1 pads | B16 E16 G16 I16 / B19 E19 G19 I19 | coil · COM · NC · NO (row A / row B) |
-| K2 pads | N16 Q16 S16 U16 / N19 Q19 S19 U19 | |
-| R9 / R10 10k | J20–J23 / V20–V23 | panel pull-ups to VBUS |
-| D1 | L20 plain · L22 band | flyback |
-| GND bus | bare wire A14 → Z14, solder side | |
-| VBUS bus | bare wire A23 → Z23, solder side | |
-| Pico sockets | D26 → W26 and D33 → W33 | 1×20 female each |
+| Q3 / Q4 | Q11 S · R11 G · S11 D / V11 S · W11 G · X11 D | relay / reset drivers |
+| R17 1k | R12–O12 (horizontal) | Q3 gate |
+| R18 1k | W12–Z12 (horizontal) | Q4 gate |
+| R14 68k | W10–Z10 (horizontal) | Q4 gate pull-down |
+| K1 pads | B15 E15 G15 I15 / B18 E18 G18 I18 | coil · COM · NC · NO (pole A row / pole B row) |
+| K2 pads | N15 Q15 S15 U15 / N18 Q18 S18 U18 | |
+| R9 / R10 10k | J19–J21 / V19–V21 | panel pull-ups to VBUS |
+| D1 | L19 plain · L21 band (on the VBUS bus) | flyback |
+| GND bus | bare wire A13 → Z13, solder side | |
+| VBUS bus | bare wire A21 → Z21, solder side | |
+| Pico sockets | D23 → W23 and D30 → W30 | 1×20 female each |
 
 Transistors: flat face towards the **top** edge (row 1) gives S · G · D left to right. Do the
 diode test on each one first (S→D ≈ 0.6 V, G open to both) and trust that over the marking.
@@ -90,53 +89,50 @@ works as long as the coil pair is at column B / N.
 
 | # | From | To | Kind | What |
 |---|---|---|---|---|
-| 1 | A3 | G16 | car wire | TXp → K1 NC-A |
-| 2 | A4 | E19 | car wire | TXp → K1 COM-B |
-| 3 | D3 | E16 | car wire | TXh → K1 COM-A |
-| 4 | G3 | S16 | car wire | PWp → K2 NC-A |
-| 5 | G4 | Q19 | car wire | PWp → K2 COM-B |
-| 6 | J3 | Q16 | car wire | PWh → K2 COM-A |
-| 7 | N3 | N14 | GND | GND terminal → GND bus |
-| 8 | R3 | R14 | GND | Pi GND terminal → GND bus |
+| 1 | A3 | G15 | car wire | TXp → K1 NC-A |
+| 2 | A4 | E18 | car wire | TXp → K1 COM-B |
+| 3 | D3 | E15 | car wire | TXh → K1 COM-A |
+| 4 | G3 | S15 | car wire | PWp → K2 NC-A |
+| 5 | G4 | Q18 | car wire | PWp → K2 COM-B |
+| 6 | J3 | Q15 | car wire | PWh → K2 COM-A |
+| 7 | N3 | N13 | GND | GND terminal → GND bus |
+| 8 | R3 | R13 | GND | Pi GND terminal → GND bus |
 | 9 | P3 | X11 | signal | RUN terminal → Q4 drain |
-| 10 | B12 | B14 | GND | TX divider bottom → GND bus |
-| 11 | F12 | F14 | GND | RX divider bottom → GND bus |
-| 12 | G10 | H14 | GND | Q5 source → GND bus |
-| 13 | L12 | L14 | GND | CONT divider + zener → GND bus |
-| 14 | Q5 | Q14 | GND | Q1 source → GND bus |
-| 15 | V5 | W14 | GND | Q2 source → GND bus |
-| 16 | Q12 | P14 | GND | Q3 source → GND bus |
-| 17 | V12 | V14 | GND | Q4 source → GND bus |
-| 18 | T11 | T14 | GND | Q4 gate pull-down → GND bus |
-| 19 | S5 | I16 | signal | Q1 drain → K1 NO-A |
-| 20 | X5 | U16 | signal | Q2 drain → K2 NO-A |
-| 21 | S12 | O19 | signal | Q3 drain → relay coil drive |
-| 22 | C19 | O19 | signal | K1 coil drive = K2 coil drive |
-| 23 | C19 | L20 | signal | coil drive → D1 anode |
-| 24 | C16 | C23 | VBUS | K1 coil → VBUS bus |
-| 25 | O16 | O23 | VBUS | K2 coil → VBUS bus |
-| 26 | F26 | E14 | GND | Pico pin 3 GND → GND bus |
-| 27 | F33 | O14 | GND | Pico pin 38 GND → GND bus |
-| 28 | D33 | D23 | VBUS | Pico pin 40 VBUS → VBUS bus |
-| 29 | I13 | H33 | 3V3 | buffer pull-up → Pico pin 36 3V3 |
-| 30 | J10 | G26 | signal | buffer out → Pico pin 4 GP2 |
-| 31 | W9 | H26 | signal | Pico pin 5 GP3 → Q2 gate resistor |
-| 32 | R9 | I26 | signal | Pico pin 6 GP4 → Q1 gate resistor |
-| 33 | C8 | J26 | signal | TX junction → Pico pin 7 GP5 |
-| 34 | O13 | L26 | signal | Pico pin 9 GP6 → Q3 gate resistor |
-| 35 | Z13 | M26 | signal | Pico pin 10 GP7 → Q4 gate resistor |
-| 36 | G8 | T26 | signal | RX junction → Pico pin 17 GP13 |
-| 37 | N8 | M33 | signal | CONT junction → Pico pin 31 GP26 |
-| 38 | E16 | I16 | TEMP link | TEMP: K1 COM-A → NO-A (remove when K1 is fitted) |
-| 39 | E19 | I19 | TEMP link | TEMP: K1 COM-B → NO-B (remove when K1 is fitted) |
-| 40 | Q16 | U16 | TEMP link | TEMP: K2 COM-A → NO-A (remove when K2 is fitted) |
-| 41 | Q19 | U19 | TEMP link | TEMP: K2 COM-B → NO-B (remove when K2 is fitted) |
+| 10 | G9 | G13 | GND | Q5 source → GND bus |
+| 11 | Q5 | Q13 | GND | Q1 source → GND bus |
+| 12 | V5 | W13 | GND | Q2 source → GND bus |
+| 13 | Q11 | P13 | GND | Q3 source → GND bus |
+| 14 | V11 | V13 | GND | Q4 source → GND bus |
+| 15 | Z10 | Z13 | GND | Q4 gate pull-down → GND bus |
+| 16 | S5 | I15 | signal | Q1 drain → K1 NO-A |
+| 17 | X5 | U15 | signal | Q2 drain → K2 NO-A |
+| 18 | S11 | O18 | signal | Q3 drain → relay coil drive |
+| 19 | C18 | O18 | signal | K1 coil drive = K2 coil drive |
+| 20 | C18 | L19 | signal | coil drive → D1 anode |
+| 21 | C15 | C21 | VBUS | K1 coil → VBUS bus |
+| 22 | O15 | O21 | VBUS | K2 coil → VBUS bus |
+| 23 | F23 | E13 | GND | Pico pin 3 GND → GND bus |
+| 24 | F30 | O13 | GND | Pico pin 38 GND → GND bus |
+| 25 | D30 | D21 | VBUS | Pico pin 40 VBUS → VBUS bus |
+| 26 | I12 | H30 | 3V3 | buffer pull-up → Pico pin 36 3V3 |
+| 27 | J9 | G23 | signal | buffer out → Pico pin 4 GP2 |
+| 28 | W9 | H23 | signal | Pico pin 5 GP3 → Q2 gate resistor |
+| 29 | R9 | I23 | signal | Pico pin 6 GP4 → Q1 gate resistor |
+| 30 | C8 | J23 | signal | TX junction → Pico pin 7 GP5 |
+| 31 | O12 | L23 | signal | Pico pin 9 GP6 → Q3 gate resistor |
+| 32 | Z12 | M23 | signal | Pico pin 10 GP7 → Q4 gate resistor |
+| 33 | E8 | T23 | signal | RX junction → Pico pin 17 GP13 |
+| 34 | N8 | M30 | signal | CONT junction → Pico pin 31 GP26 |
+| 35 | E15 | I15 | TEMP link | TEMP: K1 COM-A → NO-A (remove when the relay is fitted) |
+| 36 | E18 | I18 | TEMP link | TEMP: K1 COM-B → NO-B (remove when the relay is fitted) |
+| 37 | Q15 | U15 | TEMP link | TEMP: K2 COM-A → NO-A (remove when the relay is fitted) |
+| 38 | Q18 | U18 | TEMP link | TEMP: K2 COM-B → NO-B (remove when the relay is fitted) |
 
-Solder bridges (flow solder across the two neighbouring pads): B2–B3, B7–B8, B8–C8, F2–F3, F7–F8, F8–G8, H2–H3, H8–H9, H9–H10, I10–I11, I10–J10, L2–L3, L7–L8, L8–M8, L12–M12, M8–N8, R5–R6, W5–W6, R12–R13, W12–W13, W12–W11, B16–C16, N16–O16, B19–C19, N19–O19, L22–L23, I19–J19, J19–J20, U19–V19, V19–V20, B3–A3, A3–A4, D2–D3, H3–G3, G3–G4, J2–J3, N2–N3, R2–R3, P2–P3, X11–X12
+Solder bridges (flow solder across the two neighbouring pads): B2–B3, B7–B8, B8–C8, B12–B13, F2–F3, F7–F8, F8–E8, F12–F13, H2–H3, H8–H9, I9–I10, I9–J9, L2–L3, L7–L8, L8–M8, L12–M12, M8–N8, L12–L13, R5–R6, W5–W6, R11–R12, W11–W12, W11–W10, B15–C15, N15–O15, B18–C18, N18–O18, I18–J18, J18–J19, U18–V18, V18–V19, B3–A3, A3–A4, D2–D3, H3–G3, G3–G4, J2–J3, N2–N3, R2–R3, P2–P3
 
 ## Build order
 
-1. Both bare bus wires (rows 14 and 23) on the solder side.
+1. Both bare bus wires (rows 13 and 21) on the solder side.
 2. Terminals and the two Pico sockets.
 3. Transistors (diode-test first), then resistors, diodes, bridges.
 4. Wires, in table order, ticking them off.
@@ -150,30 +146,30 @@ Solder bridges (flow solder across the two neighbouring pads): B2–B3, B7–B8,
 | F2 (RX) | ~25k |
 | L2 (CONT) | 15k–83k, not 0 |
 | H2 (PWp), D2 (TXh), J2 (PWh) | open |
-| D33 (VBUS) | open |
-| D33 ↔ B2, D33 ↔ H2 | ~10k each (pull-ups through the temporary links) |
+| D30 (VBUS) | open |
+| D30 ↔ B2, D30 ↔ H2 | ~10k each (pull-ups through the temporary links) |
 | B2 ↔ D2, H2 ↔ J2 | open (no relay yet; the links are COM→NO, not COM→NC) |
-| H33 ↔ G26 | ~10k |
-| I26 ↔ D2, H26 ↔ J2 | open |
-| N2, R2, F26, F33 | 0 Ω |
+| H30 ↔ G23 | ~10k |
+| I23 ↔ D2, H23 ↔ J2 | open |
+| N2, R2, F23, F30 | 0 Ω |
 
 Powered (bench supply, negative on the GND bus):
 
 | Apply | Read | Expect |
 |---|---|---|
-| 5 V → B2 | J26 | 3.0 V |
-| 5 V → F2 | T26 | 3.0 V |
-| 10 V → L2 | M33 | ~1.5 V |
-| 3.3 V → H33, nothing on H2 | G26 | 3.3 V |
-| 3.3 V → H33 and 5 V → H2 | G26 | ~0 V |
-| 5 V via 10k → D2, then 3.3 V → I26 | D2 | 5 V → ~0 V |
-| 5 V via 10k → J2, then 3.3 V → H26 | J2 | 5 V → ~0 V |
-| 5 V → D33 | B2, H2 | ~5 V (pull-ups) |
-| 3.3 V → M26, 3.3 V via 10k → P2 | P2 | ~0 V; back to 3.3 V with M26 open |
+| 5 V → B2 | J23 | 3.0 V |
+| 5 V → F2 | T23 | 3.0 V |
+| 10 V → L2 | M30 | ~1.5 V |
+| 3.3 V → H30, nothing on H2 | G23 | 3.3 V |
+| 3.3 V → H30 and 5 V → H2 | G23 | ~0 V |
+| 5 V via 10k → D2, then 3.3 V → I23 | D2 | 5 V → ~0 V |
+| 5 V via 10k → J2, then 3.3 V → H23 | J2 | 5 V → ~0 V |
+| 5 V → D30 | B2, H2 | ~5 V (pull-ups) |
+| 3.3 V → M23, 3.3 V via 10k → P2 | P2 | ~0 V; back to 3.3 V with M23 open |
 
 ## From provisional to final (when the relays arrive)
 
-1. Unsolder the four purple links (wires 38–41).
+1. Unsolder the four purple links (wires 35–38).
 2. Solder K1 and K2 onto their pads, coil pins at columns B and N.
 3. Check: with no power, B2 ↔ D2 = 0 Ω and H2 ↔ J2 = 0 Ω (relays released = pass-through).
 4. Power the Pico: after ~1.5 s both relays click; B2 ↔ D2 goes open.
