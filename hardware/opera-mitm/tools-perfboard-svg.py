@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pad-accurate build drawings for the OPERA MITM perfboards.
 
-  python3 tools-perfboard-svg.py main        > main-board.svg   (7 x 9 cm, cols A-Z, rows 1-34)
+  python3 tools-perfboard-svg.py main        > main-board.svg   (7 x 9 cm, cols A-Z, rows 1-31)
   python3 tools-perfboard-svg.py main-table  > markdown wire/bridge tables
 
 Drawings show parts, solder bridges (grey bars) and WIRE ENDPOINTS as numbered tags; the same
@@ -68,7 +68,7 @@ class Board:
         self.add(f'<rect x="{min(xs,xd)-9}" y="{y-10}" width="{abs(xd-xs)+18}" height="20" rx="6" fill="#DFF5F1" stroke="#1F8A78" stroke-width="0.9"/>')
         for c, l in ((cs, 'S'), (cg, 'G'), (cd, 'D')):
             x = self.cx(c)
-            self.add(f'<circle cx="{x}" cy="{y}" r="3" fill="#1F8A78"/><text x="{x}" y="{y-13}" text-anchor="middle" font-size="9" font-weight="500" fill="#0B4A40">{l}</text>')
+            self.add(f'<circle cx="{x}" cy="{y}" r="3" fill="#1F8A78"/><text x="{x-6}" y="{y+3}" text-anchor="end" font-size="8" font-weight="500" fill="#0B4A40">{l}</text>')
         self.add(f'<text x="{(xs+xd)/2}" y="{y+22}" text-anchor="middle" font-size="10" font-weight="500" fill="#0B4A40">{name}</text>')
 
     def relay(self, c_coil, r_top, r_bot, name):
@@ -165,109 +165,102 @@ class Board:
 
 def main_board():
     cols = list(string.ascii_uppercase)
-    rows = [str(i) for i in range(1, 35)]
-    b = Board(cols, rows, 'OPERA MITM — 7 × 9 cm perfboard, component side. Pico 2 W plugs into the two 1×20 sockets at the bottom.')
+    rows = [str(i) for i in range(1, 32)]        # the kit's 7 x 9 board: 26 x 31 holes
+    b = Board(cols, rows, 'OPERA MITM — 7 × 9 cm perfboard (26 × 31 holes), component side. Pico 2 W plugs into the two 1×20 sockets at the bottom.')
     b.grid(top_letters=False)
     b.terminal('B', '2', ['TXp', 'TXh', 'RX', 'PWp', 'PWh', 'CONT', 'GND'], ['pin 1 panel', 'pin 1 HU', 'pin 2', 'pin 3 panel', 'pin 3 HU', 'pin 12', 'pin 9'])
     b.terminal('P', '2', ['RUN', 'GND'], ['J1 pin 3', 'J1 pin 2'])
-    b.bus('A', 'Z', '14', GND, 'GND bus · bare wire, solder side')
-    b.bus('A', 'Z', '23', VBUS, 'VBUS bus · bare wire, solder side')
+    b.bus('A', 'Z', '13', GND, 'GND bus · bare wire, solder side')
+    b.bus('A', 'Z', '21', VBUS, 'VBUS bus · bare wire, solder side')
 
-    # input lanes
-    b.bridge('B', '2', 'B', '3'); b.resistor('B', '3', 'B', '7', '10k'); b.bridge('B', '7', 'B', '8'); b.resistor('B', '8', 'B', '12', '15k'); b.bridge('B', '8', 'C', '8')
-    b.bridge('F', '2', 'F', '3'); b.resistor('F', '3', 'F', '7', '10k'); b.bridge('F', '7', 'F', '8'); b.resistor('F', '8', 'F', '12', '15k'); b.bridge('F', '8', 'G', '8')
+    # ---- input lanes (rows 3-12) ----
+    b.bridge('B', '2', 'B', '3'); b.resistor('B', '3', 'B', '7', '10k'); b.bridge('B', '7', 'B', '8'); b.resistor('B', '8', 'B', '12', '15k'); b.bridge('B', '8', 'C', '8'); b.bridge('B', '12', 'B', '13')
+    b.bridge('F', '2', 'F', '3'); b.resistor('F', '3', 'F', '7', '10k'); b.bridge('F', '7', 'F', '8'); b.resistor('F', '8', 'F', '12', '15k'); b.bridge('F', '8', 'E', '8'); b.bridge('F', '12', 'F', '13')
     b.bridge('H', '2', 'H', '3'); b.resistor('H', '3', 'H', '8', '10k'); b.bridge('H', '8', 'H', '9')
-    b.fet('G', 'H', 'I', '10', 'Q5 buffer')            # row 10 to keep G9 clear of G8
-    b.bridge('H', '9', 'H', '10')
-    b.bridge('I', '10', 'I', '11'); b.resistor('I', '11', 'I', '13', '10k'); b.bridge('I', '10', 'J', '10')
+    b.fet('G', 'H', 'I', '9', 'Q5 buffer')
+    b.bridge('I', '9', 'I', '10'); b.resistor('I', '10', 'I', '12', '10k'); b.bridge('I', '9', 'J', '9')
     b.bridge('L', '2', 'L', '3'); b.resistor('L', '3', 'L', '7', '68k'); b.bridge('L', '7', 'L', '8'); b.resistor('L', '8', 'L', '12', '15k')
-    b.diode('M', '12', '8', 'Z1 3.6 V'); b.bridge('L', '8', 'M', '8'); b.bridge('L', '12', 'M', '12'); b.bridge('M', '8', 'N', '8')
+    b.diode('M', '12', '8', 'Z1 3.6 V'); b.bridge('L', '8', 'M', '8'); b.bridge('L', '12', 'M', '12'); b.bridge('M', '8', 'N', '8'); b.bridge('L', '12', 'L', '13')
 
-    # drivers
-    b.zone('P', '4', 'Z', '13', 'drivers', '#1F8A78', label_at=('Y', '9'))
+    # ---- drivers (rows 4-12, cols P-Z) ----
+    b.zone('P', '4', 'Z', '12', 'drivers', '#1F8A78', label_at=('Y', '8'))
     b.fet('Q', 'R', 'S', '5', 'Q1 TX'); b.bridge('R', '5', 'R', '6'); b.resistor('R', '6', 'R', '9', '1k')
     b.fet('V', 'W', 'X', '5', 'Q2 PWR'); b.bridge('W', '5', 'W', '6'); b.resistor('W', '6', 'W', '9', '1k')
-    b.fet('Q', 'R', 'S', '12', 'Q3 relays'); b.bridge('R', '12', 'R', '13'); b.resistor('R', '13', 'O', '13', '1k')
-    b.fet('V', 'W', 'X', '12', 'Q4 reset'); b.bridge('W', '12', 'W', '13'); b.resistor('W', '13', 'Z', '13', '1k')
-    b.bridge('W', '12', 'W', '11'); b.resistor('W', '11', 'T', '11', '68k')
+    b.fet('Q', 'R', 'S', '11', 'Q3 relays'); b.bridge('R', '11', 'R', '12'); b.resistor('R', '12', 'O', '12', '1k')
+    b.fet('V', 'W', 'X', '11', 'Q4 reset'); b.bridge('W', '11', 'W', '12'); b.resistor('W', '12', 'Z', '12', '1k')
+    b.bridge('W', '11', 'W', '10'); b.resistor('W', '10', 'Z', '10', '68k')
 
-    # relays zone
-    b.zone('A', '15', 'Z', '22', 'relays K1/K2 fit later', '#7A4DB5', label_at=('W', '21'))
-    b.relay('B', '16', '19', 'K1 TX'); b.relay('N', '16', '19', 'K2 PWR')
-    b.bridge('B', '16', 'C', '16'); b.bridge('N', '16', 'O', '16'); b.bridge('B', '19', 'C', '19'); b.bridge('N', '19', 'O', '19')
-    b.diode('L', '20', '22', 'D1 1N4007', fill='#F3F3F3', stroke='#555'); b.bridge('L', '22', 'L', '23')
-    b.bridge('I', '19', 'J', '19'); b.bridge('J', '19', 'J', '20'); b.resistor('J', '20', 'J', '23', '10k')
-    b.bridge('U', '19', 'V', '19'); b.bridge('V', '19', 'V', '20'); b.resistor('V', '20', 'V', '23', '10k')
+    # ---- relays (pins rows 15 / 18), flyback, pull-ups ----
+    b.zone('A', '14', 'Z', '20', 'relays K1/K2 fit later', '#7A4DB5', label_at=('X', '19'))
+    b.relay('B', '15', '18', 'K1 TX'); b.relay('N', '15', '18', 'K2 PWR')
+    b.bridge('B', '15', 'C', '15'); b.bridge('N', '15', 'O', '15'); b.bridge('B', '18', 'C', '18'); b.bridge('N', '18', 'O', '18')
+    b.diode('L', '19', '21', 'D1 1N4007', fill='#F3F3F3', stroke='#555')
+    b.bridge('I', '18', 'J', '18'); b.bridge('J', '18', 'J', '19'); b.resistor('J', '19', 'J', '21', '10k')
+    b.bridge('U', '18', 'V', '18'); b.bridge('V', '18', 'V', '19'); b.resistor('V', '19', 'V', '21', '10k')
 
-    # Pico sockets: two 1x20 female headers, rows 26 and 33, columns D..W. Pin 1 / pin 40 at column D (USB end).
-    b.zone('A', '24', 'Z', '34', 'Pico 2 W plugs in here — USB end at the left edge', '#333', label_at=('B', '30'))
+    # ---- Pico sockets: rows 23 and 30, columns D..W; pin 1 / pin 40 at column D (USB end, left edge) ----
+    b.zone('A', '22', 'Z', '31', 'Pico 2 W plugs in here — USB end at the left edge', '#333', label_at=('B', '27'))
     colsP = list('DEFGHIJKLMNOPQRSTUVW')
-    top = [str(n) for n in range(1, 21)]            # pins 1..20
-    bot = [str(n) for n in range(40, 20, -1)]       # pins 40..21
+    top = [str(n) for n in range(1, 21)]
+    bot = [str(n) for n in range(40, 20, -1)]
     names = {'3': 'GND', '4': 'GP2', '5': 'GP3', '6': 'GP4', '7': 'GP5', '8': 'GND', '9': 'GP6', '10': 'GP7', '13': 'GND', '17': 'GP13', '18': 'GND',
              '40': 'VBUS', '39': 'VSYS', '38': 'GND', '36': '3V3', '33': 'GND', '31': 'GP26', '28': 'GND', '23': 'GND'}
-    b.socket('D', 'W', '26', '', None)
-    b.socket('D', 'W', '33', '', None)
+    b.socket('D', 'W', '23', '', None)
+    b.socket('D', 'W', '30', '', None)
     for c, pn in zip(colsP, top):
         lab = f'p{pn}' + (f' {names[pn]}' if pn in names else '')
-        b.add(f'<text x="{b.cx(c)}" y="{b.cy("26")-13}" text-anchor="middle" font-size="7.5" fill="#222" transform="rotate(-60 {b.cx(c)} {b.cy("26")-13})">{lab}</text>')
+        b.add(f'<text x="{b.cx(c)}" y="{b.cy("23")-13}" text-anchor="middle" font-size="7.5" fill="#222" transform="rotate(-60 {b.cx(c)} {b.cy("23")-13})">{lab}</text>')
     for c, pn in zip(colsP, bot):
         lab = f'p{pn}' + (f' {names[pn]}' if pn in names else '')
-        b.add(f'<text x="{b.cx(c)}" y="{b.cy("33")+16}" text-anchor="middle" font-size="7.5" fill="#222" transform="rotate(60 {b.cx(c)} {b.cy("33")+16})">{lab}</text>')
+        b.add(f'<text x="{b.cx(c)}" y="{b.cy("30")+16}" text-anchor="middle" font-size="7.5" fill="#222" transform="rotate(60 {b.cx(c)} {b.cy("30")+16})">{lab}</text>')
 
     # ---- wires (numbered) ----
-    b.wire('A', '3', 'G', '16', CAR, 'TXp → K1 NC-A');       b.bridge('B', '3', 'A', '3')
-    b.wire('A', '4', 'E', '19', CAR, 'TXp → K1 COM-B');      b.bridge('A', '3', 'A', '4')
-    b.wire('D', '3', 'E', '16', CAR, 'TXh → K1 COM-A');      b.bridge('D', '2', 'D', '3')
-    b.wire('G', '3', 'S', '16', CAR, 'PWp → K2 NC-A');       b.bridge('H', '3', 'G', '3')
-    b.wire('G', '4', 'Q', '19', CAR, 'PWp → K2 COM-B');      b.bridge('G', '3', 'G', '4')
-    b.wire('J', '3', 'Q', '16', CAR, 'PWh → K2 COM-A');      b.bridge('J', '2', 'J', '3')
-    b.wire('N', '3', 'N', '14', GND, 'GND terminal → GND bus');  b.bridge('N', '2', 'N', '3')
-    b.wire('R', '3', 'R', '14', GND, 'Pi GND terminal → GND bus'); b.bridge('R', '2', 'R', '3')
-    b.wire('P', '3', 'X', '11', SIG, 'RUN terminal → Q4 drain'); b.bridge('P', '2', 'P', '3'); b.bridge('X', '11', 'X', '12')
-    b.wire('B', '12', 'B', '14', GND, 'TX divider bottom → GND bus')
-    b.wire('F', '12', 'F', '14', GND, 'RX divider bottom → GND bus')
-    b.wire('G', '10', 'H', '14', GND, 'Q5 source → GND bus')
-    b.wire('L', '12', 'L', '14', GND, 'CONT divider + zener → GND bus')
-    b.wire('Q', '5', 'Q', '14', GND, 'Q1 source → GND bus')
-    b.wire('V', '5', 'W', '14', GND, 'Q2 source → GND bus')
-    b.wire('Q', '12', 'P', '14', GND, 'Q3 source → GND bus')
-    b.wire('V', '12', 'V', '14', GND, 'Q4 source → GND bus')
-    b.wire('T', '11', 'T', '14', GND, 'Q4 gate pull-down → GND bus')
-    b.wire('S', '5', 'I', '16', SIG, 'Q1 drain → K1 NO-A')
-    b.wire('X', '5', 'U', '16', SIG, 'Q2 drain → K2 NO-A')
-    b.wire('S', '12', 'O', '19', SIG, 'Q3 drain → relay coil drive')
-    b.wire('C', '19', 'O', '19', SIG, 'K1 coil drive = K2 coil drive')
-    b.wire('C', '19', 'L', '20', SIG, 'coil drive → D1 anode')
-    b.wire('C', '16', 'C', '23', VBUS, 'K1 coil → VBUS bus')
-    b.wire('O', '16', 'O', '23', VBUS, 'K2 coil → VBUS bus')
-    b.wire('F', '26', 'E', '14', GND, 'Pico pin 3 GND → GND bus')
-    b.wire('F', '33', 'O', '14', GND, 'Pico pin 38 GND → GND bus')
-    b.wire('D', '33', 'D', '23', VBUS, 'Pico pin 40 VBUS → VBUS bus')
-    b.wire('I', '13', 'H', '33', V33, 'buffer pull-up → Pico pin 36 3V3')
-    b.wire('J', '10', 'G', '26', SIG, 'buffer out → Pico pin 4 GP2')
-    b.wire('W', '9', 'H', '26', SIG, 'Pico pin 5 GP3 → Q2 gate resistor')
-    b.wire('R', '9', 'I', '26', SIG, 'Pico pin 6 GP4 → Q1 gate resistor')
-    b.wire('C', '8', 'J', '26', SIG, 'TX junction → Pico pin 7 GP5')
-    b.wire('O', '13', 'L', '26', SIG, 'Pico pin 9 GP6 → Q3 gate resistor')
-    b.wire('Z', '13', 'M', '26', SIG, 'Pico pin 10 GP7 → Q4 gate resistor')
-    b.wire('G', '8', 'T', '26', SIG, 'RX junction → Pico pin 17 GP13')
-    b.wire('N', '8', 'M', '33', SIG, 'CONT junction → Pico pin 31 GP26')
-    # temporary links on the relay pads
-    b.wire('E', '16', 'I', '16', LINK, 'TEMP: K1 COM-A → NO-A (remove when K1 is fitted)')
-    b.wire('E', '19', 'I', '19', LINK, 'TEMP: K1 COM-B → NO-B (remove when K1 is fitted)')
-    b.wire('Q', '16', 'U', '16', LINK, 'TEMP: K2 COM-A → NO-A (remove when K2 is fitted)')
-    b.wire('Q', '19', 'U', '19', LINK, 'TEMP: K2 COM-B → NO-B (remove when K2 is fitted)')
+    b.wire('A', '3', 'G', '15', CAR, 'TXp → K1 NC-A');        b.bridge('B', '3', 'A', '3')
+    b.wire('A', '4', 'E', '18', CAR, 'TXp → K1 COM-B');       b.bridge('A', '3', 'A', '4')
+    b.wire('D', '3', 'E', '15', CAR, 'TXh → K1 COM-A');       b.bridge('D', '2', 'D', '3')
+    b.wire('G', '3', 'S', '15', CAR, 'PWp → K2 NC-A');        b.bridge('H', '3', 'G', '3')
+    b.wire('G', '4', 'Q', '18', CAR, 'PWp → K2 COM-B');       b.bridge('G', '3', 'G', '4')
+    b.wire('J', '3', 'Q', '15', CAR, 'PWh → K2 COM-A');       b.bridge('J', '2', 'J', '3')
+    b.wire('N', '3', 'N', '13', GND, 'GND terminal → GND bus');   b.bridge('N', '2', 'N', '3')
+    b.wire('R', '3', 'R', '13', GND, 'Pi GND terminal → GND bus'); b.bridge('R', '2', 'R', '3')
+    b.wire('P', '3', 'X', '11', SIG, 'RUN terminal → Q4 drain');  b.bridge('P', '2', 'P', '3')
+    b.wire('G', '9', 'G', '13', GND, 'Q5 source → GND bus')
+    b.wire('Q', '5', 'Q', '13', GND, 'Q1 source → GND bus')
+    b.wire('V', '5', 'W', '13', GND, 'Q2 source → GND bus')
+    b.wire('Q', '11', 'P', '13', GND, 'Q3 source → GND bus')
+    b.wire('V', '11', 'V', '13', GND, 'Q4 source → GND bus')
+    b.wire('Z', '10', 'Z', '13', GND, 'Q4 gate pull-down → GND bus')
+    b.wire('S', '5', 'I', '15', SIG, 'Q1 drain → K1 NO-A')
+    b.wire('X', '5', 'U', '15', SIG, 'Q2 drain → K2 NO-A')
+    b.wire('S', '11', 'O', '18', SIG, 'Q3 drain → relay coil drive')
+    b.wire('C', '18', 'O', '18', SIG, 'K1 coil drive = K2 coil drive')
+    b.wire('C', '18', 'L', '19', SIG, 'coil drive → D1 anode')
+    b.wire('C', '15', 'C', '21', VBUS, 'K1 coil → VBUS bus')
+    b.wire('O', '15', 'O', '21', VBUS, 'K2 coil → VBUS bus')
+    b.wire('F', '23', 'E', '13', GND, 'Pico pin 3 GND → GND bus')
+    b.wire('F', '30', 'O', '13', GND, 'Pico pin 38 GND → GND bus')
+    b.wire('D', '30', 'D', '21', VBUS, 'Pico pin 40 VBUS → VBUS bus')
+    b.wire('I', '12', 'H', '30', V33, 'buffer pull-up → Pico pin 36 3V3')
+    b.wire('J', '9', 'G', '23', SIG, 'buffer out → Pico pin 4 GP2')
+    b.wire('W', '9', 'H', '23', SIG, 'Pico pin 5 GP3 → Q2 gate resistor')
+    b.wire('R', '9', 'I', '23', SIG, 'Pico pin 6 GP4 → Q1 gate resistor')
+    b.wire('C', '8', 'J', '23', SIG, 'TX junction → Pico pin 7 GP5')
+    b.wire('O', '12', 'L', '23', SIG, 'Pico pin 9 GP6 → Q3 gate resistor')
+    b.wire('Z', '12', 'M', '23', SIG, 'Pico pin 10 GP7 → Q4 gate resistor')
+    b.wire('E', '8', 'T', '23', SIG, 'RX junction → Pico pin 17 GP13')
+    b.wire('N', '8', 'M', '30', SIG, 'CONT junction → Pico pin 31 GP26')
+    for c1, c2, r in (('E', 'I', '15'), ('E', 'I', '18'), ('Q', 'U', '15'), ('Q', 'U', '18')):
+        b.wire(c1, r, c2, r, LINK, f'TEMP: {"K1" if c1 == "E" else "K2"} COM-{"A" if r == "15" else "B"} → NO-{"A" if r == "15" else "B"} (remove when the relay is fitted)')
 
     b.legend(b.cx('Z') + 70, b.cy('3'))
     b.text(b.cx('Z') + 62, b.cy('11'), 'Transistors: 2N7000, flat face', 10)
     b.text(b.cx('Z') + 62, b.cy('11') + 14, 'towards the top edge → S G D', 10)
     b.text(b.cx('Z') + 62, b.cy('11') + 28, 'left to right. Verify with the', 10)
     b.text(b.cx('Z') + 62, b.cy('11') + 42, 'diode test before soldering.', 10)
-    b.text(b.cx('Z') + 62, b.cy('17'), 'Relay pads: coil / COM / NC / NO', 10)
-    b.text(b.cx('Z') + 62, b.cy('17') + 14, 'at columns B E G I (K1) and', 10)
-    b.text(b.cx('Z') + 62, b.cy('17') + 28, 'N Q S U (K2); rows 16 and 19.', 10)
-    b.text(b.cx('Z') + 62, b.cy('17') + 42, 'Both poles are interchangeable.', 10)
+    b.text(b.cx('Z') + 62, b.cy('16'), 'Relay pads: coil / COM / NC / NO', 10)
+    b.text(b.cx('Z') + 62, b.cy('16') + 14, 'at columns B E G I (K1) and', 10)
+    b.text(b.cx('Z') + 62, b.cy('16') + 28, 'N Q S U (K2); rows 15 and 18.', 10)
+    b.text(b.cx('Z') + 62, b.cy('16') + 42, 'Both poles are interchangeable.', 10)
     return b
 
 
