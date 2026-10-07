@@ -1,0 +1,138 @@
+#!/bin/sh
+# initramfs local-premount script: one-shot shrink of the root partition + creation of the
+# /persist partition (BUILD_NOTES §31). Install to
+# /etc/initramfs-tools/scripts/local-premount/s660-repart, then `update-initramfs -u`.
+#
+# Does nothing unless the kernel cmdline carries s660_repart=check|apply (the
+# s660-repart-clear.service strips it again once the system is up):
+#   check  read-only: fsck -n, minimum-size estimate, prints the plan. Writes nothing.
+#   apply  fsck -> shrink the ext4 to FS_GIB -> shrink partition 2 to ROOT_GIB -> grow
+#          the ext4 back to fill it -> append partition 3 over the rest -> mkfs it
+#          (label "persist").
+#
+# Runs here because root is not mounted yet -- ext4 cannot shrink while mounted, and the
+# SD slot is not in this unit's BOOT_ORDER, so there is no other system to do it from.
+# Every step is re-entrant: interrupted half-way, the next `apply` boot resumes from
+# whatever state the disk is in. Ordering guarantees the filesystem is never larger than
+# its partition at any instant. Output goes to the panel (tty1) and /run/s660-repart.log,
+# which initramfs-tools carries over into the booted system.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+
+. /scripts/functions
+
+MODE=""
+for arg in $(cat /proc/cmdline); do
+  case "$arg" in s660_repart=*) MODE="${arg#s660_repart=}" ;; esac
+done
+[ "$MODE" = check ] || [ "$MODE" = apply ] || exit 0
+
+ROOT_GIB=64   # final root partition size (11 GB used when this was written)
+FS_GIB=60     # interim filesystem size: strictly below ROOT_GIB, so the partition
+              # shrink can never cut into live filesystem blocks
+LOG=/run/s660-repart.log
+
+say() { echo "s660-repart: $*" >> "$LOG"; echo "s660-repart: $*" > /dev/console; }
+fail() { say "ABORT: $*"; say "nothing further changed; continuing normal boot"; exit 0; }
+
+dev=$(resolve_device "$ROOT")
+case "$dev" in
+  /dev/nvme*p2 | /dev/mmcblk*p2) disk="${dev%p2}" ;;
+  *) fail "root '$dev' is not partition 2 of an nvme/mmc disk" ;;
+esac
+p3="${disk}p3"
+
+# The real e2fsprogs/util-linux tools, shipped by the s660-repart hook. Never rely on PATH:
+# busybox hard-links same-named applets (a mke2fs without -t, a partial blockdev) over them.
+T=/usr/lib/s660-repart
+for t in e2fsck resize2fs dumpe2fs mke2fs sfdisk blockdev blkid; do
+  [ -x "$T/$t" ] || fail "$T/$t missing from the initramfs (hook not installed?)"
+  eval "$t() { \"$T/$t\" \"\$@\"; }"
+done
+for t in awk sed grep; do command -v "$t" >/dev/null 2>&1 || fail "$t missing"; done
+[ "$(blockdev --getss "$disk")" = 512 ] || fail "unexpected logical sector size"
+
+# Partition 2 geometry, in 512-byte sectors, from the live table.
+line=$(sfdisk --dump "$disk" | grep "^$dev ")
+start2=$(echo "$line" | sed -n 's/.*start= *\([0-9]*\).*/\1/p')
+size2=$(echo "$line" | sed -n 's/.*size= *\([0-9]*\).*/\1/p')
+[ -n "$start2" ] && [ -n "$size2" ] || fail "could not read partition 2 from the table"
+new2=$((ROOT_GIB * 2097152))
+start3=$((start2 + new2))
+end=$(blockdev --getsz "$disk")
+[ $((start3 % 2048)) = 0 ] || fail "partition 3 start $start3 is not 1 MiB aligned"
+[ $((end - start3)) -gt 2097152 ] || fail "less than 1 GiB would be left for partition 3"
+
+fs_bytes() {
+  dumpe2fs -h "$dev" 2>/dev/null | awk -F: '
+    /^Block count/ { c = $2 } /^Block size/ { s = $2 } END { printf "%.0f\n", c * s }'
+}
+
+# Done = partition 3 exists AND carries our ext4 label. p3 existing without a filesystem is
+# a run interrupted between partitioning and mkfs -- resume it, but only if p3 sits exactly
+# where this script puts it and has no signature of any kind (never format a foreign p3).
+persist_done() { [ -b "$p3" ] && dumpe2fs -h "$p3" 2>/dev/null | grep -q "^Filesystem volume name: *persist$"; }
+p3_ours_and_blank() {
+  [ "$(sfdisk --dump "$disk" | grep "^$p3 " | sed -n 's/.*start= *\([0-9]*\).*/\1/p')" = "$start3" ] \
+    && [ -z "$(blkid -p -s TYPE -o value "$p3" 2>/dev/null)" ]
+}
+
+say "mode=$MODE disk=$disk p2: start=$start2 size=$size2 -> $new2 sectors; p3 from $start3"
+
+if [ "$MODE" = check ]; then
+  if persist_done; then say "check: $p3 'persist' already exists -- apply would do nothing"; exit 0; fi
+  if [ -b "$p3" ]; then
+    p3_ours_and_blank && { say "check: $p3 exists unformatted -- apply would format it"; exit 0; }
+    fail "check: a foreign $p3 exists -- apply would refuse"
+  fi
+  e2fsck -n -f "$dev" >> "$LOG" 2>&1; rc=$?
+  [ $rc -lt 4 ] || fail "check: e2fsck -n reports errors (rc=$rc)"
+  min=$(resize2fs -P "$dev" 2>/dev/null | sed -n 's/.*: *\([0-9]*\)$/\1/p')
+  say "check: fsck clean, current fs $(fs_bytes) bytes, minimum $min blocks"
+  [ -n "$min" ] && [ $((min * 4096)) -lt $((FS_GIB * 1073741824)) ] \
+    || fail "check: filesystem would not fit in ${FS_GIB} GiB"
+  say "check: OK -- apply is safe to run"
+  exit 0
+fi
+
+# ---- apply ----------------------------------------------------------------------------
+if persist_done; then say "$p3 'persist' already exists -- nothing to do"; exit 0; fi
+if [ -b "$p3" ] && ! p3_ours_and_blank; then fail "a foreign $p3 exists -- refusing to touch it"; fi
+say "Repartitioning storage -- DO NOT POWER OFF (a few minutes)"
+
+if [ "$size2" -gt "$new2" ]; then
+  e2fsck -f -y "$dev" >> "$LOG" 2>&1; rc=$?
+  [ $rc -lt 4 ] || fail "e2fsck rc=$rc before shrink"
+  if [ "$(fs_bytes)" -gt $((FS_GIB * 1073741824)) ]; then
+    say "shrinking filesystem to ${FS_GIB} GiB (moves data; the slow step)"
+    # -f: no RTC, so in here the clock is behind the last-mount time and the e2fsck we just
+    # ran stamps a "last checked" that looks stale; resize2fs would refuse ("Please run
+    # e2fsck -f first") despite the check above. -f is only reached after that fsck passed.
+    resize2fs -f "$dev" "${FS_GIB}G" >> "$LOG" 2>&1 || fail "resize2fs shrink failed"
+  fi
+  [ "$(fs_bytes)" -le $((new2 * 512)) ] || fail "filesystem still larger than the new partition"
+  say "shrinking partition 2 to ${ROOT_GIB} GiB"
+  # --wipe*=never: sfdisk must not touch the ext4 signature at the (unchanged) start of p2.
+  echo "$start2,$new2" | sfdisk --no-reread --no-tell-kernel --wipe never \
+    --wipe-partitions never -N 2 "$disk" >> "$LOG" 2>&1 || fail "sfdisk resize of p2 failed"
+fi
+
+if [ ! -b "$p3" ]; then
+  say "creating partition 3"
+  echo "$start3,,83" | sfdisk --no-reread --no-tell-kernel --wipe never \
+    --wipe-partitions never -a "$disk" >> "$LOG" 2>&1 || fail "sfdisk append of p3 failed"
+  blockdev --rereadpt "$disk" || fail "kernel did not re-read the partition table"
+  i=0; while [ ! -b "$p3" ] && [ $i -lt 10 ]; do sleep 1; i=$((i + 1)); done
+  [ -b "$p3" ] || fail "$p3 never appeared"
+fi
+
+say "growing root filesystem to fill ${ROOT_GIB} GiB"
+e2fsck -f -y "$dev" >> "$LOG" 2>&1; rc=$?
+[ $rc -lt 4 ] || fail "e2fsck rc=$rc before grow (root still fine at ${FS_GIB} GiB; p3 not yet formatted)"
+resize2fs -f "$dev" >> "$LOG" 2>&1 || say "WARN: grow failed (root still fine at ${FS_GIB} GiB)"
+
+say "formatting $p3 as ext4 'persist'"
+mke2fs -t ext4 -L persist -m 0 -q "$p3" >> "$LOG" 2>&1 || fail "mke2fs of $p3 failed"
+say "done"
+exit 0

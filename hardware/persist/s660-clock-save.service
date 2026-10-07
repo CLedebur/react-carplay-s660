@@ -1,0 +1,10 @@
+[Unit]
+Description=Save the wall clock to /persist so the next boot resumes from it (BUILD_NOTES §31)
+RequiresMountsFor=/var/lib/systemd/timesync
+
+[Service]
+Type=oneshot
+# No RTC, and no network in the car: at boot systemd-timesyncd sets the clock from this
+# file's mtime. timesyncd only touches it on an NTP sync or a clean shutdown -- neither
+# happens on a drive -- so without this every drive would restart from the same time.
+ExecStart=/usr/bin/touch /var/lib/systemd/timesync/clock

@@ -1,0 +1,17 @@
+[Unit]
+Description=Create the /persist directory layout before its bind mounts (BUILD_NOTES §31)
+# A freshly made /persist is empty; the fstab bind mounts need their source dirs to exist.
+# Requires= means this never runs (and never creates dirs on the overlay) if /persist
+# failed to mount -- the binds then fail too, and journald stays in RAM, as before.
+DefaultDependencies=no
+Requires=persist.mount
+After=persist.mount
+Before=var-log-journal.mount var-lib-systemd-timesync.mount
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mkdir -p /persist/journal /persist/timesync
+
+[Install]
+WantedBy=local-fs.target

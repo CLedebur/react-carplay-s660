@@ -1,0 +1,19 @@
+#!/bin/sh
+# initramfs-tools hook: ships the tools the s660-repart local-premount script needs
+# (BUILD_NOTES §31). Install to /etc/initramfs-tools/hooks/s660-repart, then
+# `update-initramfs -u`.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Into a private dir, called by full path: zz-busybox runs after this hook and hard-links its
+# own cut-down applets over /usr/sbin/mke2fs, blockdev, ... (measured: the busybox mke2fs has
+# no -t, and aborted the first live run at the format step).
+for b in e2fsck resize2fs dumpe2fs mke2fs sfdisk blockdev blkid; do
+  copy_exec "/usr/sbin/$b" "/usr/lib/s660-repart/$b"
+done
+# mke2fs falls back to bare built-in defaults without its config; ship the real one so
+# /persist gets the same ext4 feature set as a normally-made filesystem.
+copy_file config /etc/mke2fs.conf /etc/mke2fs.conf

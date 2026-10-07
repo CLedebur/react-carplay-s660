@@ -2175,3 +2175,103 @@ mode and is never passed on; Power held 3 s pulses RUN_PG (§30.6). Watchdog 2 s
 (`src/opera.c`) is SDK-free and unit-tested (`tests/`) against the captured frames. Pin map:
 `src/config.h` = `tap-board.md`. **Do not flash it onto a board still wired for phase 1** —
 GP4 becomes an output (TX_out) and would drive into the PWR SW buffer's pull-up.
+
+## 31. 2026-10-07 — `/persist`: a log partition that survives the overlay and the ignition
+
+**Why.** The overlay (§29) throws every write away at power-off. That is what protects root,
+but it also means no logs from a drive survive the drive. A road trip was coming up, and the
+only way to find out what the unit did on the road is to keep its logs.
+
+**The constraint.** Root (`nvme0n1p2`) filled the whole 238 GB disk, with 11 GB used. ext4
+cannot shrink while it is mounted. The usual answer is to boot something else, but this unit's
+`BOOT_ORDER=0xf46` is NVMe then USB. The SD slot is not in it. So the shrink runs **in the
+initramfs**: before root is mounted, in the same initramfs that already starts the overlay.
+
+### 31.1 Layout
+
+| Partition | Size | What |
+|---|---|---|
+| `nvme0n1p1` | 512 MB | `/boot/firmware` (unchanged) |
+| `nvme0n1p2` | 64 GiB | root, overlaid (`overlayroot=tmpfs:recurse=0`) |
+| `nvme0n1p3` | 174 GiB | ext4, label `persist`, mounted rw at `/persist` |
+
+`recurse=0` makes overlayroot protect only `/`. Other fstab mounts stay real and writable.
+That is the whole trick. With the default `recurse=1`, `/persist` would be overlaid too.
+
+### 31.2 The one-shot repartition (`hardware/persist/`)
+
+- `initramfs-hook-s660-repart` copies the real `e2fsck resize2fs dumpe2fs mke2fs sfdisk
+  blockdev blkid` into **`/usr/lib/s660-repart/`**.
+- `initramfs-premount-s660-repart` runs at `local-premount`. It only acts when the kernel
+  cmdline has `s660_repart=check` or `s660_repart=apply`.
+- `s660-repart-clear.service` strips that flag from `cmdline.txt` once the system is up. The
+  flag is therefore one-shot by itself.
+
+`apply` does: fsck → shrink the ext4 to 60 GiB → shrink p2 to 64 GiB → append p3 → fsck and
+grow root back to fill 64 GiB → `mke2fs -L persist` on p3. The filesystem is never larger than
+its partition at any moment. Each step checks the disk's state first, so an interrupted run
+resumes. A p3 that exists is only formatted if it starts exactly where the script would put
+it **and** has no filesystem signature. The script never formats a foreign p3. Output goes to
+the panel (tty1) and to `/run/s660-repart.log`, which carries over into the booted system.
+
+`check` is read-only. It runs `fsck -n` and a minimum-size estimate, then prints the plan.
+**Always do a `check` boot first.**
+
+**Three bugs, all found live, all stopped by the script's own guards (nothing was damaged):**
+1. **No RTC → `resize2fs` refused.** In the initramfs the clock is behind the filesystem's
+   last-mount time. The `e2fsck -f` that just ran therefore stamps a "last checked" time that
+   looks stale, and `resize2fs` says *"Please run 'e2fsck -f' first"*. Fix: `resize2fs -f`.
+   It is only reached after our own `e2fsck` has passed.
+2. **BusyBox shadows the real tools.** The `zz-busybox` hook runs last. It hard-links its
+   applets over `/usr/sbin/mke2fs` and `blockdev` (the giveaway: 269 hard links). BusyBox's
+   `mke2fs` has no `-t`, so the format step aborted. Fix: ship the real binaries to a private
+   directory and call them by full path. A `command -v` check cannot tell the difference.
+3. **`blkid -p` returns 0 on a blank partition.** It reports the partition-table entry
+   itself. The "is p3 blank?" test now asks for the filesystem `TYPE` (empty means blank).
+
+**Measured on the dev unit.** Moving about 15 GB of data during the shrink took under 2
+minutes on bench power. Afterwards root was 64 GiB (11 GB used) and fsck was clean. Boot was
+unchanged: userspace 2.7 s, and the kiosk started at 2.5 s.
+
+### 31.3 What lives on `/persist`
+
+- **The journal.** `/persist/journal` is bind-mounted onto `/var/log/journal`.
+  `journald-s660-persist.conf` sets `Storage=persistent`, `SyncIntervalSec=5s` and
+  `SystemMaxUse=4G`. The default sync interval is 5 minutes, and an ignition cut would lose
+  that much from the end of every drive.
+- **The clock.** `/persist/timesync` is bind-mounted onto `/var/lib/systemd/timesync`. There
+  is no RTC, and there is no network in the car. `systemd-timesyncd` advances the clock at
+  boot to the mtime of its `clock` file. It only updates that file on an NTP sync or a clean
+  shutdown, and neither happens on a drive. `s660-clock-save.timer` touches the file every
+  minute. Each drive therefore starts where the last one ended. The timestamps are not real
+  time, but they always move forward. A real NTP sync corrects them.
+- `s660-persist-layout.service` creates both directories on a freshly made `/persist`. It is
+  `Requires=persist.mount`, so it never creates them on the overlay.
+
+**Every mount is `nofail`, and `/persist` has a 5 s device timeout.** A missing or damaged log
+partition must never stop the unit booting to CarPlay. If `/persist` fails, the bind mounts
+fail with it, and journald falls back to RAM as before. `/persist` is fsck pass 2, and
+`fsck.repair=yes` is already on the cmdline.
+
+### 31.4 Reading the logs after a drive
+
+```bash
+ssh s660 journalctl --list-boots               # one boot = one drive
+ssh s660 journalctl -b -1 --no-pager           # the previous drive
+ssh s660 journalctl -b -1 -u carplay-dev-chromium --no-pager
+ssh s660 journalctl -b -1 -k --no-pager        # kernel only (USB/dongle/undervoltage)
+```
+
+**Verified (2026-10-07):** with the overlay on, `/` was `overlayroot` over a read-only p2,
+`/persist` was real ext4 on p3, and a marker logged before a clean reboot was readable with
+`journalctl -b -1`. **Not yet verified:** a hard power cut while the journal is being written,
+and the clock advancing with no network. The first drive answers both questions.
+
+The benign `systemd-remount-fs` failure (§29.2) is still there, and still harmless.
+
+### 31.5 Reproducing it
+
+`provision.sh` PHASE 0 does all of this on a fresh install. It installs the hook and script
+before `update-initramfs`, writes `overlayroot=tmpfs:recurse=0 s660_repart=apply` into
+`cmdline.txt`, appends `fstab.persist`, and enables the units. The reboot at the end of the
+script does the repartition.

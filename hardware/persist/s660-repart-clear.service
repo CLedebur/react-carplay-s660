@@ -1,0 +1,12 @@
+[Unit]
+Description=Strip the one-shot s660_repart= flag from cmdline.txt (BUILD_NOTES §31)
+# Matches s660_repart with any value; does nothing on a normal boot.
+ConditionKernelCommandLine=s660_repart
+RequiresMountsFor=/boot/firmware
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sed -i -E "s/s660_repart=[^ ]* ?//" /boot/firmware/cmdline.txt
+
+[Install]
+WantedBy=multi-user.target

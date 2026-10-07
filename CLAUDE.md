@@ -59,7 +59,7 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
   The kernel is the stock packaged `kernel8.img`. An uncompressed-kernel optimisation with
   refresh hooks existed briefly and was **reverted** (BUILD_NOTES §26) after a hard power cut
   left the decompressed copy 0 bytes and the unit unbootable — do not reintroduce it.
-  **Overlay FS is deliberately ENABLED** (`overlayroot=tmpfs`) — required, since this unit loses
+  **Overlay FS is deliberately ENABLED** (`overlayroot=tmpfs:recurse=0`) — required, since this unit loses
   power via the car's ignition on every drive. It needs `initramfs initramfs8 followkernel` in
   `config.txt` to actually run (`auto_initramfs=0` above means the firmware won't load one on
   its own) and was properly isolated-tested and validated against a real hard power cut
@@ -69,6 +69,14 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
   yet when the overlay's boot-time hook runs) — no maintenance-mode toggle is needed. In
   `provision.sh` PHASE 0 (§29.3) — a fresh install from this repo gets the identical
   `overlayroot`-install/initramfs-regen/config.txt/cmdline.txt steps that were validated live.
+  **`/persist` (BUILD_NOTES §31)**: root is 64 GiB, and `nvme0n1p3` (174 GiB, label `persist`)
+  is a real writable ext4 at `/persist`. It stays writable because `recurse=0` overlays only
+  `/`. The journal (`SyncIntervalSec=5s`) and timesyncd's clock file are bind-mounted onto it,
+  so each drive is one `journalctl --list-boots` entry. Anything that must outlive a drive goes
+  under `/persist`, never anywhere else on `/`. All of its mounts are `nofail`: never make
+  boot depend on it. It was made by a one-shot initramfs repartition (`hardware/persist/`,
+  `s660_repart=check|apply`). Do a `check` boot before any `apply`. Inside the initramfs, call
+  the tools in `/usr/lib/s660-repart/` by full path, because BusyBox shadows them.
   Graphics component preloads and the concurrent Node/cage launcher are documented in §24 and
   remain in place.
 - **Path C — SHELVED, not built.** A browser-free node-carplay + GStreamer design, written up

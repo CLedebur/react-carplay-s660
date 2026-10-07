@@ -1,0 +1,10 @@
+[Unit]
+Description=Save the wall clock to /persist every minute (BUILD_NOTES §31)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

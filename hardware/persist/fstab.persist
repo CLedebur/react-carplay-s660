@@ -1,0 +1,6 @@
+# --- /persist (BUILD_NOTES §31) -- appended to /etc/fstab by provision.sh ---
+# nofail + short device timeout: a missing or damaged log partition must never stop the
+# unit booting to CarPlay. Pass 2 = fsck'd (fsck.repair=yes on the cmdline) after a cut.
+LABEL=persist /persist ext4 defaults,noatime,nofail,x-systemd.device-timeout=5s,errors=remount-ro 0 2
+/persist/journal /var/log/journal none bind,nofail,x-systemd.requires-mounts-for=/persist 0 0
+/persist/timesync /var/lib/systemd/timesync none bind,nofail,x-systemd.requires-mounts-for=/persist 0 0

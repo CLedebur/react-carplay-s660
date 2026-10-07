@@ -97,6 +97,7 @@ echo "=== NOTE: reboot required at the end. See PHASE 5. ==="
 # guaranteed in the car. Files referenced as path-b/... live next to this script.
 echo ">>> PHASE 0: boot-time trims"
 PB="$(cd "$(dirname "$0")" && pwd)/path-b"
+PERSIST="$(cd "$(dirname "$0")" && pwd)/persist"
 
 # cloud-init: first-boot tool. Even when "disabled" its generator + units load every boot,
 # so purge it outright. (netplan.io must STAY — RPi's network-manager depends on it.)
@@ -222,6 +223,14 @@ done
 # boot-time hook runs, so it's never swept into the read-only overlay); no maintenance-mode
 # toggle is needed for kernel updates or config.txt/cmdline.txt changes.
 sudo apt install -y overlayroot
+# /persist (BUILD_NOTES §31): the overlay throws every write away at ignition-off, so logs
+# need a partition of their own. Root fills the whole disk on a fresh install, and ext4
+# can't shrink while mounted, so an initramfs script shrinks root to 64 GiB and makes
+# partition 3 ("persist") from the rest -- once, on the reboot at the end of this script,
+# triggered by s660_repart=apply in cmdline.txt below (s660-repart-clear.service removes the
+# flag again). Hook + script must be in place BEFORE the update-initramfs that follows.
+sudo install -m 755 "${PERSIST}/initramfs-hook-s660-repart" /etc/initramfs-tools/hooks/s660-repart
+sudo install -m 755 "${PERSIST}/initramfs-premount-s660-repart" /etc/initramfs-tools/scripts/local-premount/s660-repart
 sudo update-initramfs -u -k "$(uname -r)"
 if grep -q "^initramfs " /boot/firmware/config.txt; then
   sudo sed -i "s|^initramfs .*|initramfs initramfs8 followkernel|" /boot/firmware/config.txt
@@ -241,15 +250,28 @@ fi
 # or car, every consumer sees the same mode. If the panel is ever replaced, regenerate it.
 sudo install -D -m 644 "${PB}/s660-edid.bin" /lib/firmware/edid/s660.bin
 
-# cmdline.txt (ONE line): overlayroot=tmpfs (see above), drop the 115200-baud serial console
+# cmdline.txt (ONE line): overlayroot=tmpfs:recurse=0 (see above; recurse=0 overlays only /,
+# so /persist stays a normal writable mount), the one-shot s660_repart=apply, drop the 115200-baud serial console
 # (~2 s of synchronous kernel output), quiet the kernel, pin the console mode ("D" forces the
 # connector on without waiting for hotplug) and point DRM at the EDID override above. For
 # serial debugging, temporarily put "console=serial0,115200" back.
 ROOT_PARTUUID=$(sed -nE 's/.*root=(PARTUUID=[^ ]+).*/\1/p' /boot/firmware/cmdline.txt)
-echo "overlayroot=tmpfs console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x480@60D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
+echo "overlayroot=tmpfs:recurse=0 s660_repart=apply console=tty1 root=${ROOT_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=PT quiet loglevel=3 vt.global_cursor_default=0 video=HDMI-A-1:720x480@60D drm.edid_firmware=HDMI-A-1:edid/s660.bin" \
   | sudo tee /boot/firmware/cmdline.txt >/dev/null
 
+# /persist mounts + what lives on it (BUILD_NOTES §31). Every entry is nofail: a missing or
+# damaged log partition must never keep the unit from booting to CarPlay.
+#   journal   systemd journal, flushed every 5 s (an ignition cut loses seconds, not minutes)
+#   timesync  timesyncd's clock file, touched every minute -- no RTC and no network in the
+#             car, so this is what keeps each drive's timestamps after the previous one's
+sudo mkdir -p /persist
+grep -q "^LABEL=persist " /etc/fstab || grep -v "^#" "${PERSIST}/fstab.persist" | sudo tee -a /etc/fstab >/dev/null
+sudo install -D -m 644 "${PERSIST}/journald-s660-persist.conf" /etc/systemd/journald.conf.d/s660-persist.conf
+for u in s660-repart-clear.service s660-persist-layout.service s660-clock-save.service s660-clock-save.timer; do
+  sudo install -m 644 "${PERSIST}/${u}" "/etc/systemd/system/${u}"
+done
 sudo systemctl daemon-reload
+sudo systemctl enable s660-repart-clear.service s660-persist-layout.service s660-clock-save.timer
 
 
 # ============================================================================
