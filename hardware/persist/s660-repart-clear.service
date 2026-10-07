@@ -2,7 +2,10 @@
 Description=Strip the one-shot s660_repart= flag from cmdline.txt (BUILD_NOTES §31)
 # Matches s660_repart with any value; does nothing on a normal boot.
 ConditionKernelCommandLine=s660_repart
-RequiresMountsFor=/boot/firmware
+# No RequiresMountsFor=/boot/firmware: systemd pulls that mount in even when the condition
+# fails, which mounted the FAT boot partition rw on EVERY boot, exposing it to every ignition
+# cut (seen 2026-10-07: "Volume was not properly unmounted"). The sed below touching the path
+# fires the automount itself, and only on the one boot where the flag is present.
 
 [Service]
 Type=oneshot

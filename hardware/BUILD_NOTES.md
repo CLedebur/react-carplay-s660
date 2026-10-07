@@ -2289,8 +2289,30 @@ ssh s660 journalctl -b -1 -k --no-pager        # kernel only (USB/dongle/undervo
 
 **Verified (2026-10-07):** with the overlay on, `/` was `overlayroot` over a read-only p2,
 `/persist` was real ext4 on p3, and a marker logged before a clean reboot was readable with
-`journalctl -b -1`. **Not yet verified:** a hard power cut while the journal is being written,
-and the clock advancing with no network. The first drive answers both questions.
+`journalctl -b -1`.
+
+**Hard power cut, same day** (power pulled with the kiosk running and the overlay on):
+- The unit came straight back to CarPlay.
+- The previous boot's journal was intact up to its last entry. That entry was the
+  `s660-clock-save` run at 11:07:20, seconds before the cut.
+- `systemd-fsck` on `/persist` showed `recovering journal` plus two free-count corrections.
+  That is ordinary ext4 journal replay after an unclean stop, and the filesystem was clean.
+- Before NTP, `systemd-timesyncd` logged *"System clock time advanced to recorded timestamp:
+  11:07:20"*. The clock picked up exactly where the cut drive stopped.
+- **Still unverified:** a drive with no network at all. NTP corrected the clock here.
+
+**Bug found by the cut, and fixed.** The FAT boot partition logged *"Volume was not properly
+unmounted"*. The cause was `s660-repart-clear.service`, which had
+`RequiresMountsFor=/boot/firmware`. systemd pulls in that mount even when the unit's
+`ConditionKernelCommandLine=` fails, so `/boot/firmware` was mounted rw on **every** boot.
+Before this section it stayed unmounted (automount, §29). The line is gone. The unit's `sed`
+touching the path fires the automount itself, and only on a flagged boot. Re-checked after a
+reboot: `/boot/firmware` stays the `systemd-1` automount placeholder.
+
+**Benign, older than this section:** every boot logs `EXT4-fs (nvme0n1p2): orphan cleanup on
+readonly fs`. Orphan inodes on the lower root are cleaned in memory and cannot be written back
+while it is read-only, so the message repeats. It was present before the cut. A `e2fsck -f`
+of p2 in a maintenance window, with the overlay off, would clear it.
 
 The benign `systemd-remount-fs` failure (§29.2) is still there, and still harmless.
 
