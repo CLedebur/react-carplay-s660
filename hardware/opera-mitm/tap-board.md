@@ -173,3 +173,24 @@ Powered (bench supply, negative on the GND bus):
 2. Solder K1 and K2 onto their pads, coil pins at columns B and N.
 3. Check: with no power, B2 ↔ D2 = 0 Ω and H2 ↔ J2 = 0 Ω (relays released = pass-through).
 4. Power the Pico: after ~1.5 s both relays click; B2 ↔ D2 goes open.
+
+## Relay substitutes (if the G5V-2-H1 DC5 can't be had)
+
+K1/K2 bypass the panel→head-unit wires when the Pico is unpowered, and Q3 (one 2N7000) drives
+**both** coils from a 3.3 V GPIO. A substitute must therefore be:
+
+- **2 Form C (DPDT), non-latching / single-side-stable.** A latching relay stays engaged when the Pico dies and defeats the fail-safe. Beware suffixes like `-L`, `-L2`, `latching`.
+- **5 V coil, ≤ 50 mA each** (≤ 100 mA total through Q3). Must-operate voltage ≤ 75 % of 5 V (the coil sees ~4.3 V after Q3's drop). Anything heavier needs Q3 swapped for a BC337-40.
+- **Signal-level contacts** (gold-clad or bifurcated, rated down to ~10 µA): the TX/PWR lines carry ~0.5 mA at 5 V. Not a power relay.
+- **Through-hole.** Footprint can differ: K1/K2 pads carry the nets (coil + → VBUS, coil − → drive node, COM/NC/NO for poles A and B); wire the relay's pins to them.
+- If the coil has a polarity mark, + goes to the VBUS-side pad.
+
+Checked against datasheets / distributor listings (5 VDC versions):
+
+| Relay | Coil | Notes |
+|---|---|---|
+| Omron **G5V-2-H1 DC5** (baseline) | 30 mA, 167 Ω, 150 mW | datasheet read; must-operate 75 % |
+| Hongfa **HFD2/005-S** (no `L` suffix) | ~30 mA, 167 Ω, 150 mW | same body as the G5V-2; the `-S-L2-D` listing is **latching — avoid** |
+| Panasonic **TQ2-5V** | 28.1 mA, 178 Ω, 140 mW | smaller body; latching variants are `TQ2-L-5V` / `TQ2-L2-5V` |
+| Omron **G6K-2P-Y DC5** | 21.1 mA, 237 Ω, 100 mW | smaller body |
+| Omron G5V-2-DC5 (standard) | **100 mA**, 50 Ω, 500 mW | **not acceptable** with a single 2N7000 (200 mA total, ~1 V drop); only with Q3 → BC337-40 |
