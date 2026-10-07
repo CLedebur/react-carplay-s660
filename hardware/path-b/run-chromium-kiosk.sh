@@ -52,7 +52,7 @@ BUILD_DIR="$APP_DIR/build"
 if [ -f "$BUILD_DIR/index.html" ]; then
   # Fast path: serve the pre-built static bundle (no dev-server compile at boot).
   # serve-build.js sends the COOP/COEP headers SharedArrayBuffer needs.
-  node "$HOME/carplay-dev/serve-build.js" "$BUILD_DIR" &
+  node "$HOME/carplay-kiosk/serve-build.js" "$BUILD_DIR" &
 else
   # Fallback: dev server (slow — recompiles the app at every boot, ~12s on the CM4).
   # Run `CI=false npm run build` in the web app to produce build/ and use the fast path.

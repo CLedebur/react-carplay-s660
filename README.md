@@ -56,7 +56,7 @@ chmod +x provision.sh
 ./provision.sh
 ```
 
-This installs the web app as `carplay-dev-chromium.service`, enabled to start at boot. The name is historical: it was the "dev" channel when the Electron app was the stable one. The script is safe to re-run after a failure. It ends with **a required reboot**. Starting the kiosk service live (`systemctl start`) does not reliably set up the VT/seat session on first setup. That reboot also runs the one-shot `/persist` repartition (BUILD_NOTES §31), so keep the Pi on stable power for it.
+This installs the web app as `carplay.service`, enabled to start at boot. The script is safe to re-run after a failure. It ends with **a required reboot**. Starting the kiosk service live (`systemctl start`) does not reliably set up the VT/seat session on first setup. That reboot also runs the one-shot `/persist` repartition (BUILD_NOTES §31), so keep the Pi on stable power for it.
 
 # Physical Installation
 

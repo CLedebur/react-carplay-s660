@@ -94,8 +94,10 @@ The stack (BUILD_NOTES §8.5; the retired/shelved alternatives are §32 and §27
   `hardware/path-b/node-CarPlay/` (library) and its `examples/carplay-web-app/`. Build and
   deploy as described in its `README.md` and BUILD_NOTES §11/§23. On the Pi, turn the
   overlay off first, or the deploy vanishes at the next power-off.
-- The kiosk unit is still named `carplay-dev-chromium.service` (historical "dev channel"
-  name; renaming it touches the live Pi + docs, so it's a deliberate follow-up, not drift).
+- The kiosk unit is **`carplay.service`**, and its wrapper + static server live in
+  `~/carplay-kiosk/` (BUILD_NOTES §33). Before 2026-10-07 it was `carplay-dev-chromium.service`
+  in `~/carplay-dev/`. In BUILD_NOTES §5–§20, `carplay.service` means the old **Path A**
+  Electron unit, not this one.
 
 ## Gotchas worth remembering
 - The Carlinkit dongle is **required** — it performs the Apple MFi handshake. You

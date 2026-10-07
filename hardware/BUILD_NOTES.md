@@ -15,6 +15,9 @@ start, because several steps fail in ways that are hard to diagnose without the 
 > **2026-10-07:** the "current status" text below is from August 2026 and is kept as history.
 > Today the unit runs only the web app in system Chromium (Path B), with hardware decode
 > (§27.1), the overlay (§29) and the `/persist` log partition (§31). Path A was retired (§32).
+> The kiosk unit is `carplay.service` (§33). **Unit names in §5–§20:** `carplay.service` there
+> means the old Path A Electron unit, and `carplay-dev-chromium.service` is today's
+> `carplay.service`.
 
 **What works now:**
 - Raspberry Pi OS Lite (64-bit) boots on the CM4 + TOFU.
@@ -2280,7 +2283,7 @@ fail with it, and journald falls back to RAM as before. `/persist` is fsck pass 
 ```bash
 ssh s660 journalctl --list-boots               # one boot = one drive
 ssh s660 journalctl -b -1 --no-pager           # the previous drive
-ssh s660 journalctl -b -1 -u carplay-dev-chromium --no-pager
+ssh s660 journalctl -b -1 -u carplay --no-pager
 ssh s660 journalctl -b -1 -k --no-pager        # kernel only (USB/dongle/undervoltage)
 ```
 
@@ -2318,7 +2321,8 @@ only to be maintained.
   ran a `build-package` script that did not exist. Nothing under `hardware/` depended on any
   of these (`hardware/path-b/node-CarPlay` has its own package and tooling).
 - **`provision.sh`.** No more channel flags. PHASE 3 always installs Chromium and the web app.
-  PHASE 4 installs **and enables** `carplay-dev-chromium.service`. Before, that service was
+  PHASE 4 installs **and enables** the kiosk unit (then `carplay-dev-chromium.service`, now
+  `carplay.service`, §33). Before, that unit was
   installed disabled and Path A was the default.
 - **The unit.** `Conflicts=carplay.service` was dropped, and the description no longer says
   "dev".
@@ -2333,10 +2337,34 @@ fresh in the web-app stack. Use `git checkout path-a-final -- src/main/Canbus.ts
 one of them without bringing the rest back.
 
 **Left alone on purpose**
-- **The kiosk unit is still named `carplay-dev-chromium.service`.** The "dev" is from the
-  §14/§19 channel era. Renaming it touches the live Pi, `provision.sh`, the README and these
-  notes all at once. That is a deliberate follow-up, not something to fold into this change.
+- **The kiosk unit kept its `carplay-dev-chromium.service` name here.** It was renamed the
+  same day, as a separate change (§33).
 - **Sections §5–§20 still talk about Path A and Path B.** They are dated history. The sections
   that only make sense for Path A (§6.2, §9, §14, §16, §17, §19) now carry a "Retired" banner.
 - **The repo and directory are still named `react-carplay-s660`.** `serve-build.js`, the
   kiosk paths and the docs all hard-code `~/react-carplay-s660`. Do not rename it casually.
+
+## 33. 2026-10-07 — Kiosk unit renamed: `carplay-dev-chromium.service` → `carplay.service`
+
+**Why.** With Path A gone (§32), "dev" no longer means anything. The web app is the only stack,
+so it gets the plain name. `carplay.service` was free: the Path A unit with that name was
+removed in §32.
+
+**What changed**
+- `hardware/path-b/carplay-dev-chromium.service` is now `hardware/path-b/carplay.service`.
+- The wrapper and static server moved from `~/carplay-dev/` to **`~/carplay-kiosk/`**, the same
+  name as the unit's existing `RuntimeDirectory=carplay-kiosk`. `ExecStart=`, the wrapper's
+  `serve-build.js` path and `provision.sh` (`KIOSK_DIR`) all follow.
+- **The dev Pi.** The overlay was turned off, then the repo was pulled. The two files were
+  installed into `~/carplay-kiosk/` from the repo, exactly as `provision.sh` does. The old unit
+  was disabled and deleted, the new one enabled, and `~/carplay-dev/` removed. Its stale
+  `.bak`/`.orig` wrapper copies from 2026-09-02 are in the 2026-10-07 backup on the Mac. The
+  overlay was then turned back on.
+
+**The name now means something different in older sections.** In §5–§20, `carplay.service`
+is the **Path A** Electron unit. Those sections were not rewritten. Renaming them mechanically
+would turn their A/B switch commands into nonsense like "disable `carplay.service`, enable
+`carplay.service`". The §1 note maps the old names to the new ones instead.
+
+**Logs.** For the kiosk's own logs, use `journalctl -u carplay`. Logs from earlier drives
+were recorded under the old name, so read those with `-u carplay-dev-chromium`.

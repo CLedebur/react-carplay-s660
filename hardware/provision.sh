@@ -10,8 +10,7 @@
 #
 # ONE STACK: carplay-web-app (hardware/path-b/node-CarPlay) in the Pi's system Chromium, under
 # cage. Chromium composites on the GPU and decodes the CarPlay H.264 on the V4L2 hardware decoder
-# (BUILD_NOTES §8.5, §27.1). Installed as carplay-dev-chromium.service and ENABLED. The name is
-# historical: this was the "dev" channel back when the Electron app (Path A) was the stable one.
+# (BUILD_NOTES §8.5, §27.1). Installed as carplay.service and ENABLED.
 # Path A was retired on 2026-10-07 (BUILD_NOTES §32); it is preserved at the git tag path-a-final.
 #
 # USAGE:
@@ -38,7 +37,7 @@ CARPLAY_USER="${USER}"                        # the user the kiosk runs as
 BLUETOOTH_DELAY_SEC=15
 # ============================================================================
 
-DEV_DIR="/home/${CARPLAY_USER}/carplay-dev"   # holds the kiosk launch wrapper + static server
+KIOSK_DIR="/home/${CARPLAY_USER}/carplay-kiosk"   # holds the kiosk launch wrapper + static server
 
 # Report where we died and reassure that a re-run is safe (the script is idempotent).
 trap 'echo "!!! provision.sh failed at line ${LINENO} — fix the cause and re-run; the script is re-run safe." >&2' ERR
@@ -343,7 +342,7 @@ CI=false npm run build
 
 
 # ============================================================================
-# PHASE 4 — Service: carplay-dev-chromium.service (ENABLED)
+# PHASE 4 — Service: carplay.service (ENABLED)
 # ============================================================================
 echo ">>> PHASE 4: kiosk service"
 
@@ -354,19 +353,19 @@ sudo systemctl disable getty@tty1.service 2>/dev/null || true
 # Node and cage start together once the KMS connector exists. Cage's child invokes the
 # wrapper's --browser branch, which waits for HTTP before execing Chromium. All processes
 # live in this unit's cgroup, so a `systemctl stop` tears the web server down too.
-mkdir -p "${DEV_DIR}"
-install -m 775 "${PB}/run-chromium-kiosk.sh" "${DEV_DIR}/run-chromium-kiosk.sh"
-install -m 664 "${PB}/serve-build.js" "${DEV_DIR}/serve-build.js"
+mkdir -p "${KIOSK_DIR}"
+install -m 775 "${PB}/run-chromium-kiosk.sh" "${KIOSK_DIR}/run-chromium-kiosk.sh"
+install -m 664 "${PB}/serve-build.js" "${KIOSK_DIR}/serve-build.js"
 
 # The unit. No PAMName=login: cage talks to seatd directly, RuntimeDirectory= provides
 # XDG_RUNTIME_DIR, and skipping the logind session saves user@1000 + a session bus at boot
 # (Chromium logs harmless "Failed to connect to the bus" lines as a result).
 sed -e "s/^User=s660$/User=${CARPLAY_USER}/" \
-    -e "s|^ExecStart=.*|ExecStart=${DEV_DIR}/run-chromium-kiosk.sh|" \
-    "${PB}/carplay-dev-chromium.service" | sudo tee /etc/systemd/system/carplay-dev-chromium.service > /dev/null
+    -e "s|^ExecStart=.*|ExecStart=${KIOSK_DIR}/run-chromium-kiosk.sh|" \
+    "${PB}/carplay.service" | sudo tee /etc/systemd/system/carplay.service > /dev/null
 
 sudo systemctl daemon-reload
-sudo systemctl enable carplay-dev-chromium.service
+sudo systemctl enable carplay.service
 
 
 # ============================================================================
@@ -381,4 +380,4 @@ echo "/persist repartition (BUILD_NOTES §31) -- keep the unit on stable power f
 echo ""
 echo "    sudo reboot"
 echo ""
-echo "After reboot, the kiosk autostarts via carplay-dev-chromium.service."
+echo "After reboot, the kiosk autostarts via carplay.service."
