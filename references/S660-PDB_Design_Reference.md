@@ -774,5 +774,5 @@ The TOFU schematic (rev 1.3, sheet "PSU") shows:
 | `S660-PDB.kicad_pcb` | Rev C through-hole layout. 90 × 90 mm. DRC clean. ★ items pending. |
 | `S660_PDB_BOM_and_Pinout.xlsx` | BOM, pin-by-pin connections, net junctions, Pi GPIO map, orientation checklist. |
 | `S660-PDB_Farnell_Order_List.xlsx` | Prototype parts order (through-hole). |
-| `BUILD_NOTES.md` | The wider CarPlay project: OS, boot, display, react-carplay, power-supply history. |
+| `BUILD_NOTES.md` | The wider CarPlay project: OS, boot, display, the CarPlay web app, power-supply history. |
 | `provision.sh` | OS provisioning script. |

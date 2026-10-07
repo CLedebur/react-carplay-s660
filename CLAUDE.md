@@ -1,8 +1,15 @@
 # S660 CarPlay — project context for Claude Code
 
 Open-source CarPlay head unit for the Honda S660. Hardware: Raspberry Pi Compute
-Module 4 (CM4) + Oratek TOFU carrier board. This repo is a fork of `react-carplay`
-(Electron + React), customised for the S660 and the CM4.
+Module 4 (CM4) + Oratek TOFU carrier board. CarPlay runs as `carplay-web-app` in the Pi's
+system Chromium under `cage`. That stack ("Path B" in the notes) is the **only** supported
+one, and new work builds on it. The MITM physical controls and the CAN-bus connection come next.
+
+**Path A (the Electron `react-carplay` fork this repo began as) was RETIRED on 2026-10-07**
+(BUILD_NOTES §32). Its source is gone from the tree and lives at the git tag `path-a-final`:
+`src/main/Canbus.ts`, `PiMost.ts` and `KeyBindings.tsx` are reference material for the CAN work.
+Do not reintroduce Electron, an AppImage, `carplay.service` or root-level npm tooling. "Path A"
+and "Path B" survive only as history in BUILD_NOTES.
 
 ## Source of truth for the build
 - **`hardware/BUILD_NOTES.md`** — the full build/provisioning story: hardware, boot
@@ -16,12 +23,11 @@ Two independent problems — do not conflate them:
 1. **Compositing / GL** — GPU-accelerated rendering (WebGL, canvas, page).
 2. **H.264 video decode** — the CarPlay stream from the Carlinkit dongle.
 
-Stock/upstream Electron on the Pi does **software** H.264 decode, and under `cage` it
-can crash on the CM4's v3d/vc4 `dma_buf` scanout path. The Pi's **system Chromium**
-works because it carries Raspberry Pi's downstream GBM + V4L2 patches that upstream
-Electron lacks (ref: electron/electron#34825). **A newer Electron alone does NOT add
-those patches.** Hardware decode *on Path A* would need a custom-patched Electron build (RPi
-`debian/patches` + GN args `use_v4l2_codec=true` / `use_v4l2_codec_rpi=true`).
+This is why Path A was retired. Stock/upstream Electron on the Pi does **software** H.264
+decode, and under `cage` it can crash on the CM4's v3d/vc4 `dma_buf` scanout path. The Pi's
+**system Chromium** works because it carries Raspberry Pi's downstream GBM + V4L2 patches,
+which upstream Electron lacks (ref: electron/electron#34825). A newer Electron alone does NOT
+add them. Never "upgrade" to an Electron or other bundled-Chromium runtime, for this reason.
 
 **Path B already decodes in hardware.** Measured 2026-09-12 with CarPlay streaming: Chromium's
 GPU process holds `/dev/video10` (`bcm2835-codec-decode`) — the `+rpt` Raspberry Pi Chromium
@@ -30,9 +36,8 @@ with default `hardwareAcceleration`, no launch flag needed (BUILD_NOTES §27.1).
 (§8, §19, §20) saying Path B decode was "software" were a pre-dongle inference that was never
 re-tested; they are annotated at source. Do not repeat that claim.
 
-Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
-- **Path A** — the Electron app under `cage --disable-gpu` (software, stable).
-- **Path B (currently chosen)** — `carplay-web-app` in system Chromium (GPU compositing
+The stack (BUILD_NOTES §8.5; the retired/shelved alternatives are §32 and §27):
+- **Path B (the only supported stack)** — `carplay-web-app` in system Chromium (GPU compositing
   confirmed via `chrome://gpu`; hardware H.264 decode confirmed via `fuser /dev/video10`).
   The dongle's WebUSB access comes from the `WebUsbAllowDevicesForUrls` managed policy
   (`hardware/path-b/chromium-policy-webusb-carlinkit.json` → `/etc/chromium/policies/managed/`),
@@ -84,30 +89,15 @@ Three paths exist (see BUILD_NOTES §8.5; Path C is §27):
   the full analysis (including the real costs: input, audio mixing, overlay) if it's ever
   revisited; don't re-derive it.
 
-## State of THIS fork's code
-- Electron bumped **27 → 33** (Chromium 130 / Node 20). Pi GPU flags added in
-  `src/main/index.ts` (they MUST be appended before `app.whenReady()` — switches set
-  after that are ignored). Render backend is a runtime Setting (webgl / webgl2 /
-  webgpu) in Settings → consumed in `Carplay.tsx`. Decoder set to `prefer-hardware`.
-- **NOT YET VERIFIED ON HARDWARE:** whether Electron 33 + GPU flags survive the
-  `dma_buf` scanout bug under `cage`, or still fall back to / crash into software. The
-  GPU flags may re-trigger the crashes that `--disable-gpu` was added to avoid. The
-  on-device test (BUILD_NOTES §15) decides whether this fork can replace Path B.
-
-## Build / dev commands
-- `npm install` — **Linux/Pi only.** `socketcan` is `os: linux`; native modules
-  (`usb`, `socketcan`) rebuild via the `install-app-deps` postinstall; `node-carplay`
-  is a git dependency built by its own `prepare` script. It will not install on macOS.
-- `npm run dev` — run in development.
-- `npm run build` — runs `electron-vite build` (does **not** run typecheck).
-- `npm run build:armLinux` — build the arm64 AppImage for the Pi.
-- `npm run typecheck` — optional; has ~11 pre-existing errors in the vendored
-  `src/renderer/src/components/worker/render/lib/h264-utils.ts`. The rest is clean.
+## Build / dev
+- There is **no root `package.json`** any more. All app code and npm tooling lives in
+  `hardware/path-b/node-CarPlay/` (library) and its `examples/carplay-web-app/`. Build and
+  deploy as described in its `README.md` and BUILD_NOTES §11/§23. On the Pi, turn the
+  overlay off first, or the deploy vanishes at the next power-off.
+- The kiosk unit is still named `carplay-dev-chromium.service` (historical "dev channel"
+  name; renaming it touches the live Pi + docs, so it's a deliberate follow-up, not drift).
 
 ## Gotchas worth remembering
-- Settings "Save" calls `app.relaunch()` then exits — this is intentional. The kiosk
-  runs under a systemd service with `Restart=always` so it comes straight back
-  (BUILD_NOTES §9). Don't "fix" the exit.
 - The Carlinkit dongle is **required** — it performs the Apple MFi handshake. You
   cannot plug the phone straight into the Pi (BUILD_NOTES §7).
 - Do **not** run `npm audit fix --force` on the web-app deps — it upgrades to breaking

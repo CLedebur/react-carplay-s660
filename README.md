@@ -1,22 +1,14 @@
-# React-Carplay for the Honda S660
+# S660 CarPlay
 
-An open-source CarPlay head unit for the Honda S660, built on a Raspberry Pi Compute Module 4 (CM4) + Oratek TOFU carrier board. This repo is a fork of [react-carplay](https://github.com/rhysmorgan134/react-carplay) (Electron + React), customised for the S660's panel, GPU, and boot environment.
+An open-source CarPlay head unit for the Honda S660, built on a Raspberry Pi Compute Module 4 (CM4) + Oratek TOFU carrier board. CarPlay runs as a web app ([`carplay-web-app`](hardware/path-b/node-CarPlay/), built on [node-CarPlay](https://github.com/rhysmorgan134/node-CarPlay)) in the Pi's own Chromium, full-screen under the `cage` kiosk compositor, customised for the S660's panel, controls, and boot environment.
 
-Hardware assembly, wiring, and enclosure instructions are covered separately. This  document is the software-side getting-started guide: how to provision a Pi into a working head unit, and how to develop on this fork.
+Hardware assembly, wiring, and enclosure instructions are covered separately. This document is the software-side getting-started guide: how to provision a Pi into a working head unit, and how to develop on it.
 
 ## Current status
 
-Two software paths exist for running CarPlay on the Pi. Both autostart at boot and
-are stable; only one runs at a time.
+The Pi's system Chromium **composites on the GPU and decodes the CarPlay H.264 stream in hardware**. Measured 2026-09-12 with CarPlay streaming, Chromium's GPU process holds `/dev/video10`, the CM4's `bcm2835-codec` decoder. Raspberry Pi's Chromium build carries the V4L2 patches, and the web app's WebCodecs decoder picks them up with no extra flags (BUILD_NOTES §8.5, §27.1). The kiosk is on screen about 2.5 s after the kernel starts. Logs from every drive are kept on a dedicated `/persist` partition (§31).
 
-| | Path A — `react-carplay` (this repo) | Path B — `carplay-web-app` (chosen) |
-|---|---|---|
-| Runtime | Electron, under `cage`, `--disable-gpu` | Pi's system Chromium, under `cage` |
-| Rendering | Software (stable, low framerate) | GPU-composited (smoothest performance) |
-| Dongle link | Native USB | WebUSB |
-| Service | `carplay.service` | `carplay-dev-chromium.service` |
-
-**Path B is the currently running channel** on the reference build — see [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) §8.5 for why. On Path B, video **decode** is in **hardware** as well as compositing: measured 2026-09-12 with CarPlay streaming, Chromium's GPU process holds `/dev/video10` (the CM4's `bcm2835-codec` H.264 decoder) — the Raspberry Pi Chromium build carries the V4L2 patches, and the web app's WebCodecs decoder picks it up with no extra flags (BUILD_NOTES §27.1). Path A (Electron) still decodes in software; hardware decode there would need a custom-patched Electron build. This repo (Path A) is where that work — Electron 33 + Pi GPU flags — is happening; see [`CLAUDE.md`](CLAUDE.md) for the exact state of that effort.
+> **Path A retired (2026-10-07).** This repo started as a fork of [react-carplay](https://github.com/rhysmorgan134/react-carplay), an Electron app. Upstream Electron lacks the Pi's GPU/V4L2 patches, so it could only render and decode in software. It has been removed in favour of the web app, which is much faster. The last commit containing it is tagged [`path-a-final`](https://github.com/CLedebur/react-carplay-s660/tree/path-a-final), including its CAN-bus, MOST and key-binding code (BUILD_NOTES §32). You will still see "Path A" and "Path B" in the build notes. That history is kept on purpose.
 
 For the full build history, every non-obvious fix, and the reasoning behind each decision, read [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) — it is the source of truth for anything hardware-, boot-, or GPU-related.
 
@@ -64,33 +56,7 @@ chmod +x provision.sh
 ./provision.sh
 ```
 
-By default this installs **Path A only** (`carplay.service`, enabled/autostarting).
-To install Path B instead — or in addition, side-by-side, and switch between them —
-set the channel flags as environment overrides:
-
-```bash
-# Path B only (GPU-accelerated Chromium channel):
-INSTALL_STABLE_A=no INSTALL_DEV_CHROMIUM=yes ./provision.sh
-
-# Both, side by side (Path B installed but disabled; switch to it later):
-INSTALL_STABLE_A=yes INSTALL_DEV_CHROMIUM=yes ./provision.sh
-```
-
-The script is safe to re-run after a failure or to add a channel to an
-already-provisioned box. It ends with **a required reboot**; starting a kiosk
-service live (`systemctl start`) does not reliably establish the VT/seat session on
-first setup.
-
-**Switching channels** (both installed, one enabled at a time — switching live
-between them drops the HDMI output, so always reboot):
-
-```bash
-# -> Path B (dev Chromium/GPU):
-sudo systemctl disable carplay.service && sudo systemctl enable carplay-dev-chromium.service && sudo reboot
-
-# -> Path A (stable Electron):
-sudo systemctl disable carplay-dev-chromium.service && sudo systemctl enable carplay.service && sudo reboot
-```
+This installs the web app as `carplay-dev-chromium.service`, enabled to start at boot. The name is historical: it was the "dev" channel when the Electron app was the stable one. The script is safe to re-run after a failure. It ends with **a required reboot**. Starting the kiosk service live (`systemctl start`) does not reliably set up the VT/seat session on first setup. That reboot also runs the one-shot `/persist` repartition (BUILD_NOTES §31), so keep the Pi on stable power for it.
 
 # Physical Installation
 
@@ -125,8 +91,9 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
 # Works in Progress
 
 1. 3D-printed case for the Pi + TOFU board sized to fit the S660's center console with mounting points.
-2. Man-in-the-Middle (MITM) proxy for the physical buttons on the center console so that the buttons and knob can be used to control the CarPlay app.
-3. (eventually) A replacement screen for the S660 with touchscreen capabilities and a higher resolution than the stock screen.
+2. Man-in-the-Middle (MITM) proxy for the physical buttons on the center console so that the buttons and knob can be used to control the CarPlay app ([`hardware/opera-mitm/`](hardware/opera-mitm/), BUILD_NOTES §30).
+3. CAN-bus connection, to build vehicle data and the car's own views into the web app.
+4. (eventually) A replacement screen for the S660 with touchscreen capabilities and a higher resolution than the stock screen.
 
 # Script Details
 
@@ -141,13 +108,16 @@ Using plastic trim removal tools, remove the S660's interior parts in this order
   above skips; this one is loaded explicitly instead), which is installed and built during
   provisioning. `/boot/firmware` stays normally writable throughout — verified against a real
   hard power cut (`BUILD_NOTES.md` §29).
+- Shrinks root to 64 GiB once and gives the rest of the disk to a `/persist` partition,
+  which the overlay does not cover. The systemd journal and the last-known clock live there,
+  so every drive's logs survive the ignition cutting power (`BUILD_NOTES.md` §31).
 - Installs `cage` (Wayland kiosk compositor) + `seatd`, the udev rule that gives the
-  Carlinkit dongle non-root USB/WebUSB access, and (Path B) a Chromium managed policy that
+  Carlinkit dongle non-root USB/WebUSB access, and a Chromium managed policy that
   pre-grants the dongle to the kiosk page — no on-screen authorisation, ever, even after a
   browser-profile reset (BUILD_NOTES §28).
-- Installs whichever app stack(s) you selected (AppImage for Path A; system Chromium
-  + this repo's vendored `node-CarPlay`/`carplay-web-app` source, for Path B).
-- Writes the systemd unit(s) that launch the kiosk on boot.
+- Installs system Chromium and builds this repo's vendored `node-CarPlay`/`carplay-web-app`
+  source.
+- Writes and enables the systemd unit that launches the kiosk on boot.
 - Preloads the HDMI component drivers and overlaps the web server and compositor startup.
   (An earlier version of this also shipped an auto-refreshed uncompressed kernel image for
   a further ~2s savings; reverted after a field failure — see `BUILD_NOTES.md` §26.)
@@ -159,122 +129,26 @@ can delay it further. Nothing on the boot-critical path depends on the network,
 since Wi-Fi is never guaranteed inside the car. Don't "fix" this; it's intentional.
 If the Pi seems unreachable right after a reboot, give it a minute.
 
-## Developing this fork (Path B source — the currently running channel)
+## Developing the app
 
-Path B's app source (the `node-carplay` library + `carplay-web-app`, modified from
-upstream [`rhysmorgan134/node-CarPlay`](https://github.com/rhysmorgan134/node-CarPlay),
-MIT) is vendored directly into this repo at
-[`hardware/path-b/node-CarPlay/`](hardware/path-b/node-CarPlay/) — it is not a separate
-clone or npm/git dependency. Edit it in place, rebuild, and redeploy by pulling this
-repo onto the Pi and pointing the kiosk at
+The app source is the `node-carplay` library plus `carplay-web-app`, modified from upstream
+[`rhysmorgan134/node-CarPlay`](https://github.com/rhysmorgan134/node-CarPlay) (MIT). It is
+vendored directly into this repo at
+[`hardware/path-b/node-CarPlay/`](hardware/path-b/node-CarPlay/). It is not a separate
+clone or an npm/git dependency. Edit it in place, rebuild, and redeploy by pulling this
+repo onto the Pi; the kiosk serves
 `~/react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app`. See that
 directory's own `README.md` and `hardware/BUILD_NOTES.md` §11 and §23 for the exact
 build/deploy commands and toolchain gotchas.
 
-## Developing this fork (Path A source)
-
-This repo is the Electron/React app itself — useful if you're working on Path A,
-on the canbus/MOST bus/keybinding features below, or on the in-progress
-Electron-33 GPU-decode work described in `CLAUDE.md`.
-
-**Platform note:** `npm install` only works on Linux (target: the Pi, or another
-arm64/x64 Linux box). `socketcan` is Linux-only and native modules (`usb`,
-`socketcan`) are rebuilt for Electron via a postinstall step; it will not install on
-macOS or Windows.
-
-```bash
-npm install         # Linux only — see above
-npm run dev         # run in development
-npm run build       # electron-vite build (does not run typecheck)
-npm run build:armLinux   # build the arm64 AppImage for the Pi
-```
-
-`npm run typecheck` is optional and has ~11 pre-existing errors confined to the
-vendored `h264-utils.ts`; the rest of the codebase is clean.
-
-Once built, the render backend (WebGL / WebGL2 / WebGPU) is a runtime setting under
-Settings → consumed in `Carplay.tsx`; the video decoder preference is set to
-`prefer-hardware`. Saving Settings intentionally calls `app.relaunch()` and exits —
-under the systemd service (`Restart=always`) it comes straight back.
-
-### Manual installation (generic Pi, no S660-specific tuning)
-
-If you're running plain `react-carplay` on a Pi outside the S660/provisioning-script
-setup, the upstream manual steps still apply:
-
-```bash
-FILE=/etc/udev/rules.d/52-nodecarplay.rules
-echo "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"1314\", ATTR{idProduct}==\"152*\", MODE=\"0660\", GROUP=\"plugdev\"" | sudo tee $FILE
-```
-
-Download the latest AppImage from the
-[releases page](https://github.com/rhysmorgan134/react-carplay/releases) (arm64 or
-armv7l for 32-bit), make it executable, and run it:
-
-```bash
-chmod +x react-carplay-4.0.0-arm64.AppImage
-./react-carplay-4.0.0-arm64.AppImage
-```
-
-## Features
-
-- CarPlay configurable up to 60fps @ 1080p (hardware capability dependent)
-- Canbus integration to show a camera feed when a canbus signal is received
-- PiMost integration to stream Pi audio over a MOST bus network
-- Configurable key bindings
-- Choice of microphone and camera device
-
-## Canbus configuration
-
-The application supports canbus messages when a compatible socketcan interface is
-present; it defaults to `can0`. You need three values from your car's CAN messages
-to wire up a trigger. As an example, in a Freelander 2 the parking sensors set a bit
-to true when active and false when inactive — an ideal trigger. Take this message:
-
-`188#13400000FF0000FF`
-
-This is made up of a CAN ID (`0x188`) and 8 data bytes
-(`0x13 0x40 0x00 0x00 0xFF 0x00 0x00 0xFF`). Written as binary:
-
-```
-binary - 00010011  01000000  00000000  00000000  11111111  00000000  00000000  11111111
-hex -      0x13      0x40      0x00      0x00      0xFF      0x00      0x00      0xFF
-```
-
-Toggling the parking sensors flips byte 1 between `0x40` and `0x00` — bit 6 of that
-byte is the one that toggles (bits start at 0; the byte could show `0x41`/`0x01` in
-practice and bit 6 would still be the relevant one).
-
-So the three values to enter into react-carplay are:
-
-- canID = `0x188` hex = 392 decimal
-- mask = `0x40` hex = 64 decimal
-- byte = 1
-
-In the settings page, click the canbus option, and fill in the values found for
-your car (these will differ unless you also have a Freelander 2).
-
-## MOST bus PiMost integration
-
-The MOST bus is a multimedia network — see
-[how it works](https://moderndaymods.com/how-most-bus-works/) for background.
-React-Carplay can disconnect the car's amplifier from its current source and
-connect it to the Pi instead, streaming CarPlay audio directly onto the MOST bus.
-To do this, tick the PiMost box on the settings page, then enter the fBlockID
-(typically `0x22` for an amplifier), the instance ID, the sink ID, and the address
-high/low for the amplifier.
-
-## Keybindings
-
-To configure key bindings, click the Bindings button in settings, choose the
-function you need by clicking it, then press the desired key.
+**Overlay FS is on in normal use**, so changes made on the Pi vanish at the next power-off.
+Turn it off before you deploy (BUILD_NOTES §29), and turn it back on afterwards.
 
 ## Thanks
 
-React-carplay uses [node-carplay](https://github.com/rhysmorgan134/node-CarPlay)
-for interfacing with the dongle; @gozmanyoni and @steelbrain have contributed
-significant carplay improvements upstream.
+This project builds on [node-carplay](https://github.com/rhysmorgan134/node-CarPlay) and
+began as a fork of [react-carplay](https://github.com/rhysmorgan134/react-carplay), both by
+Rhys Morgan, with significant CarPlay improvements contributed upstream by @gozmanyoni and
+@steelbrain.
 
-Buy the `react-carplay` developer [gozmanyoni some coffee](https://www.buymeacoffee.com/ygoz), if you'd like to show them appreciation.
-
-<a href="https://www.buymeacoffee.com/rhysm" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+If you'd like to show them appreciation, you can [buy gozmanyoni a coffee](https://www.buymeacoffee.com/ygoz) or [buy Rhys a coffee](https://www.buymeacoffee.com/rhysm).

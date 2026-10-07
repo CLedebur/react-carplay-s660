@@ -1,10 +1,6 @@
 # dependencies
 node_modules
 
-# build output (electron-vite → out/, electron-builder → dist/)
-dist
-out
-
 # logs
 *.log*
 

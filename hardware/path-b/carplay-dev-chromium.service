@@ -1,8 +1,7 @@
 [Unit]
-Description=S660 CarPlay DEV kiosk (cage + system Chromium, Path B / GPU) — toggles vs carplay.service
+Description=S660 CarPlay kiosk (cage + system Chromium + carplay-web-app, GPU)
 After=local-fs.target seatd.service
 Wants=seatd.service
-Conflicts=carplay.service
 
 [Service]
 User=s660

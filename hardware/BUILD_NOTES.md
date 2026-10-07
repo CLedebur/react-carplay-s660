@@ -12,6 +12,10 @@ start, because several steps fail in ways that are hard to diagnose without the 
 
 ## 1. Current status
 
+> **2026-10-07:** the "current status" text below is from August 2026 and is kept as history.
+> Today the unit runs only the web app in system Chromium (Path B), with hardware decode
+> (§27.1), the overlay (§29) and the `/persist` log partition (§31). Path A was retired (§32).
+
 **What works now:**
 - Raspberry Pi OS Lite (64-bit) boots on the CM4 + TOFU.
 - Two working software paths exist (see below). Both start on their own at boot,
@@ -219,6 +223,9 @@ sudo usermod -aG plugdev "$USER"
 
 ### 6.2 Download and extract the AppImage
 
+> **Retired (§32, 2026-10-07):** Path A only. Path A has been removed; this section is kept as
+> history. Do not follow it to set up a unit. Use `provision.sh` instead.
+
 Download the 64-bit ARM build:
 ```bash
 mkdir -p ~/react-carplay
@@ -413,6 +420,9 @@ decode hardware or software?* That needs the dongle.
 ---
 
 ## 9. The Settings crash — and the service that fixes it
+
+> **Retired (§32, 2026-10-07):** Path A only. Path A has been removed; this section is kept as
+> history. Do not follow it to set up a unit. Use `provision.sh` instead.
 
 **Symptom:** clicking "Save" in Settings dropped the app back to the terminal.
 
@@ -742,6 +752,9 @@ never run a `--dev` install on the production unit. Mixing them defeats both goa
 
 ## 14. Dual-environment / A/B deployment (stable + dev channels)
 
+> **Retired (§32, 2026-10-07):** Path A only. Path A has been removed; this section is kept as
+> history. Do not follow it to set up a unit. Use `provision.sh` instead.
+
 Safety architecture so a broken dev build never leaves a non-working dashboard in the
 car. Two complete react-carplay installs side by side; the CM4 always boots **stable**
 by default, and you deliberately switch to **dev** to test. This is the software-layer
@@ -832,6 +845,9 @@ persistent-writable on a locked image.
 
 ## 16. Quick reference — the working path, start to finish
 
+> **Retired (§32, 2026-10-07):** Path A only. Path A has been removed; this section is kept as
+> history. Do not follow it to set up a unit. Use `provision.sh` instead.
+
 Assuming a fresh Raspberry Pi OS Lite (64-bit) install, user `s660`:
 
 ```bash
@@ -868,6 +884,9 @@ sudo reboot
 ---
 
 ## 17. 2026-08-23 — Electron-33 fork built from source + GPU retest on the CM4
+
+> **Retired (§32, 2026-10-07):** Path A only. Path A has been removed; this section is kept as
+> history. Do not follow it to set up a unit. Use `provision.sh` instead.
 
 Forked react-carplay (CLedebur/react-carplay-s660), bumped Electron 27→33, and built it
 **from source on the CM4** (the §15 primary track). Then retested GPU under `cage`.
@@ -950,6 +969,9 @@ AppImage download, and an `ERR` trap. See the script header.
 ---
 
 ## 19. 2026-08-24 — Stable/dev channel toggle: `carplay.service` + `carplay-dev-chromium.service`
+
+> **Retired (§32, 2026-10-07):** Path A only. Path A has been removed; this section is kept as
+> history. Do not follow it to set up a unit. Use `provision.sh` instead.
 
 Realises the §14 dual-environment idea and the §11.7 "Path B service" TODO **without ever
 clobbering the working Electron install.** `provision.sh` now provisions two independent
@@ -2275,3 +2297,46 @@ The benign `systemd-remount-fs` failure (§29.2) is still there, and still harml
 before `update-initramfs`, writes `overlayroot=tmpfs:recurse=0 s660_repart=apply` into
 `cmdline.txt`, appends `fstab.persist`, and enables the units. The reboot at the end of the
 script does the repartition.
+
+## 32. 2026-10-07 — Path A retired: the web app in system Chromium is the only stack
+
+**Decision.** Path A (the Electron `react-carplay` fork, under `cage --disable-gpu`) is no
+longer supported. Path B (`carplay-web-app` in the Pi's system Chromium) is the only stack.
+New work builds on it. That starts with the MITM physical controls (§30) and the CAN-bus
+connection.
+
+**Why.** Path B composites on the GPU and decodes H.264 on the V4L2 hardware decoder (§27.1).
+Path A could do neither on this board without a custom-patched Electron (§8, §17). Path B has
+been the running stack since §19/§20. Path A had become a second stack that nobody ran, kept
+only to be maintained.
+
+**What was removed**
+- **Repo.** The Electron app and all of its root-level tooling: `src/`, `package.json` and
+  its lockfile, `electron-builder.yml`, `electron.vite.config.ts`, `tsconfig*.json`, `build/`,
+  the root eslint/prettier configs, `setup-pi.sh`, `test.html`, `.idea/`, the Electron VS Code
+  launch/format settings, and the root GitHub workflow. That workflow was already broken: it
+  ran a `build-package` script that did not exist. Nothing under `hardware/` depended on any
+  of these (`hardware/path-b/node-CarPlay` has its own package and tooling).
+- **`provision.sh`.** No more channel flags. PHASE 3 always installs Chromium and the web app.
+  PHASE 4 installs **and enables** `carplay-dev-chromium.service`. Before, that service was
+  installed disabled and Path A was the default.
+- **The unit.** `Conflicts=carplay.service` was dropped, and the description no longer says
+  "dev".
+- **The dev Pi.** `carplay.service` (already disabled) and `~/react-carplay` (the 454 MB
+  extracted AppImage) were removed. `libfuse2t64` and the `libz.so` symlink were left in
+  place: they are harmless, and removing them is not worth the risk.
+
+**Where it went.** The git tag **`path-a-final`** is the last commit with Path A in it. It
+has `src/main/Canbus.ts` (a socketcan camera trigger), `PiMost.ts` (MOST-bus audio) and the
+key-binding UI. These are useful reference material for the CAN-bus work, which will be built
+fresh in the web-app stack. Use `git checkout path-a-final -- src/main/Canbus.ts` to look at
+one of them without bringing the rest back.
+
+**Left alone on purpose**
+- **The kiosk unit is still named `carplay-dev-chromium.service`.** The "dev" is from the
+  §14/§19 channel era. Renaming it touches the live Pi, `provision.sh`, the README and these
+  notes all at once. That is a deliberate follow-up, not something to fold into this change.
+- **Sections §5–§20 still talk about Path A and Path B.** They are dated history. The sections
+  that only make sense for Path A (§6.2, §9, §14, §16, §17, §19) now carry a "Retired" banner.
+- **The repo and directory are still named `react-carplay-s660`.** `serve-build.js`, the
+  kiosk paths and the docs all hard-code `~/react-carplay-s660`. Do not rename it casually.
