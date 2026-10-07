@@ -1,0 +1,48 @@
+Comment,Designator,Footprint,JLCPCB Part #,Manufacturer,Manufacturer Part Number,Quantity,Assembly Notes
+470uF 35V / EEUFR1V471,C3,Capacitor_THT:CP_Radial_D10.0mm_P5.00mm,C178715,Panasonic,EEUFR1V471,1,10 mm diameter; 5 mm lead pitch. Do not substitute EEUFR1V471L.
+100nF / FG28X7R1H104KNT00,C4,Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm,C448595,TDK,FG28X7R1H104KNT00,1,100 nF 50 V X7R 10%; radial 5 mm pitch.
+100nF / FG28X7R1H104KNT00,C5,Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm,C448595,TDK,FG28X7R1H104KNT00,1,100 nF 50 V X7R 10%; radial 5 mm pitch.
+100nF / FG28X7R1H104KNT00,C6,Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm,C448595,TDK,FG28X7R1H104KNT00,1,100 nF 50 V X7R 10%; radial 5 mm pitch.
+47uF 25V / EEUFR1E470,C7,Capacitor_THT:CP_Radial_D5.0mm_P2.00mm,C407893,Panasonic,EEUFR1E470,1,
+5KP18A / 5KP18A,D1,Diode_THT:D_P600_R-6_P20.00mm_Horizontal,,Diotec Semiconductor,5KP18A,1,
+1N5822 / 1N5822,D2,S660-PDB:D_Multicomp_1N5822_DO27_P15.24mm,,Multicomp Pro,1N5822,1,Exact Farnell 4050109 DO-27 package; do not substitute DO-201 without footprint review.
+1N5822 / 1N5822,D3,S660-PDB:D_Multicomp_1N5822_DO27_P15.24mm,,Multicomp Pro,1N5822,1,Exact Farnell 4050109 DO-27 package; do not substitute DO-201 without footprint review.
+1N4007 / 1N4007-E3/54,D4,Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal,,Vishay,1N4007-E3/54,1,
+FAN1 heatsink 3007 / TSW-104-07-G-S,FAN1,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,Samtec,TSW-104-07-G-S,1,"Fit male 1x4 header, not a fan. Verify finished-hole fit with assembler."
+FAN2 case / TSW-104-07-G-S,FAN2,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,Samtec,TSW-104-07-G-S,1,"Fit male 1x4 header, not a fan. Verify finished-hole fit with assembler."
+FAN3 case / TSW-104-07-G-S,FAN3,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,Samtec,TSW-104-07-G-S,1,"Fit male 1x4 header, not a fan. Verify finished-hole fit with assembler."
+PWR INPUT / 1836202,J1,"Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_4-G-5.08_1x04_P5.08mm_Horizontal",C5444352,Phoenix Contact,1836202,1,PCB header only; mating cable plug not included.
+PWR OUTPUT / 1836189,J2,"Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_2-G-5.08_1x02_P5.08mm_Horizontal",C5355140,Phoenix Contact,1836189,1,PCB header only; mating cable plug not included.
+Pi interface / ISP / TSW-105-07-G-D,J3,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,,Samtec,TSW-105-07-G-D,1,Male 2x5 header; verify finished-hole fit with assembler.
+AVR ISP 3V3 / TSW-103-07-G-D,J4,Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical,,Samtec,TSW-103-07-G-D,1,Male 2x3 header; verify finished-hole fit with assembler.
+RELAY BYPASS / 1751248,JP1,S660-PDB:Phoenix_MKDS_1_2_3.5_1751248,C89122,Phoenix Contact,1751248,1,Fit terminal block. Leave OPEN: no bypass wire or short.
+G2RL-1A DC12 / G2RL-1A DC12,K1,Relay_THT:Relay_SPST_Omron_G2RL-1A,C1524657,Omron,G2RL-1A DC12,1,
+LED 3mm / WP3A8ID,LED1,LED_THT:LED_D3.0mm,,Kingbright,WP3A8ID,1,Red 3 mm LED; pad 1 cathode.
+LED 3mm / WP3A8ID,LED2,LED_THT:LED_D3.0mm,,Kingbright,WP3A8ID,1,Red 3 mm LED; pad 1 cathode.
+LED 3mm / WP3A8ID,LED3,LED_THT:LED_D3.0mm,,Kingbright,WP3A8ID,1,Red 3 mm LED; pad 1 cathode.
+BC337-40 / BC337-40,Q2,Package_TO_SOT_THT:TO-92_Inline_Wide,,Diotec Semiconductor,BC337-40,1,"Pads 1 C, 2 B, 3 E. 2.54 mm pitch; confirm lead forming."
+2N7000 / 2N7000,Q3,Package_TO_SOT_THT:TO-92_Inline_Wide,,Diotec Semiconductor,2N7000,1,"Pads 1 S, 2 G, 3 D. 2.54 mm pitch."
+68k / MFR-25FBF52-68K,R1,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,Yageo,MFR-25FBF52-68K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+15k / MFR-25FBF52-15K,R2,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C3556390,Yageo,MFR-25FBF52-15K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R3,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+100R / MFR-25FBF52-100R,R4,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,Yageo,MFR-25FBF52-100R,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+10k / MFR-25FBF52-10K,R5,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1519255,Yageo,MFR-25FBF52-10K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+2.2k / MFR-25FBF52-2K2,R6,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,Yageo,MFR-25FBF52-2K2,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R7,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R8,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R9,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+10k / MFR-25FBF52-10K,R11,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1519255,Yageo,MFR-25FBF52-10K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+10k / MFR-25FBF52-10K,R12,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1519255,Yageo,MFR-25FBF52-10K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R13,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+2.2k / MFR-25FBF52-2K2,R14,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,Yageo,MFR-25FBF52-2K2,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+2.2k / MFR-25FBF52-2K2,R15,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,Yageo,MFR-25FBF52-2K2,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R16,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R17,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R18,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1k / MFR-25FBF52-1K,R19,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,C1364484,Yageo,MFR-25FBF52-1K,1,"1%, 0.25 W; form axial leads to 10.16 mm."
+1R / MRS25000C1008FCT00,R20,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,Vishay,MRS25000C1008FCT00,1,
+PUSH TO TEST / B3F-1000,SW1,Button_Switch_THT:SW_PUSH_6mm_H4.3mm,C93157,Omron,B3F-1000,1,
+8-pin DIP socket ONLY; owner inserts ATtiny85,U1,Package_DIP:DIP-8_W7.62mm,C3170386,ASSMANN WSW Components,A 08-LC-TT,1,ASSEMBLY OVERRIDE: fit socket only; owner inserts ATtiny85. Do not procure or solder MCU.
+LM2936Z-3.3 / LM2936Z-3.3/NOPB,U2,Package_TO_SOT_THT:TO-92_Inline_Wide,,Texas Instruments,LM2936Z-3.3/NOPB,1,"3.3 V variant only; pads 1 OUT, 2 GND, 3 IN. Form leads to 2.54 mm."
+PC817 / ISP817X,U3,Package_DIP:DIP-4_W7.62mm,,Isocom Components,ISP817X,1,"DIP-4 7.62 mm; pads 1 A, 2 K, 3 E, 4 C."
+BZX55C3V6 / BZX55C3V6-TAP,Z2,Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal,,Vishay,BZX55C3V6-TAP,1,

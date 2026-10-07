@@ -1,5 +1,7 @@
 # S660-PDB — Power Distribution Board: Design Reference
 
+> **2026-09-18 implementation update — 90 × 90 mm through-hole board only:** LED1 is now push-to-test using SW1 (Omron B3F-1000, normally open): 12V_IN → SW1 pin 2 / pin 1 → LED_TEST → R14 → LED1 → GND. Hold TEST when interpreting LED1 in the diagnostic table below. References below to a continuously lit LED1 and R14 pin 1 directly on 12V_IN describe the earlier circuit. This removes approximately 4.55 mA of continuous LED load at 12 V, but the 68 kΩ/15 kΩ divider still draws approximately 145 µA, so the <100 µA standby claims below are not achieved. C6 and Z2 are placed next to **U1 pin 2 / ADC3**; pin 7 is HALT_IN/SCK. The board outline and mounting holes are unchanged. The SMT variant has not been updated. See [rev D review and assembly notes](../pdb-circuit/90x90cm%20board/REV-D-REVIEW.md) for validated mappings and remaining acceptance work.
+
 **Project:** S660 CarPlay head unit (Raspberry Pi CM4 on Oratek TOFU carrier)
 **Board:** S660-PDB, rev D specification (rev C + in-circuit programming provisions)
 **Source of truth:** `S660-PDB.kicad_sch` (KiCad 10, currently **rev C**). Every rev C pin connection in this document was extracted from that file. Items marked **★** are **rev D additions** agreed on 2026-09-18 and are **not yet in the KiCad files**. They apply to **both** the through-hole board and the SMT board.
@@ -85,7 +87,7 @@ Pi GPIO5  ──► J3 pin 7 ──► R17 ──► U1 pin 5 (MOSI)     ┐
 Pi GPIO6  ──► J3 pin 8 ──► R18 ──► U1 pin 6 (MISO)     ├─ same four nodes also on J4 (2×3 standard ISP header, + 3V3 and GND)
 Pi GPIO26 ──► J3 pin 3 ──► R7  ──► U1 pin 7 (SCK = HALT_IN line, reused) │
 Pi GPIO13 ──► J3 pin 9 ──► R19 ──► U1 pin 1 (RESET)    ┘
-JP1 (2-pin jumper) across K1 pin 13 ── pin 14: forces 12V_SW on for programming / recovery
+JP1 (Phoenix 1751248 fixed terminal with removable wire bridge) across K1 pin 13 ── pin 14: forces 12V_SW on for programming / recovery
 ```
 
 ---
@@ -156,11 +158,11 @@ Every net on the board, what it is, and every pin on it. This is the complete co
 - R15 pin 1
 
 **3V3** — the ATtiny85 supply, made by U2. Always on, like 12V_IN.
-- U2 pin 3 (VO)
+- U2 pin 1 (VO, LM2936Z TO-92)
 - J4 pin 2 ★ (VCC sense for the programmer — sense only, never supply)
 - U1 pin 8 (VCC)
 - C4 pin 1
-- C7 pin 1 (+)
+- R20 pin 1; R20 pin 2 connects to C7 pin 1 (+)
 - R11 pin 1
 - R12 pin 1
 
@@ -358,11 +360,12 @@ Grouped by board section. **Bold** in the "Purchased" column means the part boug
 
 | Ref | Schematic value | Purchased | Purpose |
 |---|---|---|---|
-| D2 | SS34 Schottky, DO-41 axial | **1N5822 (DO-27)** — SS34 only in SMD | ACC half of the diode-OR. Blocks back-feed into the ACC circuit. |
-| D3 | SS34 Schottky, DO-41 axial | **1N5822 (DO-27)** | ON half of the diode-OR. |
+| D2 | Multicomp Pro 1N5822, DO-27 axial | **1N5822, Farnell 4050109** | ACC half of the diode-OR. Blocks back-feed into the ACC circuit. |
+| D3 | Multicomp Pro 1N5822, DO-27 axial | **1N5822, Farnell 4050109** | ON half of the diode-OR. |
 | U2 | LM2936Z-3.3, TO-92 | LM2936Z-3.3 | Always-on 3.3 V for U1. 15 µA quiescent. 40 V input rating (survives spikes D1 lets through). |
 | C5 | 100 nF ceramic X7R | KEMET C412C104K5R5TA7200 (axial) | U2 input decoupling. |
-| C7 | 10 µF 25 V | Panasonic ECA1EAK100X (85 °C) | U2 output stability. A 105 °C part is preferred for the car cabin. Not critical. |
+| C7 | 47 µF 25 V | Selected replacement: Panasonic EEUFR1E470 (105 °C), straight leads | U2 output stability with R20 in series. Replaces the unsuitable purchased 10 µF part. Effective capacitance and branch ESR require bench validation over temperature. |
+| R20 | 1 Ω, 1%, 0.6 W | Selected: Vishay MRS25000C1008FCT00 | In series with C7 only to meet the regulator ESR floor. MCU supply stays directly on 3V3. |
 | U1 | ATtiny85-20PU, DIP-8, socketed (through-hole) / ATtiny85-20SU SOIC-8 (SMT) | ATTINY85-20PU | The brain. Runs the state machine in §4.3. Internal watchdog enabled in firmware. ★ Programmable in place via J4 or the Pi (§9). |
 | C4 | 100 nF ceramic X7R | KEMET (same as C5) | U1 decoupling. Place within a few mm of pins 4 and 8. |
 | R11 | 10 kΩ | Yageo MFR-25 1 % | RESET pull-up. Prevents noise-triggered resets. |
@@ -382,11 +385,12 @@ Grouped by board section. **Bold** in the "Purchased" column means the part boug
 | D2 | 1 (K, **band**) | IGN_12V (joins D3 cathode, R6 pin 1) |
 | D3 | 2 (A) | J1 pin 3 (ON_IN) — nothing else |
 | D3 | 1 (K, **band**) | IGN_12V |
-| U2 | 1 (VI) | 12V_IN — C5 pin 1 here too |
+| U2 | 3 (VI, TO-92) | 12V_IN — C5 pin 1 here too |
 | U2 | 2 (GND) | GND |
-| U2 | 3 (VO) | 3V3 (joins U1 pin 8, C4, C7, R11, R12) |
+| U2 | 1 (VO, TO-92) | 3V3 (joins U1 pin 8, C4, R11, R12, J4 pin 2 and R20 pin 1) |
 | C5 | 1 / 2 | 12V_IN at U2 VI / GND |
-| C7 | 1 (+) / 2 (−) | 3V3 at U2 VO / GND |
+| R20 | 1 / 2 | 3V3 at U2 VO / C7 positive |
+| C7 | 1 (+) / 2 (−) | R20 pin 2 / GND |
 | U1 | 1 (RESET/PB5) | nRESET ← R11 pin 2; ★ also R19 pin 2 (Pi RESET) and J4 pin 5 |
 | U1 | 2 (PB3 / ADC3) | ★ **BATT_SENSE** (R1, R2, Z2, C6). Rev C had HALT_IN here. |
 | U1 | 3 (PB4) | IGN_MCU ← R13 pin 2 (nothing else) |
@@ -521,7 +525,7 @@ One PWM signal drives all three fans. Any 4-pin PWM PC fan works.
 | Ref | Value | Purpose | Pin connections |
 |---|---|---|---|
 | J4 ★ | 2×3 pin header, 2.54 mm, 6 pins, **standard AVR 6-way ISP pinout** | **ISP header** for an external AVR programmer. A standard USBasp 6-way cable plugs straight in. | Pin 1 → LED3_DRV node = U1 pin 6 (**MISO**). Pin 2 → **3V3** (**VCC**). Pin 3 → HALT_IN node = U1 pin 7 (**SCK**). Pin 4 → COIL_DRV node = U1 pin 5 (**MOSI**). Pin 5 → nRESET node = U1 pin 1 (**RESET**). Pin 6 → **GND**. |
-| JP1 ★ | 2-pin header + shorting jumper, 2.54 mm | **Relay-bypass / service jumper.** Fitted: 12V_SW is live regardless of K1 and U1. Use for programming a blank chip and for recovery if firmware is broken. **Remove for normal operation** — fitted, it defeats the shutdown and the low-voltage cutoff and will drain the battery. | Pin 1 → 12V_IN (K1 pin 13 side). Pin 2 → 12V_SW (K1 pin 14 side). Trace width 2.0 mm, same as the power path. |
+| JP1 ★ | Phoenix MKDS 1/2-3,5 (1751248), 3.5 mm pitch + removable insulated wire bridge | **Relay-bypass / service jumper.** Fitted: 12V_SW is live regardless of K1 and U1. Use for programming a blank chip and for recovery if firmware is broken. **Remove for normal operation** — fitted, it defeats the shutdown and the low-voltage cutoff and will drain the battery. | Pin 1 → 12V_IN (K1 pin 13 side). Pin 2 → 12V_SW (K1 pin 14 side). Trace width 2.0 mm, same as the power path. |
 
 **J4 follows the standard Atmel/Microchip 6-pin ISP layout**, so any AVR programmer cable mates directly, with the correct orientation, and carries its own ground. **Pin 1 must be marked on the silkscreen** (a dot or a square pad) so the cable's key goes on the right way.
 
@@ -599,7 +603,7 @@ TO-92 leg order **differs between part types** in the same package. Do not assum
 ### 8.4 Package notes for the purchased parts
 
 - The KEMET 100 nF caps are **axial** (leads out both ends). The rev C PCB footprint is **radial disc**. Fine on a breadboard. For a PCB, bend the leads or change the footprint.
-- The 1N5822 (D2/D3) is **DO-27**, larger than the SS34's DO-41 footprint. Fine on a breadboard. Check fit on a PCB.
+- D2/D3 are **Multicomp Pro 1N5822 (DO-27), Farnell 4050109**. The 90 × 90 mm PCB uses project-local `S660-PDB:D_Multicomp_1N5822_DO27_P15.24mm`, with 15.24 mm lead spacing and **1.7 mm holes** for the datasheet's 1.45 mm maximum lead diameter. Fit the banded cathode to square pad 1, facing IGN_12V. Keep the project footprint library with the board; do not substitute an SMA or DO-41 footprint.
 - The 1.5KE18A (D1) is **DO-201** axial. For the space-constrained SMT board, `Diode_THT:D_DO-201AE_P5.08mm_Vertical_KathodeUp` stands it upright. Band toward 12V_IN.
 
 ---
@@ -680,7 +684,7 @@ sudo avrdude -c pdb_isp -p t85 -U flash:w:s660_pdb.hex:i
 2. Add R17, R18, R19 (1 kΩ) from J3 pins 7, 8, 9 to U1 pins 5, 6, 1.
 3. Replace J3 with a 10-pin 2×5 header; pins 1–6 unchanged, 7–10 as in §6 C.
 4. Add J4, 2×3 header, standard AVR ISP pinout: 1 MISO (U1.6 node), 2 VCC (3V3), 3 SCK (U1.7 node), 4 MOSI (U1.5 node), 5 RESET (U1.1 node), 6 GND. Mark pin 1 on silkscreen.
-5. Add JP1, 2-pin header, across K1 pins 13–14, on 2.0 mm traces.
+5. JP1 uses Phoenix Contact MKDS 1/2-3,5 (1751248), across K1 pins 13–14, on 2.0 mm traces. Fit/remove the service wire bridge with power disconnected; leave it removed in normal operation.
 6. Update the BOM and pin-out spreadsheets.
 
 ---
@@ -753,7 +757,7 @@ The TOFU schematic (rev 1.3, sheet "PSU") shows:
 | 5 | TOFU terminal block polarity | Verify on silkscreen before first power-up. |
 | 6 | 3007 heatsink fan pinout | Verify with a multimeter. Cheap fans do not always follow the standard colour code. |
 | 7 | D1 substitution | 1.5KE18A (1500 W) fitted instead of 5KP18A (5000 W). Adequate if the S660 alternator is load-dump suppressed. Not yet confirmed. |
-| 8 | C7 temperature rating | 85 °C part bought. 105 °C preferred. Low priority. |
+| 8 | C7 regulator stability | 47 µF EEUFR1E470 + R20 1 Ω implemented on 90 × 90 mm board. Bench-check startup, load transitions and temperature corners after assembly. |
 | 9 | J1/J2 footprints in the schematic | Still show fixed MKDS blocks. Update to MC 1,5/x-G-5.08 pluggable headers. |
 | 10 | SMT redesign | In progress. Same nets. New layout, inverted mount, right-angle J3 and fan headers. Must include all ★ rev D items. |
 | 11 ★ | Rev D programming provisions in the KiCad files | **Not yet drawn.** See §9.6 for the exact list. Applies to both the through-hole and SMT files. |

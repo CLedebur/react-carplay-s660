@@ -1,0 +1,694 @@
+{
+  "violations": [
+    {
+      "severity": "warning",
+      "description": "Silkscreen clipped by board edge",
+      "rule": "silk_edge_clearance",
+      "pos": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "items": [
+        {
+          "description": "Rectangle on Edge.Cuts",
+          "pos": {
+            "x": 12.0,
+            "y": 12.0
+          },
+          "uuid": "68d4f19b-ad66-47ad-95d4-fb9a0e5e0898",
+          "ownership_status": "resolved",
+          "item_kind": "gr_rect",
+          "layer": "Edge.Cuts",
+          "owner": {
+            "kind": "board"
+          }
+        },
+        {
+          "description": "PCB text box 'PI GPIO\nGROUND PINS\n6, 9, 14,\n20, 25, 30,\n34 & 39' on F.Silkscreen",
+          "pos": {
+            "x": 21.920638,
+            "y": 80.975
+          },
+          "uuid": "536e6517-4011-4eff-b9fa-b30865e12c01",
+          "ownership_status": "resolved",
+          "item_kind": "gr_text_box",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Silkscreen clipped by board edge",
+      "rule": "silk_edge_clearance",
+      "pos": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "items": [
+        {
+          "description": "Rectangle on Edge.Cuts",
+          "pos": {
+            "x": 12.0,
+            "y": 12.0
+          },
+          "uuid": "68d4f19b-ad66-47ad-95d4-fb9a0e5e0898",
+          "ownership_status": "resolved",
+          "item_kind": "gr_rect",
+          "layer": "Edge.Cuts",
+          "owner": {
+            "kind": "board"
+          }
+        },
+        {
+          "description": "Segment of J1 on F.Silkscreen",
+          "pos": {
+            "x": 8.69,
+            "y": 45.09
+          },
+          "uuid": "560fe37a-83f5-43a3-adce-1daa989c4e98",
+          "ownership_status": "resolved",
+          "item_kind": "fp_line",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "J1",
+            "uuid": "351cbfbc-0c50-4bb8-8084-c35ff2be9577"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Silkscreen clipped by board edge",
+      "rule": "silk_edge_clearance",
+      "pos": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "items": [
+        {
+          "description": "Rectangle on Edge.Cuts",
+          "pos": {
+            "x": 12.0,
+            "y": 12.0
+          },
+          "uuid": "68d4f19b-ad66-47ad-95d4-fb9a0e5e0898",
+          "ownership_status": "resolved",
+          "item_kind": "gr_rect",
+          "layer": "Edge.Cuts",
+          "owner": {
+            "kind": "board"
+          }
+        },
+        {
+          "description": "Segment of J1 on F.Silkscreen",
+          "pos": {
+            "x": 12.0,
+            "y": 24.55
+          },
+          "uuid": "e16de0be-9e16-4d29-b6c2-93a027d36dc7",
+          "ownership_status": "resolved",
+          "item_kind": "fp_line",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "J1",
+            "uuid": "351cbfbc-0c50-4bb8-8084-c35ff2be9577"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Silkscreen clipped by board edge",
+      "rule": "silk_edge_clearance",
+      "pos": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "items": [
+        {
+          "description": "Rectangle on Edge.Cuts",
+          "pos": {
+            "x": 12.0,
+            "y": 12.0
+          },
+          "uuid": "68d4f19b-ad66-47ad-95d4-fb9a0e5e0898",
+          "ownership_status": "resolved",
+          "item_kind": "gr_rect",
+          "layer": "Edge.Cuts",
+          "owner": {
+            "kind": "board"
+          }
+        },
+        {
+          "description": "Segment of J1 on F.Silkscreen",
+          "pos": {
+            "x": 18.11,
+            "y": 24.55
+          },
+          "uuid": "04bb021a-16da-4bc7-8a03-7037bac89e64",
+          "ownership_status": "resolved",
+          "item_kind": "fp_line",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "J1",
+            "uuid": "351cbfbc-0c50-4bb8-8084-c35ff2be9577"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Silkscreen clipped by board edge",
+      "rule": "silk_edge_clearance",
+      "pos": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "items": [
+        {
+          "description": "Rectangle on Edge.Cuts",
+          "pos": {
+            "x": 12.0,
+            "y": 12.0
+          },
+          "uuid": "68d4f19b-ad66-47ad-95d4-fb9a0e5e0898",
+          "ownership_status": "resolved",
+          "item_kind": "gr_rect",
+          "layer": "Edge.Cuts",
+          "owner": {
+            "kind": "board"
+          }
+        },
+        {
+          "description": "Segment of J2 on F.Silkscreen",
+          "pos": {
+            "x": 95.9575,
+            "y": 35.94
+          },
+          "uuid": "b0eb590d-606b-40ba-9a72-9eba86028266",
+          "ownership_status": "resolved",
+          "item_kind": "fp_line",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "J2",
+            "uuid": "d6a9e6a2-2441-472b-b215-37fb2b2831c2"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Silkscreen clipped by board edge",
+      "rule": "silk_edge_clearance",
+      "pos": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "items": [
+        {
+          "description": "Rectangle on Edge.Cuts",
+          "pos": {
+            "x": 12.0,
+            "y": 12.0
+          },
+          "uuid": "68d4f19b-ad66-47ad-95d4-fb9a0e5e0898",
+          "ownership_status": "resolved",
+          "item_kind": "gr_rect",
+          "layer": "Edge.Cuts",
+          "owner": {
+            "kind": "board"
+          }
+        },
+        {
+          "description": "Segment of J2 on F.Silkscreen",
+          "pos": {
+            "x": 105.3775,
+            "y": 25.56
+          },
+          "uuid": "58992784-1732-455e-8e82-552d60cf6569",
+          "ownership_status": "resolved",
+          "item_kind": "fp_line",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "J2",
+            "uuid": "d6a9e6a2-2441-472b-b215-37fb2b2831c2"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint 'TO-92_Inline_Wide' does not match copy in library 'Package_TO_SOT_THT'",
+      "rule": "lib_footprint_mismatch",
+      "pos": {
+        "x": 42.25,
+        "y": 66.3
+      },
+      "items": [
+        {
+          "description": "Footprint U2",
+          "pos": {
+            "x": 42.25,
+            "y": 66.3
+          },
+          "uuid": "3d01e071-218e-49ce-b89b-fe6e826635ff",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint 'TO-92_Inline_Wide' does not match copy in library 'Package_TO_SOT_THT'",
+      "rule": "lib_footprint_mismatch",
+      "pos": {
+        "x": 65.209999,
+        "y": 98.2
+      },
+      "items": [
+        {
+          "description": "Footprint Q3",
+          "pos": {
+            "x": 65.209999,
+            "y": 98.2
+          },
+          "uuid": "3f746aeb-460a-4692-8705-cadf56fe8ab6",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint 'TO-92_Inline_Wide' does not match copy in library 'Package_TO_SOT_THT'",
+      "rule": "lib_footprint_mismatch",
+      "pos": {
+        "x": 67.14,
+        "y": 58.7
+      },
+      "items": [
+        {
+          "description": "Footprint Q2",
+          "pos": {
+            "x": 67.14,
+            "y": 58.7
+          },
+          "uuid": "61337927-e11f-46f4-b21d-bd50fa9ab988",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Silkscreen clearance",
+      "rule": "silk_overlap",
+      "pos": {
+        "x": 42.99,
+        "y": 68.15
+      },
+      "items": [
+        {
+          "description": "Segment of U2 on F.Silkscreen",
+          "pos": {
+            "x": 42.99,
+            "y": 68.15
+          },
+          "uuid": "b1dd2c86-a855-46d7-9872-ca9d412cd558",
+          "ownership_status": "resolved",
+          "item_kind": "fp_line",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "U2",
+            "uuid": "3d01e071-218e-49ce-b89b-fe6e826635ff"
+          }
+        },
+        {
+          "description": "Reference field of C7",
+          "pos": {
+            "x": 44.0,
+            "y": 67.75
+          },
+          "uuid": "ed42ed33-ea00-4818-8e81-a2f1c8219b02",
+          "ownership_status": "resolved",
+          "item_kind": "property",
+          "layer": "F.SilkS",
+          "owner": {
+            "kind": "footprint",
+            "reference": "C7",
+            "uuid": "d8e4da64-051a-413d-92ac-66550501596f"
+          }
+        }
+      ]
+    }
+  ],
+  "unconnected_items": [],
+  "schematic_parity": [
+    {
+      "severity": "warning",
+      "description": "Missing symbol field 'Selection requirement' in footprint",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 43.0,
+        "y": 71.5
+      },
+      "items": [
+        {
+          "description": "Footprint C7",
+          "pos": {
+            "x": 43.0,
+            "y": 71.5
+          },
+          "uuid": "d8e4da64-051a-413d-92ac-66550501596f",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Missing symbol field 'Farnell' in footprint",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 36.0,
+        "y": 32.0
+      },
+      "items": [
+        {
+          "description": "Footprint D2",
+          "pos": {
+            "x": 36.0,
+            "y": 32.0
+          },
+          "uuid": "d1d15a90-357f-44ca-8972-f56750a79c36",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Missing symbol field 'Farnell' in footprint",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 36.0,
+        "y": 40.0
+      },
+      "items": [
+        {
+          "description": "Footprint D3",
+          "pos": {
+            "x": 36.0,
+            "y": 40.0
+          },
+          "uuid": "e80eed0b-15f5-4f80-8e46-1dacf806f94e",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint attributes don't match symbol: 'Exclude from bill of materials' settings differ",
+      "rule": "footprint_symbol_mismatch",
+      "pos": {
+        "x": 16.0,
+        "y": 16.0
+      },
+      "items": [
+        {
+          "description": "Footprint H1",
+          "pos": {
+            "x": 16.0,
+            "y": 16.0
+          },
+          "uuid": "6b9892fe-1c4b-4019-9ff6-7fdb6f440e72",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint attributes don't match symbol: 'Exclude from bill of materials' settings differ",
+      "rule": "footprint_symbol_mismatch",
+      "pos": {
+        "x": 98.0,
+        "y": 16.0
+      },
+      "items": [
+        {
+          "description": "Footprint H2",
+          "pos": {
+            "x": 98.0,
+            "y": 16.0
+          },
+          "uuid": "4bc46d92-3b11-423b-be66-a7657c456dc7",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint attributes don't match symbol: 'Exclude from bill of materials' settings differ",
+      "rule": "footprint_symbol_mismatch",
+      "pos": {
+        "x": 97.5,
+        "y": 97.5
+      },
+      "items": [
+        {
+          "description": "Footprint H3",
+          "pos": {
+            "x": 97.5,
+            "y": 97.5
+          },
+          "uuid": "45e7edaf-227c-4b88-9919-f50977e9b484",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint attributes don't match symbol: 'Exclude from bill of materials' settings differ",
+      "rule": "footprint_symbol_mismatch",
+      "pos": {
+        "x": 16.5,
+        "y": 97.5
+      },
+      "items": [
+        {
+          "description": "Footprint H4",
+          "pos": {
+            "x": 16.5,
+            "y": 97.5
+          },
+          "uuid": "88f0dd5c-9a0d-4ae8-990e-0ce772c86697",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Missing symbol field 'MPN' in footprint",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 94.5,
+        "y": 42.0
+      },
+      "items": [
+        {
+          "description": "Footprint JP1",
+          "pos": {
+            "x": 94.5,
+            "y": 42.0
+          },
+          "uuid": "8dd533d2-4957-438d-8f32-afeada428723",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Missing symbol field 'Sim.Device' in footprint",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 67.14,
+        "y": 58.7
+      },
+      "items": [
+        {
+          "description": "Footprint Q2",
+          "pos": {
+            "x": 67.14,
+            "y": 58.7
+          },
+          "uuid": "61337927-e11f-46f4-b21d-bd50fa9ab988",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Field 'Datasheet' differs (PCB: '', Schematic: 'https://www.vishay.com/docs/70226/70226.pdf')",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 65.209999,
+        "y": 98.2
+      },
+      "items": [
+        {
+          "description": "Footprint Q3",
+          "pos": {
+            "x": 65.209999,
+            "y": 98.2
+          },
+          "uuid": "3f746aeb-460a-4692-8705-cadf56fe8ab6",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Missing symbol field 'MPN' in footprint",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 30.0,
+        "y": 68.0
+      },
+      "items": [
+        {
+          "description": "Footprint R20",
+          "pos": {
+            "x": 30.0,
+            "y": 68.0
+          },
+          "uuid": "920ecb70-a279-46ac-b015-3e389247cb6c",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Footprint attributes don't match symbol: 'Exclude from bill of materials' settings differ",
+      "rule": "footprint_symbol_mismatch",
+      "pos": {
+        "x": 33.6,
+        "y": 72.35
+      },
+      "items": [
+        {
+          "description": "Footprint TP1",
+          "pos": {
+            "x": 33.6,
+            "y": 72.35
+          },
+          "uuid": "7c6dd8c7-91e7-4b1f-9190-9c5fc66b483e",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    },
+    {
+      "severity": "warning",
+      "description": "Field 'Datasheet' differs (PCB: '', Schematic: 'http://www.ti.com/lit/ds/symlink/lm2936.pdf')",
+      "rule": "footprint_symbol_field_mismatch",
+      "pos": {
+        "x": 42.25,
+        "y": 66.3
+      },
+      "items": [
+        {
+          "description": "Footprint U2",
+          "pos": {
+            "x": 42.25,
+            "y": 66.3
+          },
+          "uuid": "3d01e071-218e-49ce-b89b-fe6e826635ff",
+          "ownership_status": "resolved",
+          "item_kind": "footprint",
+          "layer": "F.Cu",
+          "owner": {
+            "kind": "board"
+          }
+        }
+      ]
+    }
+  ]
+}

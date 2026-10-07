@@ -554,9 +554,9 @@
     "last_paths": {
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "/Users/cledebur/dev/personal/react-carplay-s660/pdb-circuit/90x90cm board/gerber/",
       "specctra_dsn": "",
-      "step": "",
+      "step": "S660-PDB.stl ",
       "vrml": ""
     },
     "page_layout_descr_file": ""

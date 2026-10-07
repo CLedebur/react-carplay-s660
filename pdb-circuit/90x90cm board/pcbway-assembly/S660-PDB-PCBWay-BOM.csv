@@ -1,0 +1,29 @@
+Item,Quantity Per PCB,Reference Designator,Manufacturer,Manufacturer Part Number,Description,Package,Type,Distributor Reference,Assembly Notes
+1,1,C3,Panasonic,EEUFR1V471,470uF 35V / EEUFR1V471,Capacitor_THT:CP_Radial_D10.0mm_P5.00mm,Through-hole,,10 mm diameter; 5 mm lead pitch. Do not substitute EEUFR1V471L.
+2,3,"C4,C5,C6",TDK,FG28X7R1H104KNT00,100nF / FG28X7R1H104KNT00,Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm,Through-hole,,100 nF 50 V X7R 10%; radial 5 mm pitch.
+3,1,C7,Panasonic,EEUFR1E470,47uF 25V / EEUFR1E470,Capacitor_THT:CP_Radial_D5.0mm_P2.00mm,Through-hole,,
+4,1,D1,Diotec Semiconductor,5KP18A,5KP18A / 5KP18A,Diode_THT:D_P600_R-6_P20.00mm_Horizontal,Through-hole,,
+5,2,"D2,D3",Multicomp Pro,1N5822,1N5822 / 1N5822,S660-PDB:D_Multicomp_1N5822_DO27_P15.24mm,Through-hole,Farnell 4050109,Exact Farnell 4050109 DO-27 package; do not substitute DO-201 without footprint review.
+6,1,D4,Vishay,1N4007-E3/54,1N4007 / 1N4007-E3/54,Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal,Through-hole,,
+7,3,"FAN1,FAN2,FAN3",Samtec,TSW-104-07-G-S,FAN1 heatsink 3007 / TSW-104-07-G-S,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,Through-hole,,"Fit male 1x4 header, not a fan. Verify finished-hole fit with assembler."
+8,1,J1,Phoenix Contact,1836202,PWR INPUT / 1836202,"Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_4-G-5.08_1x04_P5.08mm_Horizontal",Through-hole,,PCB header only; mating cable plug not included.
+9,1,J2,Phoenix Contact,1836189,PWR OUTPUT / 1836189,"Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_2-G-5.08_1x02_P5.08mm_Horizontal",Through-hole,,PCB header only; mating cable plug not included.
+10,1,J3,Samtec,TSW-105-07-G-D,Pi interface / ISP / TSW-105-07-G-D,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,Through-hole,,Male 2x5 header; verify finished-hole fit with assembler.
+11,1,J4,Samtec,TSW-103-07-G-D,AVR ISP 3V3 / TSW-103-07-G-D,Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical,Through-hole,,Male 2x3 header; verify finished-hole fit with assembler.
+12,1,JP1,Phoenix Contact,1751248,RELAY BYPASS / 1751248,S660-PDB:Phoenix_MKDS_1_2_3.5_1751248,Through-hole,,Fit terminal block. Leave OPEN: no bypass wire or short.
+13,1,K1,Omron,G2RL-1A DC12,G2RL-1A DC12 / G2RL-1A DC12,Relay_THT:Relay_SPST_Omron_G2RL-1A,Through-hole,,
+14,3,"LED1,LED2,LED3",Kingbright,WP3A8ID,LED 3mm / WP3A8ID,LED_THT:LED_D3.0mm,Through-hole,,Red 3 mm LED; pad 1 cathode.
+15,1,Q2,Diotec Semiconductor,BC337-40,BC337-40 / BC337-40,Package_TO_SOT_THT:TO-92_Inline_Wide,Through-hole,,"Pads 1 C, 2 B, 3 E. 2.54 mm pitch; confirm lead forming."
+16,1,Q3,Diotec Semiconductor,2N7000,2N7000 / 2N7000,Package_TO_SOT_THT:TO-92_Inline_Wide,Through-hole,,"Pads 1 S, 2 G, 3 D. 2.54 mm pitch."
+17,1,R1,Yageo,MFR-25FBF52-68K,68k / MFR-25FBF52-68K,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,"1%, 0.25 W; form axial leads to 10.16 mm."
+18,1,R2,Yageo,MFR-25FBF52-15K,15k / MFR-25FBF52-15K,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,"1%, 0.25 W; form axial leads to 10.16 mm."
+19,9,"R3,R7,R8,R9,R13,R16,R17,R18,R19",Yageo,MFR-25FBF52-1K,1k / MFR-25FBF52-1K,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,"1%, 0.25 W; form axial leads to 10.16 mm."
+20,1,R4,Yageo,MFR-25FBF52-100R,100R / MFR-25FBF52-100R,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,"1%, 0.25 W; form axial leads to 10.16 mm."
+21,3,"R5,R11,R12",Yageo,MFR-25FBF52-10K,10k / MFR-25FBF52-10K,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,"1%, 0.25 W; form axial leads to 10.16 mm."
+22,3,"R6,R14,R15",Yageo,MFR-25FBF52-2K2,2.2k / MFR-25FBF52-2K2,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,"1%, 0.25 W; form axial leads to 10.16 mm."
+23,1,R20,Vishay,MRS25000C1008FCT00,1R / MRS25000C1008FCT00,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,Through-hole,,
+24,1,SW1,Omron,B3F-1000,PUSH TO TEST / B3F-1000,Button_Switch_THT:SW_PUSH_6mm_H4.3mm,Through-hole,,
+25,1,U1,ASSMANN WSW Components,A 08-LC-TT,8-pin DIP socket ONLY; owner inserts ATtiny85,Package_DIP:DIP-8_W7.62mm,Through-hole,,ASSEMBLY OVERRIDE: fit socket only; owner inserts ATtiny85. Do not procure or solder MCU.
+26,1,U2,Texas Instruments,LM2936Z-3.3/NOPB,LM2936Z-3.3 / LM2936Z-3.3/NOPB,Package_TO_SOT_THT:TO-92_Inline_Wide,Through-hole,,"3.3 V variant only; pads 1 OUT, 2 GND, 3 IN. Form leads to 2.54 mm."
+27,1,U3,Isocom Components,ISP817X,PC817 / ISP817X,Package_DIP:DIP-4_W7.62mm,Through-hole,,"DIP-4 7.62 mm; pads 1 A, 2 K, 3 E, 4 C."
+28,1,Z2,Vishay,BZX55C3V6-TAP,BZX55C3V6 / BZX55C3V6-TAP,Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal,Through-hole,,

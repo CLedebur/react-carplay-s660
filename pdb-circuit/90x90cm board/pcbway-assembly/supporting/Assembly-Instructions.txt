@@ -1,0 +1,34 @@
+S660-PDB — PCBWay assembly instructions
+
+ORDER: Quote five assembled boards, 90 x 90 mm, all 47 components per board on the TOP side. BOM quantities are PER BOARD (28 unique part types); five boards require 235 fitted parts before any assembler procurement allowance. Turnkey sourcing of the specified manufacturer part numbers. No substitutions without customer approval.
+
+U1 — SOCKET ONLY: Fit ASSMANN WSW A 08-LC-TT 8-pin DIP socket. Customer inserts their ATtiny85 after delivery. Do not procure, insert or solder the MCU. Orient socket notch toward the end containing pads 1 and 8. The electrical schematic and generic DIP footprint still identify the ATtiny85: the assembly BOM and this instruction override chip population at U1. No factory firmware programming is requested.
+
+JP1: Fit Phoenix Contact 1751248 fixed terminal block. Leave electrically OPEN; NO bypass wire or shorting link.
+
+LED1/LED2/LED3: All RED Kingbright WP3A8ID. Pad 1 is cathode. C3 and C7: pad 1 positive. D1/D2/D3/D4/Z2: pad 1 cathode; match body band to cathode marking. Confirm against manufacturer drawings and supplied PCB pads before soldering.
+
+Q2 BC337-40 (Diotec): pad 1 collector, 2 base, 3 emitter.
+Q3 2N7000 (Diotec): pad 1 source, 2 gate, 3 drain.
+U2 LM2936Z-3.3/NOPB: pad 1 output, 2 ground, 3 input; 3.3 V version only.
+U3 ISP817X: pad 1 anode, 2 cathode, 3 emitter, 4 collector. Schematic generic value PC817 is superseded by the exact assembly MPN.
+K1: Exact Omron G2RL-1A DC12. KiCad pad A1/A2 = Omron coil pins 1/5; KiCad pads 13/14 = Omron contact pins 3/4.
+
+FAN1/FAN2/FAN3 are PCB headers ONLY, not fan assemblies. J1/J2 are board-mounted headers only; cable-side plugs, wiring, mounting screws and fans are outside this assembly order. H1-H4 and TP1 have no purchased component.
+
+MECHANICAL REVIEW BEFORE PRODUCTION:
+- Confirm Samtec header pin tolerances against 1.0 mm finished-hole design and socket lead/body clearance at U1.
+- Form axial leads to the PCB pitch and confirm 2.54 mm TO-92 lead spacing. Do not rotate TO-92 devices to compensate for incompatible pinouts.
+- C3 must be EEUFR1V471, 10 mm diameter / 5 mm pitch; not EEUFR1V471L.
+- D2/D3 must match Multicomp Pro 1N5822, Farnell 4050109, DO-27 custom footprint.
+- Resolve any fit or sourcing issue with the customer before production; no silent substitutions.
+
+PLACEMENT DATA: This design has zero SMT components. PCBWay's published instructions describe the centroid file as SMT-only, so no machine centroid file is supplied. THT-Position-Reference.csv and KiCad-Native-Positions.csv provide all 47 positions for engineering reference. Coordinates are millimetres in the native KiCad export frame, with negative Y and counterclockwise rotation. They are footprint ANCHORS (often pin 1), NOT verified body centroids. Do not program placement machinery from these coordinates without your engineering conversion and pin/polarity verification. Use the top assembly drawing and actual Gerber/drill pad geometry for through-hole insertion.
+
+DOCUMENT PRECEDENCE: Exact population follows PCBWay BOM plus these instructions. Schematic is electrical reference only. Top assembly drawing uses existing KiCad fabrication/silkscreen graphics and generic footprint outlines. Supplier mechanical drawings govern actual package dimensions. Any mismatch requires customer review. Historical revision lettering in the native drawing/schematic may differ from the revD BOM filenames; source hashes below bind this package.
+
+TESTING: No powered functional test procedure or firmware image is included. Do not infer a functional test from bare-board electrical testing. Quote any requested functional testing separately after agreeing a procedure.
+
+STATUS: Prepared for PCBWay quotation and engineering review, not a complete fabrication release. Procurement, mechanical-fit holds and final placement approval remain open. Gerber fabrication data belongs in the separate PCB fabrication upload; this archive does not replace it.
+
+Source: https://www.pcbway.com/assembly-file-requirements.html (checked 2026-09-18).
