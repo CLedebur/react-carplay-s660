@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "KiCAD-MCP-Server": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/../KiCAD-MCP-Server/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production",
+        "KICAD_PYTHON": "/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3",
+        "PYTHONPATH": "/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/lib/python3.9/site-packages",
+        "LOG_LEVEL": "info",
+        "KICAD_AUTO_LAUNCH": "false",
+        "KICAD_MCP_DEV": "0"
+      }
+    }
+  }
+}

@@ -12,8 +12,9 @@ out
 .idea
 .DS_Store
 
-# machine-specific MCP configuration (share .vscode/mcp.example.json instead)
+# machine-specific MCP configuration (share .vscode/mcp.example.json / .mcp.example.json instead)
 .vscode/mcp.json
+.mcp.json
 .venv-kicad/
 
 # kicad temp files
@@ -24,4 +25,8 @@ pdb-circuit/**/kicad-happy/
 pdb-circuit/**/*.thtbak
 pdb-circuit/**/_restore_backup_*/
 pdb-circuit/**/~*.lck
+pdb-circuit/**/*-unsaved-export-*.kicad_prl
+# 3D exports are large and regenerable from the .kicad_pcb
+pdb-circuit/**/*.stl
+pdb-circuit/**/*.stl\ 
 hardware/opera-mitm/firmware/tests/test_opera

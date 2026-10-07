@@ -20,6 +20,9 @@ are stable; only one runs at a time.
 
 For the full build history, every non-obvious fix, and the reasoning behind each decision, read [`hardware/BUILD_NOTES.md`](hardware/BUILD_NOTES.md) — it is the source of truth for anything hardware-, boot-, or GPU-related.
 
+For PCB design work with the KiCad MCP server in VS Code/Copilot, see
+[`pdb-circuit/README.md`](pdb-circuit/README.md).
+
 # Getting started
 
 This is the fastest path to a working unit and is how the reference build is set up.
