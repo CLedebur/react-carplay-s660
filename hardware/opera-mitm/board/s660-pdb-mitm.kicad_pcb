@@ -2958,7 +2958,7 @@
 				)
 			)
 		)
-		(property "MPN" "MC 1,5/7-G-5.08 (1836312)"
+		(property "MPN" "MC 1,5/7-G-5.08 (1836231)"
 			(at 0 0 180)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -25646,7 +25646,7 @@
 			)
 		)
 	)
-	(gr_text "Atiny85\nHEARTBEAT"
+	(gr_text "ATtiny85\nHEARTBEAT"
 		(at 88.93 100.07 0)
 		(layer "F.SilkS")
 		(uuid "03345dcc-27f7-4abb-ba5c-155ecd4ac871")
@@ -25733,7 +25733,7 @@
 			(justify left bottom mirror)
 		)
 	)
-	(gr_text "Pin 8 GND"
+	(gr_text "Pin 9 GND"
 		(at 37.76 18.79 90)
 		(layer "B.SilkS")
 		(uuid "bcb98d9a-7b32-4d04-9cbc-7be63d9c998f")

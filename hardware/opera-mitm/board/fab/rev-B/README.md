@@ -1,6 +1,6 @@
 # s660-pdb-mitm rev B — fabrication package (JLCPCB)
 
-Generated 2026-10-13 from `../../s660-pdb-mitm.kicad_pcb` (saved 20:49) with KiCad 10.0.6 /
+Generated 2026-10-13 from `../../s660-pdb-mitm.kicad_pcb` (saved 20:54) with KiCad 10.0.6 /
 Konnect. Board: 90 × 90 mm, 2 layers, 1.6 mm, 1 oz copper. Finish not specified (HASL is fine).
 
 Rev B replaces rev A (never ordered): the car-harness connector J1 is now a Phoenix MC 1,5/7-G-5.08
