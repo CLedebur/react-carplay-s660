@@ -1,7 +1,12 @@
-# s660-pdb-mitm rev A — fabrication package (JLCPCB)
+# s660-pdb-mitm rev B — fabrication package (JLCPCB)
 
-Generated 2026-10-13 from `../../s660-pdb-mitm.kicad_pcb` (saved 16:54) with KiCad 10.0.6 /
+Generated 2026-10-13 from `../../s660-pdb-mitm.kicad_pcb` (saved 20:49) with KiCad 10.0.6 /
 Konnect. Board: 90 × 90 mm, 2 layers, 1.6 mm, 1 oz copper. Finish not specified (HASL is fine).
+
+Rev B replaces rev A (never ordered): the car-harness connector J1 is now a Phoenix MC 1,5/7-G-5.08
+pluggable header on the top edge instead of a JST XH mid-board, the 3.3 V regulator U102 and its
+capacitors moved beside K1, the Pico is "do not populate" (the owner supplies it; the board gets
+sockets), and the silkscreen carries wire-by-wire labels on the back.
 
 ## What to upload
 
@@ -11,22 +16,24 @@ Konnect. Board: 90 × 90 mm, 2 layers, 1.6 mm, 1 oz copper. Finish not specified
 | SMT assembly (economic, top side) | `BOM-s660-pdb-mitm-SMT.csv` + `CPL-s660-pdb-mitm-SMT.csv` (72 parts, 27 line items, every one with an LCSC number) |
 
 Not for upload: `BOM-s660-pdb-mitm.csv` (full list, reference only), `BOM-s660-pdb-mitm-handfit.csv`
-(parts you solder yourself), `CPL-s660-pdb-mitm.csv` (all 88 placed parts).
+(parts you solder yourself), `CPL-s660-pdb-mitm.csv` (all 87 placed parts).
 
 ## Hand-fitted after delivery (not in the SMT files)
 
-U1 Raspberry Pi Pico 2 W (on two 1×20 female headers), K101 G2RL-1A relay, J101/J102 Phoenix MC
-terminals, JP101 MKDS terminal, J1/J2 JST XH, J103 2×5 header, FAN101–103 headers.
-J104 (ISP header) is DNP: pads only. Fit it by hand if the Pi-side programming route fails.
+Two 1×20 2.54 mm single-row **female** headers in U1's pad rows (the Pico 2 W plugs into them;
+the Pico itself is DNP), K101 G2RL-1A relay, J101/J102 Phoenix MC terminals, J1 Phoenix
+MC 1,5/7-G-5.08 header (order its MC 1,5/7-ST-5.08 plug for the harness pigtail, and use
+ferrules on the 16–18 AWG wires), JP101 MKDS terminal, J2 JST XH, J103 2×5 header, FAN101–103
+headers. J104 (ISP header) is DNP: pads only.
 
 ## Checks this package passed
 
-- KiCad DRC: 0 errors, 0 unconnected, 0 schematic-parity mismatches, with the Power12V (0.3 mm
-  clearance, 2.0 mm track) and Supply net classes in force. One cosmetic warning waived: KiCad's
-  own Pico footprint carries an un-mirrored "Keep Out" text on the back layer.
+- KiCad DRC: 0 errors, 0 warnings, 0 unconnected, 0 schematic-parity mismatches, with the Power12V
+  (0.3 mm clearance, 2.0 mm track) and Supply net classes in force.
 - ERC: one error waived: the Pico library symbol marks pins 3 (GND) and 33 (AGND) both as power
   outputs on the same GND net.
-- Drill files vs board: 173 PTH = 90 through-hole pads + 83 vias; 4 NPTH = the four 3.2 mm M3 holes.
+- Schematic-to-board netlist: all 262 pads on the same nets in both.
+- Drill files vs board: 186 PTH = 90 through-hole pads + 96 vias; 4 NPTH = the four 3.2 mm M3 holes.
 - Every GND pad/via/pour is one net; no via lands on or within 0.15 mm of an SMD pad.
 
 ## Still to do on the JLCPCB site (cannot be automated)

@@ -201,7 +201,7 @@ setup per part type. Nine extended types ≈ $27 on top of the economic assembly
 | U3 | W25Q16JVUXIQ 16 Mbit QSPI | USON-8 2×3 | C2843335 | extended | `Memory_Flash:W25Q16JVSS` / `Package_SON:Winbond_USON-8-1EP_3x2mm_P0.5mm_EP0.2x1.6mm` |
 | Y1 | ABM8-272-T3 12 MHz 10 pF | 3225 | C20625731 | extended | `Device:Crystal_GND24` / `Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm` |
 | K1 | G6K-2F-Y 5 VDC DPDT | SMD 10×6.5 | C2982926 | extended | `Relay:G6K-2` / `Relay_SMD:Relay_DPDT_Omron_G6K-2F-Y` |
-| J1 | JST B7B-XH-A | THT 2.5 mm | C144398 | extended | `Connector_Generic:Conn_01x07` / `Connector_JST:JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical` |
+| J1 | JST B7B-XH-A — **superseded on the combined board by Phoenix MC 1,5/7-G-5.08, see COMBINED.md §5** | THT 2.5 mm | C144398 | extended | `Connector_Generic:Conn_01x07` / `Connector_JST:JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical` |
 | J2 | JST B3B-XH-A | THT 2.5 mm | C144394 | extended | `Connector_Generic:Conn_01x03` / `Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical` |
 | J3 | HRO TYPE-C-31-M-12 | USB-C 16P | C165948 | extended | `Connector:USB_C_Receptacle_USB2.0_16P` / `Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12` |
 | J4 | SWD header, DNP | 1×3 2.54 mm | — | — | `Connector_Generic:Conn_01x03` / `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` |

@@ -12800,7 +12800,7 @@
 				)
 			)
 		)
-		(property "Value" "JST B7B-XH-A"
+		(property "Value" "MC 1,5/7-G-5.08"
 			(at 312.42 326.39 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12810,7 +12810,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_JST:JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical"
+		(property "Footprint" "Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_7-G-5.08_1x07_P5.08mm_Horizontal"
 			(at 312.42 316.23 0)
 			(hide yes)
 			(show_name no)
@@ -12843,7 +12843,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C144398"
+		(property "LCSC" ""
 			(at 312.42 316.23 0)
 			(hide yes)
 			(show_name no)
@@ -12854,7 +12854,7 @@
 				)
 			)
 		)
-		(property "MPN" "B7B-XH-A"
+		(property "MPN" "MC 1,5/7-G-5.08 (1836231)"
 			(at 312.42 316.23 0)
 			(hide yes)
 			(show_name no)
@@ -12865,7 +12865,18 @@
 				)
 			)
 		)
-		(property "Manufacturer" "JST"
+		(property "Manufacturer" "Phoenix Contact"
+			(at 312.42 316.23 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Fitting" "Pluggable header, hand-fitted; mate with MC 1,5/7-ST-5.08 plug, use ferrules on 16-18 AWG"
 			(at 312.42 316.23 0)
 			(hide yes)
 			(show_name no)
@@ -17247,7 +17258,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "91d5e096-f936-4e7f-90b5-3515c6ea7c1c")
 		(property "Reference" "U1"
 			(at 400.05 154.94 0)
@@ -17304,7 +17315,7 @@
 				)
 			)
 		)
-		(property "Fitting" "Socketed on 2x 1x20 female 2.54 mm headers, hand-fitted; not JLCPCB-assembled"
+		(property "Fitting" "DNP – owner supplies the Pico 2 W. Fit two 1x20 2.54 mm single-row FEMALE headers (Harwin M20-782 series or equivalent) in U1's pad rows."
 			(at 419.1 190.5 0)
 			(hide yes)
 			(show_name no)

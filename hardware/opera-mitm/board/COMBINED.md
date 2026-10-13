@@ -124,6 +124,13 @@ into two 1×20 female 2.54 mm headers fitted by hand. JLCPCB does not assemble i
 | 40 VBUS | `+5V` | USB 5 V from the CM4 through the Pico's micro-USB: relay coil and the R9/R10 pull-ups, as on the perfboard. |
 | GND pins, 33 AGND | `GND` | |
 
+**J1 (car harness) is a Phoenix MC 1,5/7-G-5.08 pluggable header (1836312), not the JST XH in
+`DESIGN.md`** (changed 2026-10-13, rev B). Same pin order, 1 TXp … 7 GND. It sits on the top
+board edge between J102 and J101, pin 1 at the J101 end, so the harness plugs in beside the power
+wires. Mating plug: MC 1,5/7-ST-5.08; use ferrules on the 16–18 AWG pigtail from the Y-harness
+block. The LDO U102 with C105/C107 moved to the pocket the JST left, beside K1.
+J2 (TOFU reset) stays JST XH: it is a short internal cable to a pin header.
+
 Removed from `DESIGN.md`: U2 ME6211, U3 flash, Y1, J3 USB-C, J4 SWD (the module has its own debug
 pads), SW1 BOOTSEL (on the module), R20–R27, C1–C17. Kept unchanged: J1, J2, K1, Q1–Q5, D1–D8,
 R1–R19, LED1, SW2. H1/H2 dropped.
