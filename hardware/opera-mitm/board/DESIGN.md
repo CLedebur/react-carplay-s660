@@ -209,7 +209,7 @@ setup per part type. Nine extended types ≈ $27 on top of the economic assembly
 | D1 | 1N4148W | SOD-123 | C81598 | basic | `Diode:1N4148W` / `Diode_SMD:D_SOD-123` |
 | D2–D6 | SMF5.0CA | SOD-123FL | C19077498 | preferred | `Device:D_TVS` / `Diode_SMD:D_SOD-123F` |
 | D7 | SMF15A | SOD-123FL | C19077509 | preferred | `Diode:SMF15A` / `Diode_SMD:D_SOD-123F` |
-| D8 | BZT52C3V6 zener | SOD-123 | C2113 | extended | `Device:D_Zener` / `Diode_SMD:D_SOD-123` |
+| D8 | BZT52C3V6 zener | SOD-123 | C19077397 (C2113 was not a valid JLCPCB part) | preferred | `Device:D_Zener` / `Diode_SMD:D_SOD-123` |
 | LED1 | KT-0603R red | 0603 | C2286 | basic | `Device:LED` / `LED_SMD:LED_0603_1608Metric` |
 | SW1, SW2 | TS-1187A-B-A-B tactile | SMD 5.1 mm | C318884 | basic | `Switch:SW_Push` / `Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A` |
 | R1, R3, R5, R6, R9, R10, R26 (DNP), R27 | 10k 1% | 0603 | C25804 (confirm at order) | basic | `Device:R` / `Resistor_SMD:R_0603_1608Metric` |

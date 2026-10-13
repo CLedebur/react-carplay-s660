@@ -1,0 +1,12 @@
+Designator,Comment,Footprint,LCSC Part #,MPN,Manufacturer
+FAN101,FAN1,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,,,
+FAN102,FAN2,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,,,
+FAN103,FAN3,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,,,
+J1,JST B7B-XH-A,Connector_JST:JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical,C144398,B7B-XH-A,JST
+J2,JST B3B-XH-A,Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical,C144394,B3B-XH-A,JST
+J101,"MC 1,5/4-G-5.08","Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_4-G-5.08_1x04_P5.08mm_Horizontal",,"MC 1,5/4-G-5.08",Phoenix Contact
+J102,"MC 1,5/2-G-5.08","Connector_Phoenix_MC_HighVoltage:PhoenixContact_MC_1,5_2-G-5.08_1x02_P5.08mm_Horizontal",,"MC 1,5/2-G-5.08",Phoenix Contact
+J103,Pi link 2x5,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Horizontal,,,
+JP101,"MKDS 1/2-3,5",s660-pdb-mitm:Phoenix_MKDS_1_2_3.5_1751248,,1751248,Phoenix Contact
+K101,G2RL-1A DC12,Relay_THT:Relay_SPST_Omron_G2RL-1A,,G2RL-1A DC12,Omron
+U1,Raspberry Pi Pico 2 W,Module:RaspberryPi_Pico_Common_THT,,SC1634,Raspberry Pi

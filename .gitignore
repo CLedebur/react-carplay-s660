@@ -20,7 +20,7 @@ pdb-circuit/**/.history/
 pdb-circuit/**/kicad-happy/
 pdb-circuit/**/*.thtbak
 pdb-circuit/**/_restore_backup_*/
-pdb-circuit/**/~*.lck
+~*.lck
 pdb-circuit/**/*-unsaved-export-*.kicad_prl
 # 3D exports are large and regenerable from the .kicad_pcb
 pdb-circuit/**/*.stl

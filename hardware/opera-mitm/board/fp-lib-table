@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+
+  (lib (name "s660-pdb-mitm") (type "KiCad") (uri "${KIPRJMOD}/s660-pdb-mitm.pretty") (options "") (descr "")))
