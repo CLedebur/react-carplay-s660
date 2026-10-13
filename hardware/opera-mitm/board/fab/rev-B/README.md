@@ -13,7 +13,7 @@ sockets), and the silkscreen carries wire-by-wire labels on the back.
 | JLCPCB step | Files |
 |---|---|
 | PCB order | everything in `gerbers/` as one zip: F/B copper, F/B mask, F/B silkscreen, Edge.Cuts, `PTH.drl`, `NPTH.drl`, `job.gbrjob` |
-| SMT assembly (economic, top side) | `BOM-s660-pdb-mitm-SMT.csv` + `CPL-s660-pdb-mitm-SMT.csv` (72 parts, 27 line items, every one with an LCSC number) |
+| SMT assembly (economic, top side) | `BOM-s660-pdb-mitm-SMT.csv` + `CPL-s660-pdb-mitm-SMT.csv` (71 parts, 26 line items, every one with an LCSC number) |
 
 Not for upload: `BOM-s660-pdb-mitm.csv` (full list, reference only), `BOM-s660-pdb-mitm-handfit.csv`
 (parts you solder yourself), `CPL-s660-pdb-mitm.csv` (all 87 placed parts).
@@ -21,7 +21,9 @@ Not for upload: `BOM-s660-pdb-mitm.csv` (full list, reference only), `BOM-s660-p
 ## Hand-fitted after delivery (not in the SMT files)
 
 Two 1×20 2.54 mm single-row **female** headers in U1's pad rows (the Pico 2 W plugs into them;
-the Pico itself is DNP), K101 G2RL-1A relay, J101/J102 Phoenix MC terminals, J1 Phoenix
+the Pico itself is DNP), **K1 Omron G6K-2F-Y DC5 signal relay** (SMD, but JLCPCB lists it as
+"Standard Only" assembly, so it is left out of the economic SMT files and hand-soldered; buy it
+from DigiKey/Mouser or LCSC C2982926), K101 G2RL-1A relay, J101/J102 Phoenix MC terminals, J1 Phoenix
 MC 1,5/7-G-5.08 header (order its MC 1,5/7-ST-5.08 plug for the harness pigtail, and use
 ferrules on the 16–18 AWG wires), JP101 MKDS terminal, J2 JST XH, J103 2×5 header, FAN101–103
 headers. J104 (ISP header) is DNP: pads only.

@@ -26,3 +26,6 @@ pdb-circuit/**/*-unsaved-export-*.kicad_prl
 pdb-circuit/**/*.stl
 pdb-circuit/**/*.stl\ 
 hardware/opera-mitm/firmware/tests/test_opera
+
+# upload bundles made by hand from the tracked Gerbers
+hardware/**/fab/**/*.zip
