@@ -19086,7 +19086,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "EL817S"
+		(property "Value" "LTV-357T-B"
 			(at 231.14 43.18 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19130,7 +19130,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C63268"
+		(property "LCSC" "C33068"
 			(at 231.14 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -19141,7 +19141,7 @@
 				)
 			)
 		)
-		(property "MPN" "EL817S"
+		(property "MPN" "LTV-357T-B"
 			(at 231.14 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -19152,7 +19152,7 @@
 				)
 			)
 		)
-		(property "Manufacturer" "Everlight"
+		(property "Manufacturer" "Lite-On"
 			(at 231.14 48.26 0)
 			(hide yes)
 			(show_name no)

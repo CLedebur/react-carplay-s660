@@ -63,7 +63,7 @@ Renamed so they cannot be confused with the MITM's J3 (the USB-C):
 | JP101 | Phoenix MKDS 1/2-3,5 (1751248) + removable wire bridge | — | `Connector:Screw_Terminal_01x02` / `s660-pdb-mitm:Phoenix_MKDS_1_2_3.5_1751248` (project library, copied unchanged from the 90 × 90 PDB; KiCad's stock library has no MKDS 3.5 mm part) | 1 `12V_IN`, 2 `12V_SW`. Fitted = relay bypass (programming/recovery only) |
 | D102, D103 | SS34 | C8678 | `Diode:SS34` / `Diode_SMD:D_SMA` | A `ACC_IN` / `ON_IN`, K `IGN_12V` |
 | R106 | 2.2k | C4190 | 0603 | `IGN_12V` → U103 pin 1 |
-| U103 | EL817S opto | C63268 | `Isolator:PC817` / `Package_SO:SOP-4_3.8x4.1mm_P2.54mm` | 1 anode ← R106, 2 cathode `GND`, 3 emitter `GND`, 4 collector `IGN_STATE` |
+| U103 | LTV-357T-B opto (was EL817S: wrong package, see note) | C33068 | `Isolator:PC817` / `Package_SO:SOP-4_3.8x4.1mm_P2.54mm` | 1 anode ← R106, 2 cathode `GND`, 3 emitter `GND`, 4 collector `IGN_STATE` |
 | R112 | 10k | C25804 | 0603 | `+3V3_AON` → `IGN_STATE` |
 | R113 | 1k | C21190 | 0603 | `IGN_STATE` → `IGN_MCU` |
 | U102 | LM2936MPX-3.3 | C2872050 | `Regulator_Linear:LM2936-3.3` / `Package_TO_SOT_SMD:SOT-223-3_TabPin2` | IN `12V_IN`, GND, OUT `+3V3_AON` |
@@ -156,3 +156,13 @@ Changes to `DESIGN.md` values made on this board:
 `PWR_FLAG` on `12V_IN` (at J101 pin 1) and on `12V_SW` (it is driven through relay contacts,
 which ERC cannot see as a source). `+5V` and `+3V3` need none: the Pico symbol's VBUS and 3V3 pins
 are power outputs. The `GND` flag stays only if ERC still needs it.
+
+### U103 optocoupler part change (2026-10-14)
+
+JLCPCB rejected C63268 (EL817S1) against U103's footprint. The EL817S1 is a gull-wing SMD DIP-4 with
+about 10 mm lead span, while the footprint `SOP-4_3.8x4.1mm_P2.54mm` has pad centres 5.5 mm apart.
+U103 is now the Lite-On LTV-357T-B (C33068), a true mini-flat SOP-4 with 2.54 mm pitch and 7.0 mm
+lead span that lands on the existing pads. Pinout is identical (1 anode, 2 cathode, 3 emitter,
+4 collector). CTR bin B is 130–260 %; R106 gives about 5 mA LED current from 12 V, so the opto
+easily sinks the 0.33 mA from R112's 10k pull-up. No copper changed.
+
