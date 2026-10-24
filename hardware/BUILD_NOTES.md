@@ -2528,6 +2528,34 @@ temperature.
 this, the Pi's default pull-up on GPIO5 fed approx. 50 µA through R117 and R103 into the
 relay transistor's base while the ATtiny was blank.
 
-**Still to do:** write the fuses and flash (the bench build `make FAST=1` first); test each
+**First flash (same evening).** Fuses written and verified: `E2 / DD / FF`. Note: `make flash`
+rebuilds the hex, so pass `FAST=1` to `make flash` as well, or the NORMAL build is written. This
+happened once. The Makefile now prints which build it writes.
+
+**Z102 leaks and must not be fitted.** The first key-off cut the relay after 10 s (the
+low-battery rule), with the battery at 12.78 V. `BATT_SENSE` measured 1.970 V; the 68k/15k
+divider should give 2.31 V. R101 (marking `683`) and R102 (`18C`) were correct. Z102
+(BZT52C3V6) conducted approx. 28 µA at 2.3 V: a low-voltage zener's knee is soft, far below
+its rated 3.6 V. With Z102 removed: 12.75 V → 2.30 V, exact. Protection without it: R101
+limits the pin current to 0.37 mA at D101's 29 V clamp, within the ATtiny's clamp diodes.
+**Z102 = DNP.** D8 (the same part on the MITM `CONT` divider) has the same error; `CONT` is
+only logged. The 90×90 PDB's 1N5227B (Z2) is probably the same. These design files are
+not changed yet.
+
+**Bench results (FAST build, JP101 fitted, key in the car):**
+
+| Test | Result |
+|---|---|
+| Key on → RUN | Pass: relay on 192–197 ms after the key |
+| Key off → GRACE → CUT → SLEEP | Pass: cut 29.8 s after the key (30.2 s expected; RC oscillator approx. 1.3 % fast, so 5:15 ≈ 5:11 in the normal build) |
+| Fuel stop: key off 12.6 s, then on again | Pass: the relay stayed closed |
+| HALT in RUN (CYCLE) and HALT in GRACE | **Not done yet**. The test was paused. |
+
+The relay drive and LED103 can be watched from the Pi through J103 without a meter:
+`pinctrl lev 5,6,17,26` = COIL_DRV, LED3_DRV, IGN_STATE, PI_HALT. HALT can be simulated with
+`pinctrl set 26 op dh` / `pinctrl set 26 ip pd`.
+
+**Still to do:** the two HALT tests; then flash the NORMAL build (`make flash`) before JP101 is
+removed; test each
 state with the ignition jumper; the Pi's `gpio-poweroff` overlay on GPIO26; and the
 `ignition-watch` service (4:30 countdown).

@@ -3,7 +3,7 @@
 #   make              build s660_pdb.hex
 #   make FAST=1       bench build with short timers (30 s grace, 2 s HALT/battery/cycle)
 #   make test         host unit tests (any C compiler)
-#   make flash        write the flash   (JP1/JP101 bridge fitted!)
+#   make flash        write the flash   (JP1/JP101 bridge fitted!); add FAST=1 for the bench build
 #   make fuses        write the fuses once per chip
 #   make verify-fuses read the fuses back
 #   make id           read the chip signature only (safe first contact check)
@@ -42,7 +42,10 @@ FORCE:
 test:
 	$(MAKE) -C tests test
 
+# FORCE rebuilds the hex here too, so `make flash` alone writes the NORMAL build even
+# right after `make FAST=1`. Pass FAST=1 to flash the bench build.
 flash: s660_pdb.hex
+	@echo "=== flashing the $(if $(filter 1,$(FAST)),BENCH (FAST=1, short timers),NORMAL (5:15 grace)) build ==="
 	$(AVRDUDE) -U flash:w:$<:i
 
 # RSTDISBL (hfuse bit 7) must stay 1 and SPIEN (bit 5) must stay 0, or ISP is lost for good.
