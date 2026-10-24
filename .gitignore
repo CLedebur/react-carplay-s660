@@ -26,6 +26,10 @@ pdb-circuit/**/*-unsaved-export-*.kicad_prl
 pdb-circuit/**/*.stl
 pdb-circuit/**/*.stl\ 
 hardware/opera-mitm/firmware/tests/test_opera
+pdb-circuit/firmware/tests/test_pdb
+pdb-circuit/firmware/tests/test_pdb_fast
+pdb-circuit/firmware/s660_pdb.elf
+pdb-circuit/firmware/s660_pdb.hex
 
 # upload bundles made by hand from the tracked Gerbers
 hardware/**/fab/**/*.zip

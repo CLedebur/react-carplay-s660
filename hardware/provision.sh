@@ -369,6 +369,27 @@ sudo systemctl enable carplay.service
 
 
 # ============================================================================
+# PHASE 4b — S660-PDB ATtiny85 programming tools (pdb-circuit/firmware, BUILD_NOTES §36)
+# ============================================================================
+# The Pi programs the power supervisor over its own GPIO lines on J103. Debian's avrdude
+# 7.1 is built without the linuxgpio programmer, so avrdude is built from source with
+# libgpiod. GPIO5 (MOSI = the relay drive) is pulled down so the relay transistor stays off
+# while the ATtiny is blank or in reset; GPIO6 and GPIO13 float (R111 pulls RESET up).
+for kv in "gpio=5=ip,pd" "gpio=6,13=ip,pn"; do
+  grep -qxF "$kv" /boot/firmware/config.txt || echo "$kv" | sudo tee -a /boot/firmware/config.txt >/dev/null
+done
+sudo apt-get install -y gcc-avr avr-libc binutils-avr cmake build-essential bison flex \
+  libelf-dev libusb-1.0-0-dev libgpiod-dev libreadline-dev libserialport-dev
+if ! /usr/local/bin/avrdude -c '?type' 2>&1 | grep -q linuxgpio; then
+  rm -rf ~/src/avrdude && mkdir -p ~/src
+  git clone --depth 1 --branch v8.3 https://github.com/avrdudes/avrdude ~/src/avrdude
+  cmake -S ~/src/avrdude -B ~/src/avrdude/build -DCMAKE_BUILD_TYPE=Release -DHAVE_LINUXGPIO=ON
+  cmake --build ~/src/avrdude/build -j4
+  sudo cmake --install ~/src/avrdude/build
+fi
+
+
+# ============================================================================
 # PHASE 5 — DONE
 # ============================================================================
 echo ""

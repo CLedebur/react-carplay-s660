@@ -651,6 +651,8 @@ MOSI toggling pin 5 makes Q2 and K1 chatter for a few seconds during programming
 
 In normal operation the Pi must leave GPIO5, GPIO6 and GPIO13 as **inputs**. Only the programming script drives them.
 
+> **2026-10-24:** Superseded by `pdb-circuit/firmware/pdb_isp.conf` and its Makefile (`make id`, `make fuses`, `make flash`). Debian's avrdude 7.1 has no `linuxgpio`, so avrdude 8.3 is built from source with libgpiod. avrdude 7+ calls MOSI/MISO `sdo`/`sdi`. No `sudo` is needed: the user is in the `gpio` group. The definition below is the original plan.
+
 `avrdude` programmer definition (add to `~/.avrduderc` on the Pi):
 
 ```
@@ -750,7 +752,7 @@ The TOFU schematic (rev 1.3, sheet "PSU") shows:
 
 | # | Item | Status |
 |---|---|---|
-| 1 | ATtiny85 firmware | **Not written.** §4.3 is the spec. Develop on the breadboard. Read the battery on **ADC3** (pin 2), not ADC1. |
+| 1 | ATtiny85 firmware | **Written 2026-10-24**: `pdb-circuit/firmware/` (host-tested; adds a CYCLE state, see its README). Not yet flashed or bench-tested. |
 | 2 | Pi `ignition-watch` systemd service (4:30 countdown) | Not written. |
 | 3 | Pi `gpio-poweroff` overlay on GPIO26 | Not configured. |
 | 4 | Pi fan-PWM daemon on GPIO18 | Not written. |
@@ -761,7 +763,7 @@ The TOFU schematic (rev 1.3, sheet "PSU") shows:
 | 9 | J1/J2 footprints in the schematic | Still show fixed MKDS blocks. Update to MC 1,5/x-G-5.08 pluggable headers. |
 | 10 | SMT redesign | In progress. Same nets. New layout, inverted mount, right-angle J3 and fan headers. Must include all ★ rev D items. |
 | 11 ★ | Rev D programming provisions in the KiCad files | **Not yet drawn.** See §9.6 for the exact list. Applies to both the through-hole and SMT files. |
-| 12 ★ | Pi ISP GPIO reservation | GPIO5, 6, 13 must stay as inputs in normal operation. Confirm nothing else in the provisioning script claims them. |
+| 12 ★ | Pi ISP GPIO reservation | Done 2026-10-24: `provision.sh` PHASE 4b sets `gpio=5=ip,pd` and `gpio=6,13=ip,pn`. Nothing else claims them. |
 | 13 ★ | J4 programmer power | Programmer target-power jumper must be OFF. Power the board from 12V_IN with JP1 fitted. Programmer signals must be 3.3 V. |
 
 ---
