@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="1200" height="1200" font-family="Helvetica, Arial, sans-serif">
+<rect width="1200" height="1200" fill="#ffffff"/>
+<text x="600" y="40" text-anchor="middle" font-size="26" font-weight="bold">J103 ribbon → Pi 40-pin GPIO header (TOFU)</text>
+<text x="600" y="70" text-anchor="middle" font-size="17">Seen from the top. Pin 1 (square pad, 3V3) at TOP RIGHT, pin 40 at BOTTOM LEFT. Odd pins top row, even pins bottom row.</text>
+<rect x="86" y="302" width="892" height="100" rx="6" fill="#2b2b2b"/>
+<rect x="939" y="319" width="22" height="22" fill="#c9a227"/>
+<circle cx="950" cy="330" r="15" fill="none" stroke="#ff2a2a" stroke-width="3"/>
+<text x="950" y="335" text-anchor="middle" font-size="12" fill="#000">1</text>
+<text x="955" y="294" font-size="14" font-weight="bold" fill="#d00000" transform="rotate(-90 955 294)">3V3</text>
+<circle cx="950" cy="374" r="11" fill="#c9a227"/>
+<circle cx="950" cy="374" r="15" fill="none" stroke="#ff2a2a" stroke-width="3"/>
+<text x="950" y="379" text-anchor="middle" font-size="12" fill="#000">2</text>
+<text x="955" y="410" font-size="14" font-weight="bold" fill="#d00000" transform="rotate(-90 955 410)" text-anchor="end">5V</text>
+<circle cx="906" cy="330" r="11" fill="#c9a227"/>
+<text x="906" y="335" text-anchor="middle" font-size="12" fill="#000">3</text>
+<text x="911" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 911 294)">GPIO2</text>
+<circle cx="906" cy="374" r="11" fill="#c9a227"/>
+<circle cx="906" cy="374" r="15" fill="none" stroke="#ff2a2a" stroke-width="3"/>
+<text x="906" y="379" text-anchor="middle" font-size="12" fill="#000">4</text>
+<text x="911" y="410" font-size="14" font-weight="bold" fill="#d00000" transform="rotate(-90 911 410)" text-anchor="end">5V</text>
+<circle cx="862" cy="330" r="11" fill="#c9a227"/>
+<text x="862" y="335" text-anchor="middle" font-size="12" fill="#000">5</text>
+<text x="867" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 867 294)">GPIO3</text>
+<circle cx="862" cy="374" r="17" fill="#111111" stroke="#ffffff" stroke-width="3"/>
+<text x="862" y="380" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="867" y="410" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 867 410)" text-anchor="end">GND</text>
+<circle cx="818" cy="330" r="11" fill="#c9a227"/>
+<text x="818" y="335" text-anchor="middle" font-size="12" fill="#000">7</text>
+<text x="823" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 823 294)">GPIO4</text>
+<circle cx="818" cy="374" r="11" fill="#c9a227"/>
+<text x="818" y="379" text-anchor="middle" font-size="12" fill="#000">8</text>
+<text x="823" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 823 410)" text-anchor="end">GPIO14</text>
+<circle cx="774" cy="330" r="11" fill="#c9a227"/>
+<text x="774" y="335" text-anchor="middle" font-size="12" fill="#000">9</text>
+<text x="779" y="294" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 779 294)">GND</text>
+<circle cx="774" cy="374" r="11" fill="#c9a227"/>
+<text x="774" y="379" text-anchor="middle" font-size="12" fill="#000">10</text>
+<text x="779" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 779 410)" text-anchor="end">GPIO15</text>
+<circle cx="730" cy="330" r="17" fill="#ffffff" stroke="#ffffff" stroke-width="3"/>
+<text x="730" y="336" text-anchor="middle" font-size="16" font-weight="bold" fill="#000">11</text>
+<text x="735" y="294" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 735 294)">GPIO17</text>
+<circle cx="730" cy="374" r="17" fill="#1f6fe0" stroke="#ffffff" stroke-width="3"/>
+<text x="730" y="380" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">12</text>
+<text x="735" y="410" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 735 410)" text-anchor="end">GPIO18</text>
+<circle cx="686" cy="330" r="11" fill="#c9a227"/>
+<text x="686" y="335" text-anchor="middle" font-size="12" fill="#000">13</text>
+<text x="691" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 691 294)">GPIO27</text>
+<circle cx="686" cy="374" r="11" fill="#c9a227"/>
+<text x="686" y="379" text-anchor="middle" font-size="12" fill="#000">14</text>
+<text x="691" y="410" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 691 410)" text-anchor="end">GND</text>
+<circle cx="642" cy="330" r="11" fill="#c9a227"/>
+<text x="642" y="335" text-anchor="middle" font-size="12" fill="#000">15</text>
+<text x="647" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 647 294)">GPIO22</text>
+<circle cx="642" cy="374" r="17" fill="#1e9e3a" stroke="#ffffff" stroke-width="3"/>
+<text x="642" y="380" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">16</text>
+<text x="647" y="410" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 647 410)" text-anchor="end">GPIO23</text>
+<circle cx="598" cy="330" r="11" fill="#c9a227"/>
+<circle cx="598" cy="330" r="15" fill="none" stroke="#ff2a2a" stroke-width="3"/>
+<text x="598" y="335" text-anchor="middle" font-size="12" fill="#000">17</text>
+<text x="603" y="294" font-size="14" font-weight="bold" fill="#d00000" transform="rotate(-90 603 294)">3V3</text>
+<circle cx="598" cy="374" r="11" fill="#c9a227"/>
+<text x="598" y="379" text-anchor="middle" font-size="12" fill="#000">18</text>
+<text x="603" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 603 410)" text-anchor="end">GPIO24</text>
+<circle cx="554" cy="330" r="11" fill="#c9a227"/>
+<text x="554" y="335" text-anchor="middle" font-size="12" fill="#000">19</text>
+<text x="559" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 559 294)">GPIO10</text>
+<circle cx="554" cy="374" r="11" fill="#c9a227"/>
+<text x="554" y="379" text-anchor="middle" font-size="12" fill="#000">20</text>
+<text x="559" y="410" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 559 410)" text-anchor="end">GND</text>
+<circle cx="510" cy="330" r="11" fill="#c9a227"/>
+<text x="510" y="335" text-anchor="middle" font-size="12" fill="#000">21</text>
+<text x="515" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 515 294)">GPIO9</text>
+<circle cx="510" cy="374" r="11" fill="#c9a227"/>
+<text x="510" y="379" text-anchor="middle" font-size="12" fill="#000">22</text>
+<text x="515" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 515 410)" text-anchor="end">GPIO25</text>
+<circle cx="466" cy="330" r="11" fill="#c9a227"/>
+<text x="466" y="335" text-anchor="middle" font-size="12" fill="#000">23</text>
+<text x="471" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 471 294)">GPIO11</text>
+<circle cx="466" cy="374" r="11" fill="#c9a227"/>
+<text x="466" y="379" text-anchor="middle" font-size="12" fill="#000">24</text>
+<text x="471" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 471 410)" text-anchor="end">GPIO8</text>
+<circle cx="422" cy="330" r="11" fill="#c9a227"/>
+<text x="422" y="335" text-anchor="middle" font-size="12" fill="#000">25</text>
+<text x="427" y="294" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 427 294)">GND</text>
+<circle cx="422" cy="374" r="11" fill="#c9a227"/>
+<text x="422" y="379" text-anchor="middle" font-size="12" fill="#000">26</text>
+<text x="427" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 427 410)" text-anchor="end">GPIO7</text>
+<circle cx="378" cy="330" r="11" fill="#c9a227"/>
+<text x="378" y="335" text-anchor="middle" font-size="12" fill="#000">27</text>
+<text x="383" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 383 294)">ID_SD</text>
+<circle cx="378" cy="374" r="11" fill="#c9a227"/>
+<text x="378" y="379" text-anchor="middle" font-size="12" fill="#000">28</text>
+<text x="383" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 383 410)" text-anchor="end">ID_SC</text>
+<circle cx="334" cy="330" r="17" fill="#f5d000" stroke="#ffffff" stroke-width="3"/>
+<text x="334" y="336" text-anchor="middle" font-size="16" font-weight="bold" fill="#000">29</text>
+<text x="339" y="294" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 339 294)">GPIO5</text>
+<circle cx="334" cy="374" r="11" fill="#c9a227"/>
+<text x="334" y="379" text-anchor="middle" font-size="12" fill="#000">30</text>
+<text x="339" y="410" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 339 410)" text-anchor="end">GND</text>
+<circle cx="290" cy="330" r="17" fill="#f07800" stroke="#ffffff" stroke-width="3"/>
+<text x="290" y="336" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">31</text>
+<text x="295" y="294" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 295 294)">GPIO6</text>
+<circle cx="290" cy="374" r="11" fill="#c9a227"/>
+<text x="290" y="379" text-anchor="middle" font-size="12" fill="#000">32</text>
+<text x="295" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 295 410)" text-anchor="end">GPIO12</text>
+<circle cx="246" cy="330" r="17" fill="#d81e1e" stroke="#ffffff" stroke-width="3"/>
+<text x="246" y="336" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">33</text>
+<text x="251" y="294" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 251 294)">GPIO13</text>
+<circle cx="246" cy="374" r="17" fill="#7a4a1e" stroke="#ffffff" stroke-width="3"/>
+<text x="246" y="380" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">34</text>
+<text x="251" y="410" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 251 410)" text-anchor="end">GND</text>
+<circle cx="202" cy="330" r="11" fill="#c9a227"/>
+<text x="202" y="335" text-anchor="middle" font-size="12" fill="#000">35</text>
+<text x="207" y="294" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 207 294)">GPIO19</text>
+<circle cx="202" cy="374" r="11" fill="#c9a227"/>
+<text x="202" y="379" text-anchor="middle" font-size="12" fill="#000">36</text>
+<text x="207" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 207 410)" text-anchor="end">GPIO16</text>
+<circle cx="158" cy="330" r="17" fill="#8a8a8a" stroke="#ffffff" stroke-width="3"/>
+<text x="158" y="336" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">37</text>
+<text x="163" y="294" font-size="14" font-weight="bold" fill="#555" transform="rotate(-90 163 294)">GPIO26</text>
+<circle cx="158" cy="374" r="11" fill="#c9a227"/>
+<text x="158" y="379" text-anchor="middle" font-size="12" fill="#000">38</text>
+<text x="163" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 163 410)" text-anchor="end">GPIO20</text>
+<circle cx="114" cy="330" r="11" fill="#c9a227"/>
+<text x="114" y="335" text-anchor="middle" font-size="12" fill="#000">39</text>
+<text x="119" y="294" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 119 294)">GND</text>
+<circle cx="114" cy="374" r="11" fill="#c9a227"/>
+<text x="114" y="379" text-anchor="middle" font-size="12" fill="#000">40</text>
+<text x="119" y="410" font-size="14" font-weight="normal" fill="#555" transform="rotate(-90 119 410)" text-anchor="end">GPIO21</text>
+<text x="867" y="484" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 867 484)" text-anchor="end">Black · J103-1</text>
+<line x1="730" y1="310" x2="730" y2="226" stroke="#999" stroke-width="3" stroke-dasharray="2 0" opacity="0"/>
+<text x="735" y="220" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 735 220)">White · J103-2</text>
+<line x1="158" y1="310" x2="158" y2="226" stroke="#8a8a8a" stroke-width="3" stroke-dasharray="2 0" opacity="0"/>
+<text x="163" y="220" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 163 220)">Gray · J103-3</text>
+<text x="735" y="484" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 735 484)" text-anchor="end">Blue · J103-5</text>
+<text x="647" y="484" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 647 484)" text-anchor="end">Green · J103-6</text>
+<line x1="334" y1="310" x2="334" y2="226" stroke="#f5d000" stroke-width="3" stroke-dasharray="2 0" opacity="0"/>
+<text x="339" y="220" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 339 220)">Yellow · J103-7</text>
+<line x1="290" y1="310" x2="290" y2="226" stroke="#f07800" stroke-width="3" stroke-dasharray="2 0" opacity="0"/>
+<text x="295" y="220" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 295 220)">Orange · J103-8</text>
+<line x1="246" y1="310" x2="246" y2="226" stroke="#d81e1e" stroke-width="3" stroke-dasharray="2 0" opacity="0"/>
+<text x="251" y="220" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 251 220)">Red · J103-9</text>
+<text x="251" y="484" font-size="14" font-weight="bold" fill="#000" transform="rotate(-90 251 484)" text-anchor="end">Brown · J103-10</text>
+<text x="990" y="336" font-size="15" font-weight="bold">← pin 1</text>
+<text x="990" y="380" font-size="15">← pin 2</text>
+<text x="86" y="95" font-size="14" fill="#d00000" font-weight="bold">Red ring = power pin (5V / 3V3). NO wire may touch these.</text>
+<text x="60" y="660" font-size="20" font-weight="bold">Wire table</text>
+<text x="60" y="694" font-size="16" font-weight="bold">Wire</text>
+<text x="250" y="694" font-size="16" font-weight="bold">J103 pin</text>
+<text x="380" y="694" font-size="16" font-weight="bold">Signal</text>
+<text x="600" y="694" font-size="16" font-weight="bold">Pi pin</text>
+<text x="720" y="694" font-size="16" font-weight="bold">Pi name</text>
+<rect x="60" y="712" width="34" height="20" fill="#111111" stroke="#000" stroke-width="1"/>
+<text x="104" y="728" font-size="16">Black</text>
+<text x="250" y="728" font-size="16">1</text>
+<text x="380" y="728" font-size="16">GND</text>
+<text x="600" y="728" font-size="16" font-weight="bold">6</text>
+<text x="720" y="728" font-size="16">GND</text>
+<rect x="60" y="742" width="34" height="20" fill="#ffffff" stroke="#000" stroke-width="1"/>
+<text x="104" y="758" font-size="16">White</text>
+<text x="250" y="758" font-size="16">2</text>
+<text x="380" y="758" font-size="16">IGN_STATE</text>
+<text x="600" y="758" font-size="16" font-weight="bold">11</text>
+<text x="720" y="758" font-size="16">GPIO17</text>
+<rect x="60" y="772" width="34" height="20" fill="#8a8a8a" stroke="#000" stroke-width="1"/>
+<text x="104" y="788" font-size="16">Gray</text>
+<text x="250" y="788" font-size="16">3</text>
+<text x="380" y="788" font-size="16">PI_HALT</text>
+<text x="600" y="788" font-size="16" font-weight="bold">37</text>
+<text x="720" y="788" font-size="16">GPIO26</text>
+<rect x="60" y="802" width="34" height="20" fill="#7b2cbf" stroke="#000" stroke-width="1"/>
+<text x="104" y="818" font-size="16">Purple</text>
+<text x="250" y="818" font-size="16">4</text>
+<text x="380" y="818" font-size="16">PI_SHDN</text>
+<text x="600" y="818" font-size="16" font-weight="bold" fill="#d00000">NO CONNECTION — cut or tape back</text>
+<rect x="60" y="832" width="34" height="20" fill="#1f6fe0" stroke="#000" stroke-width="1"/>
+<text x="104" y="848" font-size="16">Blue</text>
+<text x="250" y="848" font-size="16">5</text>
+<text x="380" y="848" font-size="16">PI_FAN_PWM</text>
+<text x="600" y="848" font-size="16" font-weight="bold">12</text>
+<text x="720" y="848" font-size="16">GPIO18</text>
+<rect x="60" y="862" width="34" height="20" fill="#1e9e3a" stroke="#000" stroke-width="1"/>
+<text x="104" y="878" font-size="16">Green</text>
+<text x="250" y="878" font-size="16">6</text>
+<text x="380" y="878" font-size="16">PI_TACH</text>
+<text x="600" y="878" font-size="16" font-weight="bold">16</text>
+<text x="720" y="878" font-size="16">GPIO23</text>
+<rect x="60" y="892" width="34" height="20" fill="#f5d000" stroke="#000" stroke-width="1"/>
+<text x="104" y="908" font-size="16">Yellow</text>
+<text x="250" y="908" font-size="16">7</text>
+<text x="380" y="908" font-size="16">PI_MOSI</text>
+<text x="600" y="908" font-size="16" font-weight="bold">29</text>
+<text x="720" y="908" font-size="16">GPIO5</text>
+<rect x="60" y="922" width="34" height="20" fill="#f07800" stroke="#000" stroke-width="1"/>
+<text x="104" y="938" font-size="16">Orange</text>
+<text x="250" y="938" font-size="16">8</text>
+<text x="380" y="938" font-size="16">PI_MISO</text>
+<text x="600" y="938" font-size="16" font-weight="bold">31</text>
+<text x="720" y="938" font-size="16">GPIO6</text>
+<rect x="60" y="952" width="34" height="20" fill="#d81e1e" stroke="#000" stroke-width="1"/>
+<text x="104" y="968" font-size="16">Red</text>
+<text x="250" y="968" font-size="16">9</text>
+<text x="380" y="968" font-size="16">PI_ISP_RST</text>
+<text x="600" y="968" font-size="16" font-weight="bold">33</text>
+<text x="720" y="968" font-size="16">GPIO13</text>
+<rect x="60" y="982" width="34" height="20" fill="#7a4a1e" stroke="#000" stroke-width="1"/>
+<text x="104" y="998" font-size="16">Brown</text>
+<text x="250" y="998" font-size="16">10</text>
+<text x="380" y="998" font-size="16">GND</text>
+<text x="600" y="998" font-size="16" font-weight="bold">34</text>
+<text x="720" y="998" font-size="16">GND</text>
+<text x="60" y="1040" font-size="20" font-weight="bold">J103 on the Buddy Board (2×5): odd pins in one row, even pins in the other</text>
+<rect x="60" y="1058" width="244" height="88" rx="5" fill="#2b2b2b"/>
+<circle cx="94" cy="1080" r="16" fill="#111111" stroke="#fff" stroke-width="3"/>
+<text x="94" y="1086" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">1</text>
+<circle cx="94" cy="1124" r="16" fill="#ffffff" stroke="#fff" stroke-width="3"/>
+<text x="94" y="1130" text-anchor="middle" font-size="15" font-weight="bold" fill="#000">2</text>
+<circle cx="138" cy="1080" r="16" fill="#8a8a8a" stroke="#fff" stroke-width="3"/>
+<text x="138" y="1086" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">3</text>
+<circle cx="138" cy="1124" r="16" fill="#7b2cbf" stroke="#fff" stroke-width="3"/>
+<text x="138" y="1130" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">4</text>
+<line x1="118" y1="1104" x2="158" y2="1144" stroke="#ff2a2a" stroke-width="4"/><line x1="118" y1="1144" x2="158" y2="1104" stroke="#ff2a2a" stroke-width="4"/>
+<circle cx="182" cy="1080" r="16" fill="#1f6fe0" stroke="#fff" stroke-width="3"/>
+<text x="182" y="1086" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">5</text>
+<circle cx="182" cy="1124" r="16" fill="#1e9e3a" stroke="#fff" stroke-width="3"/>
+<text x="182" y="1130" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">6</text>
+<circle cx="226" cy="1080" r="16" fill="#f5d000" stroke="#fff" stroke-width="3"/>
+<text x="226" y="1086" text-anchor="middle" font-size="15" font-weight="bold" fill="#000">7</text>
+<circle cx="226" cy="1124" r="16" fill="#f07800" stroke="#fff" stroke-width="3"/>
+<text x="226" y="1130" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">8</text>
+<circle cx="270" cy="1080" r="16" fill="#d81e1e" stroke="#fff" stroke-width="3"/>
+<text x="270" y="1086" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">9</text>
+<circle cx="270" cy="1124" r="16" fill="#7a4a1e" stroke="#fff" stroke-width="3"/>
+<text x="270" y="1130" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">10</text>
+<text x="330" y="1086" font-size="15">row 1: pins 1, 3, 5, 7, 9</text>
+<text x="330" y="1130" font-size="15">row 2: pins 2, 4, 6, 8, 10</text>
+<text x="330" y="1164" font-size="15">Pin 1 = square pad / silkscreen mark. Black (1) and White (2) sit side by side across the rows.</text>
+</svg>
