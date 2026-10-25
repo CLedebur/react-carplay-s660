@@ -2569,7 +2569,31 @@ again. Grounding J103 pin 3 stopped it. Firmware fix: HALT counts only after 3 s
 the Pi got power (`halt_armed`). The hardware fix (a 100k pull-down) is on the
 next-revision list (`COMBINED.md`).
 
-**Still to do:** flash the guard build; the two HALT tests; then flash the NORMAL build (`make flash`) before JP101 is
-removed; test each
-state with the ignition jumper; the Pi's `gpio-poweroff` overlay on GPIO26; and the
-`ignition-watch` service (4:30 countdown).
+**Guard build on the bench, then the normal build.** The CM4 can imitate the ignition: it
+drives GPIO17 (`IGN_STATE`) LOW through J103 pin 2, which is only 0.33 mA against R112. So
+no jumpers are needed. Results with the bench build: HALT in RUN → relay off 1.97 s (CYCLE),
+then on again; HALT in GRACE → cut 1.98 s later. The guard armed, and it armed again after
+the CYCLE. The **normal build** (5:15 / 10 s / 3 s arming) is now on the chip.
+
+### 36.1 The Pi half of the shutdown (`hardware/pdb/`, provision.sh PHASE 4b)
+
+- **`s660-ignition-watch`** (a service): when GPIO17 has been HIGH for 270 s (4:30), it runs
+  `systemctl poweroff`. If the ignition comes back first, it cancels. The Pi's pull-down
+  makes an unplugged J103 read "ignition on", so a loose cable never shuts the Pi down.
+  **Bench work without ACC:** `sudo touch /persist/s660-bench` disables it
+  (`ConditionPathExists=`). **Delete that file before the car.**
+- **`s660-halt-signal`** (a `systemd-shutdown` hook in `/usr/lib/systemd/system-shutdown/`):
+  on poweroff/halt only, it raises GPIO26 and then **sleeps 15 s**, so the ATtiny cuts the
+  power during the sleep. The first version raised the pin and let the halt finish: the
+  halted CM4 (EEPROM `WAKE_ON_GPIO=1`, `POWER_OFF_ON_HALT=0`) released GPIO26 (0 V on J103
+  pin 3), and the ATtiny fell back to its 5:15 backstop. The filesystems are already
+  read-only when the hook runs, so the cut is safe. Not the `gpio-poweroff` overlay: it
+  would claim GPIO26, which avrdude needs as SCK.
+
+**Full chain, bench (JP101 fitted, 30 s test timeout):** ignition off → power-off 30 s later
+(the CM4 stopped answering ping at the expected second) → HALT 3.3 V on J103 pin 3 → relay
+off approx. 10 s later, LED103 1 s then dark. **Pass.** The backstop was also proven in the
+failed first run: the relay opened 5:15 (approx. 5:11 by the ATtiny's clock) after key-off.
+
+**Still to do:** the car test with JP101 **removed** (the first real ignition-controlled
+power-down). The low-battery cut is tested only on the host.

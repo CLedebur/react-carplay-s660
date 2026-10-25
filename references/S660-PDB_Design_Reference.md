@@ -753,8 +753,8 @@ The TOFU schematic (rev 1.3, sheet "PSU") shows:
 | # | Item | Status |
 |---|---|---|
 | 1 | ATtiny85 firmware | **Written 2026-10-24**: `pdb-circuit/firmware/` (host-tested; adds a CYCLE state, see its README). Not yet flashed or bench-tested. |
-| 2 | Pi `ignition-watch` systemd service (4:30 countdown) | Not written. |
-| 3 | Pi `gpio-poweroff` overlay on GPIO26 | Not configured. |
+| 2 | Pi `ignition-watch` systemd service (4:30 countdown) | **Done 2026-10-25**: `hardware/pdb/s660-ignition-watch`, bench-tested. |
+| 3 | Pi `gpio-poweroff` overlay on GPIO26 | **Replaced 2026-10-25** by the `systemd-shutdown` hook `hardware/pdb/s660-halt-signal`: the overlay would claim GPIO26 (ISP SCK), and a halted CM4 releases the pin anyway. See BUILD_NOTES §36.1. |
 | 4 | Pi fan-PWM daemon on GPIO18 | Not written. |
 | 5 | TOFU terminal block polarity | Verify on silkscreen before first power-up. |
 | 6 | 3007 heatsink fan pinout | Verify with a multimeter. Cheap fans do not always follow the standard colour code. |

@@ -56,6 +56,7 @@ echo "=== NOTE: reboot required at the end. See PHASE 5. ==="
 echo ">>> PHASE 0: boot-time trims"
 PB="$(cd "$(dirname "$0")" && pwd)/path-b"
 PERSIST="$(cd "$(dirname "$0")" && pwd)/persist"
+PDB="$(cd "$(dirname "$0")" && pwd)/pdb"
 
 # cloud-init: first-boot tool. Even when "disabled" its generator + units load every boot,
 # so purge it outright. (netplan.io must STAY — RPi's network-manager depends on it.)
@@ -380,6 +381,14 @@ for kv in "gpio=5=ip,pd" "gpio=6,13=ip,pn"; do
 done
 sudo apt-get install -y gcc-avr avr-libc binutils-avr cmake build-essential bison flex \
   libelf-dev libusb-1.0-0-dev libgpiod-dev libreadline-dev libserialport-dev
+# The Pi half of the PDB shutdown: power off 4:30 after the ignition goes off, and raise HALT
+# (GPIO26) as the very last shutdown step so the ATtiny cuts the relay 10 s later.
+sudo install -m 755 "${PDB}/s660-ignition-watch" /usr/local/bin/s660-ignition-watch
+sudo install -m 644 "${PDB}/s660-ignition-watch.service" /etc/systemd/system/s660-ignition-watch.service
+sudo install -d /usr/lib/systemd/system-shutdown
+sudo install -m 755 "${PDB}/s660-halt-signal" /usr/lib/systemd/system-shutdown/s660-halt-signal
+sudo systemctl daemon-reload
+sudo systemctl enable s660-ignition-watch.service
 if ! /usr/local/bin/avrdude -c '?type' 2>&1 | grep -q linuxgpio; then
   rm -rf ~/src/avrdude && mkdir -p ~/src
   git clone --depth 1 --branch v8.3 https://github.com/avrdudes/avrdude ~/src/avrdude

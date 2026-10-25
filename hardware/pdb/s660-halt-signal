@@ -1,0 +1,19 @@
+#!/bin/sh
+# systemd-shutdown runs this as its very last step, after every filesystem is unmounted or
+# read-only. $1 is poweroff, halt, reboot or kexec. Only a real power-off raises HALT
+# (GPIO26, J103 pin 3); the ATtiny opens the relay 10 s later (BUILD_NOTES §36). A reboot
+# must not raise it, or the ATtiny would cut the Pi in the middle of the reboot.
+# Not the gpio-poweroff overlay: that claims GPIO26 for good, and avrdude needs it as ISP SCK.
+#
+# Hold HALT and WAIT here: the ATtiny cuts the power during the sleep. Do not let the halt
+# finish first: a halted CM4 (WAKE_ON_GPIO=1) releases GPIO26, and the ATtiny then sees HALT
+# for only a moment (bench, 2026-10-25: 0 V on J103 pin 3 while halted). With the
+# filesystems already read-only, a cut at this point is safe. With JP101 fitted (bench) the
+# power stays on, so the halt continues after the sleep.
+case "$1" in
+  poweroff|halt)
+    /usr/bin/pinctrl set 26 op dh
+    echo "s660-halt-signal: HALT raised, waiting for the PDB to cut the power" > /dev/kmsg
+    sleep 15
+    ;;
+esac
