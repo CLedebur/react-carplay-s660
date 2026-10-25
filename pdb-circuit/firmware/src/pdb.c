@@ -8,12 +8,15 @@ static void enter(pdb_t *p, pdb_state_t s) {
     p->state_ms = 0;
     p->halt_ms = 0;   // every state judges HALT and the battery from its own start:
     p->low_ms = 0;    // a cranking dip in RUN must not count towards a GRACE cut
+    if (s != PDB_RUN && s != PDB_GRACE) { p->halt_armed = false; p->halt_low_ms = 0; }   // Pi unpowered
 }
 
 void pdb_init(pdb_t *p, bool ign_on) {
     p->ign_on = ign_on;
     p->ign_ms = 0;
     p->led_ms = 0;
+    p->halt_armed = false;
+    p->halt_low_ms = 0;
     enter(p, ign_on ? PDB_RUN : PDB_SLEEP);
 }
 
@@ -24,7 +27,13 @@ void pdb_tick(pdb_t *p, const pdb_inputs_t *in, uint16_t dt_ms) {
     if (in->ign_on == p->ign_on) p->ign_ms = 0;
     else if ((p->ign_ms = add_sat(p->ign_ms, dt_ms)) >= PDB_IGN_DEBOUNCE_MS) { p->ign_on = in->ign_on; p->ign_ms = 0; }
 
-    p->halt_ms = in->halt ? add_sat(p->halt_ms, dt_ms) : 0;
+    // HALT_IN has no pull-down on the board, so it floats when J3/J103 is unplugged. Only a
+    // Pi that is there holds it LOW, so HALT counts only after it has been LOW for a while.
+    if (!p->halt_armed) {
+        p->halt_low_ms = in->halt ? 0 : add_sat(p->halt_low_ms, dt_ms);
+        if (p->halt_low_ms >= PDB_HALT_ARM_MS) p->halt_armed = true;
+    }
+    p->halt_ms = in->halt && p->halt_armed ? add_sat(p->halt_ms, dt_ms) : 0;
     p->low_ms = in->batt_adc < PDB_LOWBATT_ADC ? add_sat(p->low_ms, dt_ms) : 0;
 
     switch (p->state) {

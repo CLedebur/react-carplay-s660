@@ -11,6 +11,8 @@
 //
 // GRACE ends in CUT on whichever comes first: the 5:15 backstop, HALT high for 10 s,
 // or the battery below 11.0 V for 10 s. The ignition coming back sends GRACE to RUN.
+// HALT is believed only after it has been LOW for 3 s since the Pi got power: HALT_IN
+// floats if J3/J103 comes off, and a floating HIGH must not power-cycle a working Pi.
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
@@ -22,11 +24,13 @@
 #define PDB_HALT_MS     2000U
 #define PDB_LOWBATT_MS  2000U
 #define PDB_CYCLE_MS    2000U
+#define PDB_HALT_ARM_MS 1000U
 #else
 #define PDB_GRACE_MS  315000UL   // 5 min 15 s backstop (Pi's own countdown is 4:30)
 #define PDB_HALT_MS    10000U    // HALT high this long = the Pi has halted
 #define PDB_LOWBATT_MS 10000U    // battery low this long = cut
 #define PDB_CYCLE_MS    5000U    // relay-open time when the Pi halts in RUN
+#define PDB_HALT_ARM_MS 3000U    // HALT LOW this long first = a Pi is connected (see pdb.c)
 #endif
 #define PDB_IGN_DEBOUNCE_MS 200U // shorter ignition changes are ignored (cranking glitches)
 #define PDB_CUT_LED_MS     1000U
@@ -49,7 +53,9 @@ typedef struct {
     bool ign_on;        // debounced
     uint16_t ign_ms;    // how long the raw input has disagreed with ign_on
     uint32_t state_ms;  // time in the current state
-    uint16_t halt_ms;   // how long HALT has been high
+    uint16_t halt_ms;   // how long HALT has been high (counted only once armed)
+    uint16_t halt_low_ms;  // how long HALT has been LOW, until armed
+    bool halt_armed;    // HALT seen LOW for PDB_HALT_ARM_MS since the Pi got power
     uint16_t low_ms;    // how long the battery has been low
     uint16_t led_ms;    // free-running, for the blink patterns
 } pdb_t;

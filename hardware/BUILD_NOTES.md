@@ -2555,7 +2555,21 @@ The relay drive and LED103 can be watched from the Pi through J103 without a met
 `pinctrl lev 5,6,17,26` = COIL_DRV, LED3_DRV, IGN_STATE, PI_HALT. HALT can be simulated with
 `pinctrl set 26 op dh` / `pinctrl set 26 ip pd`.
 
-**Still to do:** the two HALT tests; then flash the NORMAL build (`make flash`) before JP101 is
+**Second day (2026-10-25), bench.** A J101 re-termination had ACC and GND swapped, which
+put 12 V onto the board GND at key-on and blew the car's **ACC fuse 37 (7.5 A)**. The audio
+unit then had no ACC: dark screen, OPERA TX/CONT/PWR SW all 0 V. On an MT S660 there is no
+glove-box fuse box. The audio unit's ACC comes from fuse 37 in the driver-side box.
+Bench checks after the fault: all J1 line resistances and the power-up readings matched rev B
+Stage 1–7, so no protection part failed shorted. The board-only ignition test (12 V jumper
+to ACC, then to ON) passed with the bench build.
+
+**`HALT_IN` floats with J103 unplugged.** On the bench, the relay cycled on and off: a
+floating HIGH looked like "Pi halted" for 2 s, so the ATtiny started CYCLE again and
+again. Grounding J103 pin 3 stopped it. Firmware fix: HALT counts only after 3 s LOW since
+the Pi got power (`halt_armed`). The hardware fix (a 100k pull-down) is on the
+next-revision list (`COMBINED.md`).
+
+**Still to do:** flash the guard build; the two HALT tests; then flash the NORMAL build (`make flash`) before JP101 is
 removed; test each
 state with the ignition jumper; the Pi's `gpio-poweroff` overlay on GPIO26; and the
 `ignition-watch` service (4:30 countdown).

@@ -98,6 +98,7 @@ int main(void) {
 
     // The Pi halts while driving: relay opens 5 s, then closes again.
     start(true);
+    run(PDB_HALT_ARM_MS + 10);   // the Pi holds HALT LOW while it runs
     in.halt = true; run(PDB_HALT_MS + 10);
     CHECK(p.state == PDB_CYCLE && !pdb_relay(&p), "HALT in RUN: CYCLE, relay open");
     in.halt = false;   // the Pi lost power, so GPIO26 drops
@@ -107,9 +108,40 @@ int main(void) {
 
     // Key off during CYCLE: ends in SLEEP, not RUN.
     start(true);
+    run(PDB_HALT_ARM_MS + 10);
     in.halt = true; run(PDB_HALT_MS + 10);
     in.halt = false; in.ign_on = false; run(PDB_CYCLE_MS + 1000);
     CHECK(p.state == PDB_SLEEP && !pdb_relay(&p), "key off during CYCLE: SLEEP");
+
+    // J3/J103 unplugged: HALT_IN floats HIGH from power-up. It must never cycle or cut early.
+    start(true);
+    in.halt = true;
+    CHECK(run(PDB_GRACE_MS) == 0 && p.state == PDB_RUN, "floating HALT in RUN: no CYCLE");
+    in.ign_on = false; run(PDB_HALT_MS * 2);
+    CHECK(p.state == PDB_GRACE, "floating HALT in GRACE: no early cut");
+    run(PDB_GRACE_MS);
+    CHECK(p.state == PDB_CUT || p.state == PDB_SLEEP, "floating HALT: the backstop still cuts");
+
+    // A short LOW (a floating pin wandering) is not enough to arm.
+    start(true);
+    in.halt = true; run(SEC(1));
+    in.halt = false; run(PDB_HALT_ARM_MS - 500);
+    in.halt = true;
+    CHECK(run(PDB_HALT_MS + 1000) == 0 && p.state == PDB_RUN, "LOW shorter than the arming time: not armed");
+
+    // Arming carries from RUN into GRACE (the Pi stays powered): a normal shutdown still cuts.
+    start(true);
+    run(PDB_HALT_ARM_MS + 10);
+    in.ign_on = false; run(SEC(1));
+    in.halt = true; run(PDB_HALT_MS + 100);
+    CHECK(p.state == PDB_CUT, "armed in RUN, HALT in GRACE: CUT");
+
+    // After a CYCLE the Pi reboots, so it must arm again.
+    start(true);
+    run(PDB_HALT_ARM_MS + 10);
+    in.halt = true; run(PDB_HALT_MS + 10);
+    run(PDB_CYCLE_MS + 100);   // HALT stays HIGH: as if J103 came off during the cycle
+    CHECK(p.state == PDB_RUN && run(PDB_HALT_MS * 3) == 0, "after CYCLE, HALT not trusted until LOW again");
 
     // LED patterns.
     start(true); run(1000);

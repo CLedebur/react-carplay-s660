@@ -25,6 +25,13 @@ down, and then cuts it. Specification: `references/S660-PDB_Design_Reference.md`
 CYCLE is an addition to §4.3 (agreed 2026-10-24): if the Pi halts while the ignition is
 on, the relay opens for 5 s so the Pi restarts without a key cycle.
 
+HALT is trusted only after `HALT_IN` has been LOW for 3 s since the Pi got power (RUN
+start, or the end of a CYCLE). The board has no pull-down on `HALT_IN`: if the J3/J103
+cable comes off, the pin floats and can read HIGH, which looked like "Pi halted" and
+power-cycled the Pi every few seconds (found on the bench, 2026-10-25). With the guard, a
+floating pin leaves only the 5:15 backstop and the battery check to end GRACE. A 100k
+resistor from `HALT_IN` to GND (J104 pins 3 and 6) fixes the cause.
+
 Ignition changes shorter than 200 ms are ignored, so cranking (ACC drops, ON stays)
 never starts GRACE. Low battery counts only from the start of GRACE, so a cranking dip
 cannot cause a cut.
