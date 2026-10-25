@@ -90,6 +90,11 @@ onmessage = async (event: MessageEvent<Command>) => {
         carplayWeb.dongleDriver.send(data)
       }
       break
+    case 'key':
+      if (carplayWeb) {
+        carplayWeb.dongleDriver.send(new SendCommand(event.data.payload.command))
+      }
+      break
     case 'stop':
       await carplayWeb?.stop()
       carplayWeb = null
