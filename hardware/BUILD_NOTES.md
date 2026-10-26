@@ -2603,5 +2603,24 @@ the CYCLE. The **normal build** (5:15 / 10 s / 3 s arming) is now on the chip.
 off approx. 10 s later, LED103 1 s then dark. **Pass.** The backstop was also proven in the
 failed first run: the relay opened 5:15 (approx. 5:11 by the ATtiny's clock) after key-off.
 
-**Still to do:** the car test with JP101 **removed** (the first real ignition-controlled
-power-down). The low-battery cut is tested only on the host.
+### 36.2 2026-10-26 — Car test, JP101 removed: pass
+
+The new 7.5 A fuse was fitted in slot 37, the J101 plug was checked, and JP101 was removed
+(with ACC on, so the relay held the CM4 up). `/persist/s660-bench` was deleted.
+
+| Time | Event |
+|---|---|
+| 21:00:03 | Key OFF. The watch logged "powering off in 270 s". |
+| 21:04:38 | The CM4 stopped answering: power-off, 4:30 after key-off |
+| approx. 21:04:50 | K101 clicked off (HALT → 10 s → CUT) |
+| after | No restart. LED103 dark. `IGN_STATE` and `PI_ISP_RST` (J103 pins 2 and 9) near 3.3 V with the CM4 unpowered. |
+
+A concern was checked and found not to occur: an unpowered CM4 could clamp `IGN_STATE` (or
+the ATtiny's RESET, through R119) LOW through its GPIO protection diodes, and so restart the
+CM4 in a loop while parked. It did not. At plug-in with JP101 still fitted, the ATtiny briefly
+saw "ignition on" (RUN → GRACE), probably while the CM4 was starting up. That has no effect in
+use, but **for the next revision:** buffer or isolate the Pi's GPIO17 from `IGN_STATE` (and
+the ISP lines from the ATtiny), so that an unpowered CM4 cannot load them.
+
+**Still to test:** the low-battery cut (host-tested only); the fuel stop and cranking in the
+car with the normal build.
