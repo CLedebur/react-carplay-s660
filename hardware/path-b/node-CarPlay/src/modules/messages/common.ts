@@ -39,6 +39,15 @@ export enum CommandMapping {
   selectDown = 104, //'Button Select Down',
   selectUp = 105, //'Button Select Up',
   back = 106, //'Button Back',
+  // Not in the upstream list; found by sending raw values to a Carlinkit dongle with iOS
+  // CarPlay (S660, 2026-10-26). 102/103 also act as up/down, 107/109 as left and 108/110 as
+  // right (focus previous/next). 111/112 are CarPlay's sideways "nudge" (focus to the next
+  // element on that side, e.g. the sidebar, or the next home-screen page). iOS treats a nudge
+  // as held until another real button event arrives ('invalid' does not count), so follow
+  // each one with 'selectUp' (a release with no press: selects nothing), or the next nudge
+  // is ignored. Nudges sent faster than a page slide are dropped.
+  nudgeLeft = 111,
+  nudgeRight = 112,
   up = 113, //'Button Up',
   down = 114, //'Button Down',
   home = 200, //'Button Home',

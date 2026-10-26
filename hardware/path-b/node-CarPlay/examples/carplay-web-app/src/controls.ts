@@ -51,6 +51,11 @@ export const carplayCommandsFor = ({
     case 'mode':
       return pressed ? ['home'] : []
     case 'phone':
-      return pressed ? ['playOrPause'] : []
+      // Nudge the focus towards the CarPlay sidebar (recent apps, home). The S660 is right-hand
+      // drive, so the sidebar is on the right. One nudge per press: inside an app that reaches
+      // the sidebar; on home page 1 it takes a second press (page 2 first). Several nudges per
+      // press need ~0.4 s pauses for the page slide, which felt too slow (in-car, 2026-10-26).
+      // 'selectUp' ends the nudge: see CommandMapping.
+      return pressed ? ['nudgeRight', 'selectUp'] : []
   }
 }

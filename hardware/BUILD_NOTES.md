@@ -2624,3 +2624,46 @@ the ISP lines from the ATtiny), so that an unpowered CM4 cannot load them.
 
 **Still to test:** the low-battery cut (host-tested only); the fuel stop and cranking in the
 car with the normal build.
+
+## 37. 2026-10-26 — OPERA MITM in the car: panel controls drive CarPlay
+
+**Harness.** Before the first connection, J1's plug was checked at ACC with the board
+unplugged: about 11 V only at position 6 (`CONT`), 5 V at 2, 4 and 5. The 3-pin and 4-pin
+blocks are now glued together, so they cannot be swapped (a swap shorts the audio unit's
+`CONT` to GND through K1's NC contacts).
+
+| Test | Result |
+|---|---|
+| Pico unpowered: stock pass-through (power, volume, mode, back, phone on the stock unit) | Pass |
+| Pico on: each panel control decoded and sent as its HID key | Pass, about 5 ms from panel to Chromium; two knob steps 109 ms apart both arrive |
+| Back + Power: toggle to head-unit mode and back | Pass. Leaving head-unit mode sends the unit a "keys released" frame. |
+| Panel controls on the CarPlay screen (web app `620f89b`) | Pass |
+
+**Back is now sent on release** (Pico firmware). Back is also the first half of the
+Back+Power toggle, and sending it on press made CarPlay go back one screen on every mode
+switch. Now Back goes out as a 25 ms tap when it is released, and only if Power was not pressed
+during the hold. **New console command `b`** reboots the Pico into BOOTSEL. The firmware's own
+USB descriptors have no picotool reset interface, so `picotool -f` could not reach it.
+`build.sh flash` sends `b`. The first flash needed BOOTSEL held + SW2 tapped.
+
+**Input lag, not reproduced.** Once, knob input stalled for a few seconds, then all the
+inputs ran at once, while the video kept moving. Temporary timing logs then covered
+about 830 knob steps: every command reached the dongle within 2 ms of the browser's keydown.
+So if the stall comes back, it is between the dongle and the phone, not on the CM4. Adding
+`optimizeForLatency` to the decoder made no difference, and it was removed.
+
+**Phone button = nudge right into the CarPlay sidebar.** Raw command values sent to the
+dongle, read on the screen (iOS, RHD so the sidebar is on the right):
+
+| Value | iOS action |
+|---|---|
+| 100, 107, 109 | focus previous (as knob anticlockwise) |
+| 101, 108, 110 | focus next (as knob clockwise) |
+| 102, 113 | nudge up |
+| 103, 114 | nudge down |
+| **111 / 112** | **nudge left / right**. Held until another real button event: `invalid` (0) does not end it, `selectUp` (105) does. |
+
+The library now names 111/112 `nudgeLeft`/`nudgeRight`. The Phone button sends
+`nudgeRight` + `selectUp`, one nudge per press. Inside an app that reaches the sidebar; on
+home-screen page 1 the first press goes to page 2. Back-to-back nudges are dropped during the
+page slide, and nudges 0.4 s apart worked but felt too slow, so the choice was one per press.
