@@ -2398,9 +2398,17 @@ were recorded under the old name, so read those with `-u carplay-dev-chromium`.
 
 ## 34. 2026-10-18 — CAN bus: discovery adapter (CANable V2.0 Pro) and its wiring
 
-**Status.** Bus discovery has not started yet. Nothing below has been run in the car. Which
-S660 bus carries reverse/lights, and at what bit rate, is still **unknown**. Find it out with
-this adapter before designing the permanent connection.
+**Status.** Bus discovery has not started yet. Nothing below has been run in the car. The bit
+rate is still **unknown**. Find it out with this adapter before designing the permanent
+connection.
+
+**Prior work (added 2026-10-26).** A Japanese S660 owner (ACTY typeR) has already decoded
+42 CAN IDs, listening at the **OBD-II port**. Our restatement of their findings, with sources,
+is in [`references/S660-CAN-bus.md`](../references/S660-CAN-bus.md). The signals this project
+wants first are all reported there: reverse light (0x1A6 byte 2 bit 2), headlights (0x1A6
+byte 0 bits 1–0), speed (0x309) and turn signals (0x294). So the OBD-II port should be enough
+for them, and the gateway worry below probably does not apply. All of it is unverified until
+our own capture shows it.
 
 **Plan.** Use a USB adapter now to find out what is on the bus. Later, move to a CAN section
 on the combined PDB + MITM board (rev B). The software does not care which: both show up in
