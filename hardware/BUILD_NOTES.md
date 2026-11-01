@@ -2736,8 +2736,11 @@ Off at every boot. The Options row turns it on and shows the address and a fresh
 unit's screen only. Port 8080, plain HTTP, local network only. A session and the server expire after
 30 minutes unused; five wrong PINs lock it for a minute; three lockouts turn it off. Pages: status,
 settings, saved Wi-Fi networks (add, priority, delete; saving does not connect), logs, diagnostics,
-restart CarPlay / reboot / shut down. Tested locally only; add and delete of a real Wi-Fi profile on the
-Pi is still to be done.
+restart CarPlay / reboot / shut down. The Wi-Fi page lists your networks as "1st choice, 2nd choice..."
+(move up/down; priorities are set to 10, 20, 30... behind the scenes), Connect now, Change password,
+hidden networks, Rescan, and a Nearby list with one-tap Add (the CarPlay dongle's own `AutoKit-*` network
+is marked and cannot be added). Actions update the page in place. Tested on the Pi with a throwaway
+profile: add, reorder, change password and delete all worked and persisted on `/persist/nm-connections`.
 
 ### 38.4 Network: Wi-Fi first, the phone over Bluetooth as the fallback
 
@@ -2751,10 +2754,10 @@ Pi is still to be done.
 | PAN reconnect after about 6 min locked | Works, by itself |
 | PAN reconnect after **30 min** untouched | **Works**, connected in 9 s |
 | Wi-Fi dropped on purpose | Phone link up 29 s later; Wi-Fi back; phone link down 21 s after that |
+| Bluetooth link brought up **while CarPlay streams** (90 s, 2026-11-01 11:59) | Hardware decoder held throughout, no `carplay.service` errors, no dongle USB reset; ping over the phone 89/90 replies, 75 ms average, one 966 ms spike |
 
-So an idle iPhone Wi-Fi hotspot is not a usable fallback, but Bluetooth tethering is. **Not yet tested:**
-tethering while wireless CarPlay runs to the dongle (the Pi's one Bluetooth chip would do both jobs),
-and idle times beyond 30 minutes.
+So an idle iPhone Wi-Fi hotspot is not a usable fallback, but Bluetooth tethering is, including while
+CarPlay streams. **Not yet tested:** idle times beyond 30 minutes, and a full drive.
 
 **What is in place.**
 - `/persist/nm-connections` and `/persist/bluetooth` are bind-mounted over

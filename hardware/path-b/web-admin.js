@@ -60,12 +60,46 @@ input[type=text],input[type=password],input[type=number],select{width:100%}
 button{cursor:pointer;font-weight:700;border-color:var(--fg)}button.danger{border-color:var(--bad);color:var(--bad)}
 .msg{border:2px solid var(--accent);padding:8px 12px;margin:10px 0}.ok{color:var(--ok)}.bad{color:var(--bad)}.dim{color:var(--dim)}
 pre{background:#111;color:#ddd;padding:10px;overflow:auto;font-size:13px;line-height:1.35;border:1px solid var(--line)}
-form.inline{display:inline}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}`
+form.inline{display:inline}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+ul.nets{list-style:none;margin:0;padding:0}li.net{border:2px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}
+li.net .top{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}li.net .top b{font-size:20px;margin-right:auto;word-break:break-all}
+.tag{border:1px solid var(--line);border-radius:12px;padding:0 8px;font-size:14px;color:var(--dim)}.tag.ok{color:var(--ok);border-color:var(--ok)}
+.bars{letter-spacing:1px;font-size:16px}.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.acts form{display:inline-flex;gap:6px;align-items:center;margin:0}.acts button,.acts summary{padding:6px 12px;font-size:16px}
+summary{cursor:pointer;border:2px solid var(--line);border-radius:6px;font-weight:700;list-style:none}details[open]>summary{border-color:var(--accent)}
+details form{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}details input{width:auto;flex:1;min-width:10em}
+.card{border:2px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}.card.focus{border-color:var(--accent)}
+.toast{position:fixed;left:12px;right:12px;bottom:12px;background:var(--accent);color:#000;padding:10px 14px;border-radius:8px;font-weight:700;max-width:736px;margin:0 auto}
+label.inline{display:flex;gap:8px;align-items:center;font-weight:400;margin:8px 0}label.inline input{width:auto}`
+
+const CLIENT_JS = `
+(function(){
+  function toast(msg){var t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},5000)}
+  function swap(html){var d=new DOMParser().parseFromString(html,'text/html');var m=d.querySelector('main');if(m){document.querySelector('main').replaceWith(m);var f=m.querySelector('.msg');if(f){toast(f.textContent);f.remove()}bind()}}
+  function bind(){
+    document.querySelectorAll('form[data-ajax]').forEach(function(f){
+      f.addEventListener('submit',function(e){
+        e.preventDefault();
+        if(f.dataset.confirm&&!confirm(f.dataset.confirm))return;
+        var body=new URLSearchParams(new FormData(f));
+        if(e.submitter&&e.submitter.name)body.set(e.submitter.name,e.submitter.value);
+        var wait=parseInt(f.dataset.wait||'0',10)*1000;
+        fetch(f.action,{method:'POST',body:body,credentials:'same-origin'}).then(function(r){return r.text()}).then(function(h){
+          if(wait){toast('Scanning…');setTimeout(function(){fetch(location.pathname,{credentials:'same-origin'}).then(function(r){return r.text()}).then(swap)},wait)}else swap(h)
+        }).catch(function(){toast('The unit stopped answering. If you changed network, reconnect and reload.')})
+      })
+    });
+    document.querySelectorAll('[data-add]').forEach(function(b){
+      b.addEventListener('click',function(){var s=document.getElementById('ssid');s.value=b.dataset.add;document.getElementById('addform').scrollIntoView({behavior:'smooth'});document.getElementById(b.dataset.open==='1'?'ssid':'psk').focus()})
+    })
+  }
+  bind()
+})();`
 
 const page = (title, body, { nav = true } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · S660</title><style>${CSS}</style></head><body>
 <header><b>S660 head unit</b>${nav ? '<a href="/">Status</a><a href="/settings">Settings</a><a href="/wifi">Wi-Fi</a><a href="/logs">Logs</a><a href="/diag">Diagnostics</a><a href="/power">Power</a><a href="/logout">Log out</a>' : ''}</header>
-<main>${body}</main></body></html>`
+<main>${body}</main><script>${CLIENT_JS}</script></body></html>`
 
 const createWebAdmin = deps => {
   const { stats, network, readSettings, writeSettings, SETTINGS } = deps
@@ -216,43 +250,83 @@ ${n.links.map(l => row(`${l.type}`, [l.state, l.name, l.ip, l.signal === null ? 
     const out = await run('nmcli', ['-t', '-f', 'NAME,TYPE,AUTOCONNECT-PRIORITY', 'con', 'show'])
     return nmRows(out.out)
       .filter(([, type]) => type === '802-11-wireless')
-      .map(([name, , priority]) => ({ name, priority }))
+      .map(([name, , priority]) => ({ name, priority: parseInt(priority, 10) || 0 }))
+      .sort((x, y) => y.priority - x.priority || x.name.localeCompare(y.name))
   }
   const activeNames = async () => nmRows((await run('nmcli', ['-t', '-f', 'NAME', 'con', 'show', '--active'])).out).map(r => r[0])
 
-  const wifiPage = async url => {
-    const [saved, active, scan] = await Promise.all([
-      savedWifi(),
-      activeNames(),
-      run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'no']),
-    ])
+  // Give the profiles priorities 10, 20, 30... in the given order (first = most preferred), so the page can talk
+  // about "1st choice" and "2nd choice" and never show raw numbers.
+  const applyOrder = async names => {
+    for (const [i, name] of names.entries()) {
+      await run('sudo', ['-n', 'nmcli', 'con', 'mod', 'id', name, 'connection.autoconnect-priority', String((names.length - i) * 10)])
+    }
+  }
+
+  const bars = pct => (pct >= 75 ? '▂▄▆█' : pct >= 50 ? '▂▄▆' : pct >= 25 ? '▂▄' : '▂')
+  const ordinal = n => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`
+
+  const scanResults = async () => {
+    const scan = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'no'])
     const seen = new Map()
-    for (const [ssid, signal, sec] of nmRows(scan.out)) if (ssid && (!seen.has(ssid) || +signal > seen.get(ssid).signal)) seen.set(ssid, { signal: +signal, sec })
-    const nearby = [...seen.entries()].sort((a, b) => b[1].signal - a[1].signal)
+    for (const [ssid, signal, sec] of nmRows(scan.out)) {
+      if (ssid && (!seen.has(ssid) || +signal > seen.get(ssid).signal)) seen.set(ssid, { signal: +signal, sec: sec || '' })
+    }
+    return seen
+  }
+
+  const wifiPage = async url => {
+    const [saved, active, nearby, net] = await Promise.all([savedWifi(), activeNames(), scanResults(), network()])
+    // NetworkManager stops scanning while connected, so the cache can be empty: ask for a scan and look again once.
+    const rescanning = nearby.size === 0 && !url.searchParams.has('r')
+    if (rescanning) run('sudo', ['-n', 'nmcli', 'dev', 'wifi', 'rescan'])
+    const wifi = net.links.find(l => l.type === 'wifi' && l.state === 'connected')
+    const phone = net.links.find(l => l.type === 'bluetooth')
+    const hidden = (name, v) => `<input type="hidden" name="${name}" value="${esc(v)}">`
+
     const savedRows = saved
-      .map(({ name, priority }) => {
+      .map(({ name }, i) => {
         const isActive = active.includes(name)
-        return `<tr><td>${esc(name)}${isActive ? ' <span class="ok">● connected</span>' : ''}</td><td>
-<form class="inline" method="post" action="/wifi/priority"><input type="hidden" name="name" value="${esc(name)}">
-<input name="priority" type="number" min="-999" max="999" value="${esc(priority)}" style="width:6em" aria-label="priority"> <button>Set priority</button></form>
-${isActive ? '' : `<form class="inline" method="post" action="/wifi/delete" onsubmit="return confirm('Delete this network?')"><input type="hidden" name="name" value="${esc(name)}"><button class="danger">Delete</button></form>`}
-</td></tr>`
+        const near = nearby.get(name)
+        const tag = isActive ? '<span class="tag ok">● connected</span>' : near ? `<span class="tag">in range <span class="bars">${bars(near.signal)}</span> ${near.signal}%</span>` : '<span class="tag">not in range</span>'
+        return `<li class="net"><div class="top"><b>${esc(name)}</b>${tag}<span class="tag">${ordinal(i + 1)} choice</span></div><div class="acts">
+<form data-ajax method="post" action="/wifi/move">${hidden('name', name)}<button name="dir" value="up" title="Prefer this network more"${i === 0 ? ' disabled' : ''}>▲ Prefer</button><button name="dir" value="down" title="Prefer this network less"${i === saved.length - 1 ? ' disabled' : ''}>▼ Less</button></form>
+${isActive ? '' : `<form data-ajax method="post" action="/wifi/connect">${hidden('name', name)}<button${near ? '' : ' disabled'}>Connect now</button></form>`}
+<details><summary>Change password</summary><form data-ajax method="post" action="/wifi/password">${hidden('name', name)}<input name="psk" type="password" minlength="8" maxlength="63" placeholder="New password" required autocomplete="off"><button>Save</button></form></details>
+${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="post" action="/wifi/delete">${hidden('name', name)}<button class="danger">Delete</button></form>`}
+</div></li>`
       })
       .join('')
+
+    const nearbyRows = [...nearby.entries()]
+      .filter(([ssid]) => !saved.some(c => c.name === ssid))
+      .sort((x, y) => y[1].signal - x[1].signal)
+      .map(([ssid, v]) => {
+        const dongle = ssid.startsWith('AutoKit-') // the Carlinkit dongle's own network: never join it
+        return `<li class="net"><div class="top"><b>${esc(ssid)}</b><span class="tag"><span class="bars">${bars(v.signal)}</span> ${v.signal}%</span><span class="tag">${dongle ? 'your CarPlay dongle' : v.sec ? '🔒 ' + esc(v.sec) : 'open'}</span></div>${
+          dongle ? '' : `<div class="acts"><button type="button" data-add="${esc(ssid)}" data-open="${v.sec ? '0' : '1'}">Add…</button></div>`
+        }</li>`
+      })
+      .join('')
+
+    const headline = wifi ? `Connected to <b>${esc(wifi.name)}</b> · ${bars(wifi.signal ?? 0)} ${wifi.signal ?? '?'}% · ${esc(wifi.ip || '')}` : phone && phone.state === 'connected' ? `On your phone's Bluetooth tethering · ${esc(phone.ip || '')}` : 'Not connected'
     return page(
       'Wi-Fi',
-      `${flash(url)}<h1>Wi-Fi networks</h1>
-<p class="dim">The unit joins the saved network with the highest priority that is in range. If none is, it can use your phone's Bluetooth tethering (Settings → Network on the unit).</p>
-<h2>Saved</h2><table>${savedRows || '<tr><td colspan="2">None saved</td></tr>'}</table>
-<h2>Add a network</h2>
-<form method="post" action="/wifi/add"><label for="ssid">Network name (SSID)</label>
-<input id="ssid" name="ssid" type="text" list="nearby" maxlength="32" required autocomplete="off">
-<datalist id="nearby">${nearby.map(([ssid]) => `<option value="${esc(ssid)}">`).join('')}</datalist>
-<label for="psk">Password (leave empty for an open network)</label><input id="psk" name="psk" type="password" maxlength="63" autocomplete="off">
-<label for="prio">Priority (higher is preferred; your home network is usually 100)</label><input id="prio" name="priority" type="number" min="-999" max="999" value="50">
-<p><button>Save network</button></p></form>
-<p class="dim">Saving does not connect to it, so this page keeps working. Delete is not offered for the network you are on.</p>
-<h2>Nearby</h2><table>${nearby.map(([ssid, v]) => `<tr><td>${esc(ssid)}</td><td>${v.signal}% · ${esc(v.sec || 'open')}</td></tr>`).join('') || '<tr><td colspan="2">Nothing found</td></tr>'}</table>`,
+      `${rescanning ? '<meta http-equiv="refresh" content="7;url=/wifi?r=1">' : ''}${flash(url)}<h1>Wi-Fi networks</h1>
+<div class="card focus">${headline}<br><span class="dim">Internet: ${net.internet ? 'yes' : 'no'} · Phone tethering: ${net.bluetoothProfile ? (phone && phone.state === 'connected' ? 'connected' : 'ready, used when no Wi-Fi is in range') : 'not set up'}</span></div>
+<h2>Your networks, in order of preference</h2>
+<p class="dim">The unit joins the first one in range. If none is, it uses your phone's Bluetooth tethering. Connecting to another network from here ends this page's connection if you are on Wi-Fi: reconnect to the same network afterwards.</p>
+<ul class="nets">${savedRows || '<li class="net">None saved yet. Add one below.</li>'}</ul>
+<h2>Nearby <form class="inline" data-ajax data-wait="4" method="post" action="/wifi/rescan"><button>Rescan</button></form></h2>
+<ul class="nets">${nearbyRows || '<li class="net dim">Nothing new in range. Try Rescan.</li>'}</ul>
+<h2 id="add">Add a network</h2>
+<form data-ajax method="post" action="/wifi/add" id="addform" class="card">
+<label for="ssid">Network name (SSID)</label><input id="ssid" name="ssid" type="text" maxlength="32" required autocomplete="off" autocapitalize="off">
+<label for="psk">Password <span class="dim">(leave empty for an open network)</span></label><input id="psk" name="psk" type="password" maxlength="63" autocomplete="off">
+<label class="inline"><input type="checkbox" onchange="document.getElementById('psk').type=this.checked?'text':'password'"> Show password</label>
+<label class="inline"><input type="checkbox" name="hidden" value="1"> This network is hidden (does not broadcast its name)</label>
+<label for="place">Preference</label><select id="place" name="place"><option value="last">Last choice</option><option value="first">First choice</option></select>
+<p><button>Save network</button> <span class="dim">Saving does not connect to it.</span></p></form>`,
     )
   }
 
@@ -347,33 +421,59 @@ ${isActive ? '' : `<form class="inline" method="post" action="/wifi/delete" onsu
       return redirect(res, '/settings', 'Saved.')
     }
     if (path === '/wifi' && !post) return send(res, 200, await wifiPage(url))
+    if (path === '/wifi/rescan' && post) {
+      await run('sudo', ['-n', 'nmcli', 'dev', 'wifi', 'rescan'])
+      return redirect(res, '/wifi')
+    }
     if (path === '/wifi/add' && post) {
       const f = await readForm(req)
       const ssid = f.get('ssid') || ''
       const psk = f.get('psk') || ''
-      const priority = parseInt(f.get('priority'), 10)
       if (!ssid || Buffer.byteLength(ssid) > 32 || ssid.startsWith('-') || /[\r\n\0]/.test(ssid)) return redirect(res, '/wifi', 'That network name is not valid.')
       if (psk && (psk.length < 8 || psk.length > 63 || /[\r\n\0]/.test(psk))) return redirect(res, '/wifi', 'A WPA password is 8 to 63 characters.')
-      if (!Number.isInteger(priority) || priority < -999 || priority > 999) return redirect(res, '/wifi', 'Priority must be between -999 and 999.')
-      if ((await savedWifi()).some(c => c.name === ssid)) return redirect(res, '/wifi', 'That network is already saved. Delete it first to change its password.')
-      const args = ['-n', 'nmcli', 'con', 'add', 'type', 'wifi', 'con-name', ssid, 'ifname', 'wlan0', 'ssid', ssid, 'connection.autoconnect', 'yes', 'connection.autoconnect-priority', String(priority)]
+      const saved = await savedWifi()
+      if (saved.some(c => c.name === ssid)) return redirect(res, '/wifi', 'That network is already saved. Use Change password on it, or delete it first.')
+      const args = ['-n', 'nmcli', 'con', 'add', 'type', 'wifi', 'con-name', ssid, 'ifname', 'wlan0', 'ssid', ssid, 'connection.autoconnect', 'yes', 'connection.autoconnect-priority', '1']
+      if (f.get('hidden') === '1') args.push('802-11-wireless.hidden', 'yes')
       if (psk) args.push('wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', psk)
       const r = await run('sudo', args)
-      return redirect(res, '/wifi', r.ok ? `Saved "${ssid}".` : `Could not save: ${r.err}`)
+      if (!r.ok) return redirect(res, '/wifi', `Could not save: ${r.err}`)
+      const names = saved.map(c => c.name)
+      await applyOrder(f.get('place') === 'first' ? [ssid, ...names] : [...names, ssid])
+      return redirect(res, '/wifi', `Saved "${ssid}" as your ${f.get('place') === 'first' ? 'first' : 'last'} choice.`)
     }
-    if (path === '/wifi/priority' && post) {
+    if (path === '/wifi/move' && post) {
       const f = await readForm(req)
-      const priority = parseInt(f.get('priority'), 10)
+      const names = (await savedWifi()).map(c => c.name)
+      const i = names.indexOf(f.get('name') || '')
+      const j = f.get('dir') === 'up' ? i - 1 : f.get('dir') === 'down' ? i + 1 : -1
+      if (i < 0 || j < 0 || j >= names.length) return redirect(res, '/wifi', 'Nothing changed.')
+      ;[names[i], names[j]] = [names[j], names[i]]
+      await applyOrder(names)
+      return redirect(res, '/wifi', `"${names[j]}" is now your ${ordinal(j + 1)} choice.`)
+    }
+    if (path === '/wifi/password' && post) {
+      const f = await readForm(req)
       const name = f.get('name') || ''
-      if (!(await savedWifi()).some(c => c.name === name) || !Number.isInteger(priority) || priority < -999 || priority > 999) return redirect(res, '/wifi', 'Nothing changed.')
-      const r = await run('sudo', ['-n', 'nmcli', 'con', 'mod', 'id', name, 'connection.autoconnect-priority', String(priority)])
-      return redirect(res, '/wifi', r.ok ? 'Priority saved.' : `Could not save: ${r.err}`)
+      const psk = f.get('psk') || ''
+      if (!(await savedWifi()).some(c => c.name === name)) return redirect(res, '/wifi', 'No such saved network.')
+      if (psk.length < 8 || psk.length > 63 || /[\r\n\0]/.test(psk)) return redirect(res, '/wifi', 'A WPA password is 8 to 63 characters.')
+      const r = await run('sudo', ['-n', 'nmcli', 'con', 'mod', 'id', name, 'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', psk])
+      return redirect(res, '/wifi', r.ok ? `Password saved for "${name}".` : `Could not save: ${r.err}`)
+    }
+    if (path === '/wifi/connect' && post) {
+      const name = (await readForm(req)).get('name') || ''
+      if (!(await savedWifi()).some(c => c.name === name)) return redirect(res, '/wifi', 'No such saved network.')
+      // Switching networks cuts this very connection when it runs over Wi-Fi, so do it just after replying.
+      setTimeout(() => execFile('sudo', ['-n', 'nmcli', 'con', 'up', 'id', name], { timeout: 45000 }, () => {}), 600)
+      return redirect(res, '/wifi', `Connecting to "${name}"… if this page stops answering, reconnect to that network and reload.`)
     }
     if (path === '/wifi/delete' && post) {
       const name = (await readForm(req)).get('name') || ''
       if (!(await savedWifi()).some(c => c.name === name)) return redirect(res, '/wifi', 'No such saved network.')
       if ((await activeNames()).includes(name)) return redirect(res, '/wifi', 'You are connected through that network, so it is not deleted.')
       const r = await run('sudo', ['-n', 'nmcli', 'con', 'delete', 'id', name])
+      if (r.ok) await applyOrder((await savedWifi()).map(c => c.name))
       return redirect(res, '/wifi', r.ok ? `Deleted "${name}".` : `Could not delete: ${r.err}`)
     }
     if (path === '/logs' && !post) return send(res, 200, await logsPage(url))
