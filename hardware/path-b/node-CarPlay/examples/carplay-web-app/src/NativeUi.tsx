@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react'
 import './native.css'
-import { FocusId, Panel, PowerAction, UiState } from './nav'
+import { FocusId, Panel, PowerAction, settingsPage, UiState } from './nav'
 import { PowerNotice } from './useHeadUnit'
 import { SystemStats } from './useSystemStats'
 
@@ -10,7 +10,9 @@ const WARM_C = 70
 
 export interface NativeUiProps {
   ui: UiState
-  streaming: boolean
+  streaming: boolean // CarPlay's video is what is on the glass
+  phone: boolean // the phone is connected (whether or not CarPlay is shown)
+  autoRun: boolean // setting: run CarPlay as soon as the phone connects
   dongle: boolean | null // null until the first USB check
   linkStatus: string | null // the app's status line, e.g. "Scanning for phone…"
   stats: SystemStats | null
@@ -94,9 +96,9 @@ const Rail = ({ panel, focus }: { panel: Panel; focus: FocusId }) => (
   </div>
 )
 
-const Waiting = ({ dongle, linkStatus, streaming }: Pick<NativeUiProps, 'dongle' | 'linkStatus' | 'streaming'>) => {
+const Waiting = ({ dongle, linkStatus, phone }: Pick<NativeUiProps, 'dongle' | 'linkStatus' | 'phone'>) => {
   const [stuck, setStuck] = useState(false)
-  const armed = dongle === true && !streaming
+  const armed = dongle === true && !phone
   useEffect(() => {
     setStuck(false)
     if (!armed) return
@@ -110,17 +112,22 @@ const Waiting = ({ dongle, linkStatus, streaming }: Pick<NativeUiProps, 'dongle'
       : dongle === false
         ? { cls: 'now', mark: '!', state: 'Not found' }
         : { cls: 'now', mark: '…', state: 'Looking' }
-  const phoneStep = dongle === true ? { cls: 'now', mark: '…', state: 'Searching' } : { cls: 'todo', mark: '2', state: 'Waiting' }
+  const phoneStep = phone
+    ? { cls: 'done', mark: '✓', state: 'Connected' }
+    : dongle === true
+      ? { cls: 'now', mark: '…', state: 'Searching' }
+      : { cls: 'todo', mark: '2', state: 'Waiting' }
+  const videoStep = phone ? { cls: 'now', mark: '…', state: 'Ready' } : { cls: 'todo', mark: '3', state: 'Waiting' }
 
   return (
     <div className="content wait">
-      <h2>Waiting for your phone</h2>
-      <p className="sub">CarPlay will open by itself once it connects.</p>
+      <h2>{phone ? 'Phone connected' : 'Waiting for your phone'}</h2>
+      {phone && <p className="sub">Press the knob on CarPlay to open it.</p>}
       <div className="steps">
         {[
           { name: 'Dongle', ...dongleStep },
           { name: 'Phone Bluetooth', ...phoneStep },
-          { name: 'CarPlay video', cls: 'todo', mark: '3', state: 'Waiting' },
+          { name: 'CarPlay video', ...videoStep },
         ].map(s => (
           <div className={`step ${s.cls}`} key={s.name}>
             <span className="mark">{s.mark}</span>
@@ -155,7 +162,15 @@ const PowerButton = ({ action, label, holding, focus }: { action: PowerAction; l
   </div>
 )
 
-const Settings = ({ stats, holding, focus, lastKey, streaming, streamLabel }: Pick<NativeUiProps, 'stats' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel'> & { focus: FocusId }) => {
+const Pager = ({ page }: { page: 1 | 2 }) => (
+  <div className="pager">
+    {page === 1 ? 'Page 1 of 2 · turn the knob → for options' : 'Page 2 of 2 · turn the knob ← for status'}
+  </div>
+)
+
+const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, autoRun }: Pick<NativeUiProps, 'ui' | 'stats' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'autoRun'>) => {
+  const focus = ui.focus
+  const page = settingsPage(ui)
   const t = stats?.cpuTempC ?? null
   const tempTone = t === null ? 'off' : t >= THROTTLE_C ? 'bad' : t >= WARM_C ? 'warn' : 'ok'
   const tempTag = t === null ? '--' : t >= THROTTLE_C ? 'HOT' : t >= WARM_C ? 'WARM' : 'NORMAL'
@@ -171,6 +186,26 @@ const Settings = ({ stats, holding, focus, lastKey, streaming, streamLabel }: Pi
           ? ['SOFTWARE', 'bad'] // streaming but nothing holds /dev/video10
           : ['Idle', 'off']
   const mem = stats?.memUsedMb != null && stats.memTotalMb != null ? `${(stats.memUsedMb / 1024).toFixed(1)} / ${(stats.memTotalMb / 1024).toFixed(1)} GB` : '--'
+
+  if (page === 2) {
+    return (
+      <div className="content">
+        <div className="card opts">
+          <h3>Options</h3>
+          <div className={`optrow f${focusClass(focus, 'autoRun')}`}>
+            <span className="box">{autoRun ? '✓' : ''}</span>
+            <span className="lbl">Automatically run CarPlay when the car starts</span>
+            <span className="st">{autoRun ? 'ON' : 'OFF'}</span>
+          </div>
+        </div>
+        <div className="power">
+          <PowerButton action="restart" label="Restart" holding={holding} focus={focus} />
+          <PowerButton action="shutdown" label="Shut down" holding={holding} focus={focus} />
+        </div>
+        <Pager page={2} />
+      </div>
+    )
+  }
 
   return (
     <div className="content">
@@ -213,11 +248,8 @@ const Settings = ({ stats, holding, focus, lastKey, streaming, streamLabel }: Pi
           <Row k="Overlay disk" v={stats ? (stats.overlayRoot ? 'ON · temp' : 'OFF · saved') : '--'} tone={stats?.overlayRoot ? 'warn' : ''} />
           <Row k="/persist free" v={fmt(stats?.persistFreeGb ?? null, ' GB')} />
         </div>
-        <div className="power">
-          <PowerButton action="restart" label="Restart" holding={holding} focus={focus} />
-          <PowerButton action="shutdown" label="Shut down" holding={holding} focus={focus} />
-        </div>
       </div>
+      <Pager page={1} />
     </div>
   )
 }
@@ -269,7 +301,7 @@ const PowerScreen = ({ power }: { power: PowerNotice }) => {
 }
 
 export const NativeUi = (props: NativeUiProps) => {
-  const { ui, streaming, dongle, linkStatus, stats, holding, power, lastKey, streamLabel } = props
+  const { ui, streaming, phone, autoRun, dongle, linkStatus, stats, holding, power, lastKey, streamLabel } = props
   const clock = useClock()
   const pagesUp = !(ui.panel === 'carplay' && streaming) // the switcher alone dims the video instead
   const title = ui.panel === 'settings' ? 'Settings' : 'CarPlay'
@@ -285,9 +317,9 @@ export const NativeUi = (props: NativeUiProps) => {
                 <i />
                 Dongle
               </span>
-              <span className={`pill ${streaming ? 'ok' : 'off'}`}>
+              <span className={`pill ${phone ? 'ok' : 'off'}`}>
                 <i />
-                {streaming ? <>Phone <b>connected</b></> : 'Phone'}
+                {phone ? <>Phone <b>connected</b></> : 'Phone'}
               </span>
               <span className={`pill ${stats?.mitmLinked ? 'ok' : 'off'}`}>
                 <i />
@@ -297,9 +329,9 @@ export const NativeUi = (props: NativeUiProps) => {
             </div>
             <Rail panel={ui.panel} focus={ui.focus} />
             {ui.panel === 'settings' ? (
-              <Settings stats={stats} holding={holding} focus={ui.focus} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} />
+              <Settings ui={ui} stats={stats} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} autoRun={autoRun} />
             ) : (
-              <Waiting dongle={dongle} linkStatus={linkStatus} streaming={streaming} />
+              <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
             )}
           </div>
         </div>

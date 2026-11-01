@@ -2,11 +2,14 @@
 // only listens on 127.0.0.1. No npm deps.
 //
 //   GET  /api/stats[?full=1]   Pi health numbers. `full` adds the /proc fd scan for the video decoder.
+//   GET  /api/settings         the user's saved settings (defaults filled in)
+//   POST /api/settings         {"autoRunCarplay":bool,...} merged into the saved file -- needs the x-s660-ui header
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
 //
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
 'use strict'
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const { execFile } = require('child_process')
 
@@ -162,6 +165,35 @@ const readBody = (req, limit = 1024) =>
     req.on('error', reject)
   })
 
+// User settings, kept on /persist so they outlive the overlay (BUILD_NOTES §31). /persist/ui is made
+// and chowned by s660-persist-layout.service. Off the Pi (npm start, a Mac) it falls back to the home dir.
+const SETTINGS_FILE =
+  process.env.S660_SETTINGS_FILE ||
+  (fs.existsSync('/persist/ui') ? '/persist/ui/settings.json' : path.join(os.homedir(), '.s660-ui-settings.json'))
+const SETTING_DEFAULTS = { autoRunCarplay: true }
+
+const readSettings = () => {
+  try {
+    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
+    const known = Object.keys(SETTING_DEFAULTS).filter(k => typeof saved[k] === typeof SETTING_DEFAULTS[k])
+    return { ...SETTING_DEFAULTS, ...Object.fromEntries(known.map(k => [k, saved[k]])) }
+  } catch {
+    return { ...SETTING_DEFAULTS }
+  }
+}
+
+// Only known keys of the right type are accepted; anything else is a 400, not a silent drop.
+const writeSettings = patch => {
+  for (const [k, v] of Object.entries(patch)) {
+    if (!(k in SETTING_DEFAULTS) || typeof v !== typeof SETTING_DEFAULTS[k]) throw new Error(`bad setting: ${k}`)
+  }
+  const next = { ...readSettings(), ...patch }
+  const tmp = `${SETTINGS_FILE}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2))
+  fs.renameSync(tmp, SETTINGS_FILE)
+  return next
+}
+
 // Returns true when it handled the request.
 const handle = (req, res) => {
   const [url, query = ''] = (req.url || '').split('?')
@@ -179,6 +211,32 @@ const handle = (req, res) => {
       body => sendJson(res, 200, body),
       err => sendJson(res, 500, { error: String(err.message || err) }),
     )
+    return true
+  }
+
+  if (url === '/api/settings' && req.method === 'GET') {
+    sendJson(res, 200, readSettings())
+    return true
+  }
+
+  if (url === '/api/settings' && req.method === 'POST') {
+    if (req.headers['x-s660-ui'] !== '1') {
+      sendJson(res, 403, { error: 'missing x-s660-ui header' })
+      return true
+    }
+    readBody(req)
+      .then(body => {
+        let patch
+        try {
+          patch = JSON.parse(body || '{}')
+          sendJson(res, 200, writeSettings(patch))
+        } catch (err) {
+          sendJson(res, err instanceof SyntaxError || String(err.message).startsWith('bad setting') ? 400 : 500, {
+            error: String(err.message || err),
+          })
+        }
+      })
+      .catch(err => sendJson(res, 400, { error: String(err.message || err) }))
     return true
   }
 

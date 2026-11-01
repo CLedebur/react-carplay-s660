@@ -20,6 +20,7 @@ import { useControls } from './useControls'
 import { carplayCommandsFor, ControlHandler } from './controls'
 import { NativeUi } from './NativeUi'
 import { useHeadUnit } from './useHeadUnit'
+import { useSettings } from './useSettings'
 import { useSystemStats } from './useSystemStats'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
 
@@ -332,21 +333,27 @@ function App() {
 
   // Physical controls (OPERA MITM). The native head-unit UI (nav.ts) gets first call at every
   // control; what it does not use is forwarded to CarPlay, and only while CarPlay is streaming.
-  const headUnit = useHeadUnit(isPlugged)
+  const { settings, update: updateSettings } = useSettings()
+  const headUnit = useHeadUnit({
+    plugged: isPlugged,
+    autoRun: settings.autoRunCarplay,
+    setAutoRun: value => updateSettings({ autoRunCarplay: value }),
+  })
+  const onHeadUnitControl = headUnit.onControl
   const onControl: ControlHandler = useCallback(
     event => {
-      const forCarplay = headUnit.onControl(event)
+      const forCarplay = onHeadUnitControl(event)
       if (!forCarplay || !isPlugged) return
       for (const command of carplayCommandsFor(forCarplay)) {
         carplayWorker.postMessage({ type: 'key', payload: { command } })
       }
     },
-    [carplayWorker, headUnit.onControl, isPlugged],
+    [carplayWorker, onHeadUnitControl, isPlugged],
   )
   useControls(onControl)
 
   // Poll the Pi only while a native page is up: the stream gets every CPU cycle it can.
-  const nativeShowing = !(headUnit.ui.panel === 'carplay' && isPlugged)
+  const nativeShowing = !(headUnit.ui.panel === 'carplay' && headUnit.carplayShown)
   const settingsOpen = nativeShowing && headUnit.ui.panel === 'settings'
   const stats = useSystemStats(nativeShowing ? (settingsOpen ? 2000 : 10000) : null, settingsOpen)
 
@@ -360,7 +367,9 @@ function App() {
     >
       <NativeUi
         ui={headUnit.ui}
-        streaming={isPlugged}
+        streaming={headUnit.carplayShown}
+        phone={isPlugged}
+        autoRun={settings.autoRunCarplay}
         dongle={deviceFound === null ? null : !!deviceFound}
         linkStatus={status?.text ?? null}
         stats={stats}

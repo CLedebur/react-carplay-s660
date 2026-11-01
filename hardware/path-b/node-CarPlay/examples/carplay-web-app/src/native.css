@@ -73,7 +73,7 @@
 .nui .hint b { color: var(--warn); }
 
 /* settings */
-.nui .set { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 62px; gap: 10px; height: 100%; }
+.nui .set { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; align-content: start; gap: 10px; }
 .nui .card { border: 2px solid var(--line); padding: 6px 12px 8px; }
 .nui .card h3 { font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
 .nui .row { display: flex; align-items: baseline; justify-content: space-between; font-size: 19px; line-height: 27px; font-weight: 600; white-space: nowrap; }
@@ -89,7 +89,14 @@
 .nui .bar > div { position: absolute; inset: 0 auto 0 0; background: #fff; }
 .nui .bar .tick { position: absolute; top: -6px; bottom: -6px; width: 3px; background: var(--warn); }
 .nui .scale { display: flex; justify-content: space-between; font-size: 15px; color: var(--dim); font-weight: 600; margin: -2px 0 4px; }
-.nui .power { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nui .power { position: absolute; left: 14px; right: 14px; bottom: 44px; height: 62px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nui .pager { position: absolute; left: 14px; right: 14px; bottom: 8px; text-align: center; font-size: 17px; font-weight: 700; color: var(--dim); }
+
+/* settings page 2 */
+.nui .optrow { display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 12px 14px; border: 3px solid #fff; font-size: 24px; font-weight: 800; line-height: 1.15; }
+.nui .optrow .box { flex: none; width: 44px; height: 44px; border: 4px solid currentColor; display: grid; place-items: center; font-size: 36px; line-height: 1; }
+.nui .optrow .lbl { flex: 1; }
+.nui .optrow .st { flex: none; font-size: 22px; min-width: 56px; text-align: right; }
 .nui .btn { border: 3px solid #fff; font-size: 24px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 12px; position: relative; overflow: hidden; }
 .nui .btn .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--bad); z-index: 0; transition: width 0.15s; }
 .nui .btn.holding .fill { width: 100%; transition: width 1.5s linear; } /* keep in step with POWER_HOLD_MS */

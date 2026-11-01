@@ -29,9 +29,17 @@ export interface PowerNotice {
   error?: string
 }
 
+export interface HeadUnitOptions {
+  plugged: boolean // the phone is connected and CarPlay is streaming
+  autoRun: boolean // setting: show CarPlay full screen as soon as the phone connects
+  setAutoRun: (value: boolean) => void
+}
+
 // The native UI's state and its share of the physical controls. `onControl` takes every control
 // event and returns the one CarPlay should receive, or null when the native UI used it.
-export const useHeadUnit = (streaming: boolean) => {
+// `carplayShown` is whether CarPlay's video is what is on the glass: the phone is connected and
+// either the setting says to run it automatically or the user has asked for it this connection.
+export const useHeadUnit = ({ plugged, autoRun, setAutoRun }: HeadUnitOptions) => {
   const [ui, setUiState] = useState<UiState>(initialUi)
   const uiRef = useRef(ui)
   const setUi = useCallback((next: UiState) => {
@@ -39,8 +47,17 @@ export const useHeadUnit = (streaming: boolean) => {
     setUiState(next)
   }, [])
 
-  const streamingRef = useRef(streaming)
-  streamingRef.current = streaming
+  const [asked, setAsked] = useState(false) // the user opened CarPlay since the phone last connected
+  useEffect(() => {
+    if (!plugged) setAsked(false)
+  }, [plugged])
+  const carplayShown = plugged && (autoRun || asked)
+  const shownRef = useRef(carplayShown)
+  shownRef.current = carplayShown
+  const autoRunRef = useRef(autoRun)
+  autoRunRef.current = autoRun
+  const setAutoRunRef = useRef(setAutoRun)
+  setAutoRunRef.current = setAutoRun
 
   const [holding, setHolding] = useState<PowerAction | null>(null)
   const [power, setPower] = useState<PowerNotice | null>(null)
@@ -91,7 +108,7 @@ export const useHeadUnit = (streaming: boolean) => {
     (event: ControlEvent): ControlEvent | null => {
       const { control, pressed, repeat } = event
       if (pressed && !repeat) setLastKey(CONTROL_LABEL[control])
-      const carplayView = isCarplayView(uiRef.current, streamingRef.current)
+      const carplayView = isCarplayView(uiRef.current, shownRef.current)
 
       if (control === 'mode') {
         if (repeat) return null
@@ -110,6 +127,7 @@ export const useHeadUnit = (streaming: boolean) => {
         if (modeWasHeld.current) return null
         if (carplayView) return event // a tap is CarPlay's Home
         setUi(openPanel('carplay')) // a tap anywhere else goes back to CarPlay
+        setAsked(true)
         return null
       }
 
@@ -128,11 +146,13 @@ export const useHeadUnit = (streaming: boolean) => {
       if (repeat) return null
       const result = nativeKey(uiRef.current, control)
       if (result.ui !== uiRef.current) setUi(result.ui)
+      if (result.opensCarplay) setAsked(true)
+      if (result.toggle === 'autoRun') setAutoRunRef.current(!autoRunRef.current)
       if (result.hold) beginHold(result.hold)
       return null
     },
     [beginHold, cancelHold, setUi],
   )
 
-  return { ui, holding, power, lastKey, onControl }
+  return { ui, carplayShown, holding, power, lastKey, onControl }
 }

@@ -11,7 +11,9 @@ Before=var-log-journal.mount var-lib-systemd-timesync.mount
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/mkdir -p /persist/journal /persist/timesync
+ExecStart=/bin/mkdir -p /persist/journal /persist/timesync /persist/ui
+# /persist/ui holds the native UI's settings file, written by the kiosk user (path-b/s660-api.js)
+ExecStart=/bin/chown s660:s660 /persist/ui
 
 [Install]
 WantedBy=local-fs.target
