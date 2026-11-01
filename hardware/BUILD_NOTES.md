@@ -2420,42 +2420,66 @@ guarantee. It cannot share `PI_MOSI`/`PI_MISO` on J103: when the ATtiny is not h
 reset, `PI_MISO` is driven by its `LED3_DRV` output. It needs SPI1, or its own pins from
 the TOFU's 40-pin header.
 
-**The adapter.** It is a **Makerbase MKS CANable V2.0 Pro**, the *isolated* variant. Its
-terminal GND is **not** connected to the USB ground, so a continuity test from the GND
-terminal to the USB shell will not beep. The 3-pin screw terminal is unmarked. This order
-was confirmed from the board's diagram:
+**The adapter.** It is a generic **"CANable 2.0 Pro"** with a USB-A plug, sold by Shenzhen
+Yakaibao. It is **not** a Makerbase board, which an earlier version of this section said.
+STM32G431CBU6, a BOOT button, a 2-pin 120R jumper. It runs the stock upstream `canable2` slcan
+firmware (`16e7497-dirty`, USB product string `CANable2 b158aa7`), and appears as
+`/dev/ttyACMn` (`16d0:117e`), not `can0`. **Isolation is unconfirmed.** The seller's photo says
+"Isolated", and the board has what looks like an isolated DC-DC module and an isolated
+transceiver, but the bundled manual (a generic template) says "non-isolated" twice. Check it:
+adapter unplugged, continuity from the GND terminal to the USB plug shell. A beep means
+non-isolated.
+
+**Terminal order (corrected 2026-11-01).** The silkscreen next to the terminal reads CAN-H,
+CAN-L, GND, with the 120R jumper beside GND. The order recorded here on 2026-10-18 was wrong.
 
 | Terminal position | Signal | OBD-II pin (discovery tap) |
 |---|---|---|
-| 1 — nearest the termination jumper | **CAN-L** | 14 |
-| 2 — middle | **CAN-H** | 6 |
-| 3 — far end | **GND** | 5 (signal ground) |
+| 1 — farthest from the 120R jumper | **CAN-H** | 6 |
+| 2 — middle | **CAN-L** | 14 |
+| 3 — beside the 120R jumper | **GND** | 5 (signal ground) |
 
 Leave OBD-II pin 16 (+12 V) unconnected.
 
+**The stock firmware cannot listen silently (found 2026-11-01).** Its `M1` (silent) command
+is accepted, but `O` (open) then hard-codes normal mode. So the adapter always ACKs, and at a
+wrong bit rate it sends error frames onto the car's bus. Do not connect the stock firmware to
+the car. The fix is the patched firmware in
+[`hardware/can/canable2-fw/`](can/canable2-fw/README.md): silent from power-up, `M0` needed to
+transmit, and an `m` query that reads the FDCAN's own `CCCR.MON` bit. The stock firmware was
+backed up first (`canable2-original-full.bin`, 128 KiB, sha256 `9a15689e…`).
+
+**Flashed and bench-verified (2026-11-01), nothing on the screw terminal.** USB product string
+`CANable2 b158aa7-s660.1 github.com/CLedebur/react-carplay-s660`. Command → reply:
+`V` → `b158aa7-s660.1 …`; `m` at power-up → `M1`; `S6`, `O`, `m` → `M1` (read from
+`CCCR.MON` while open); `t1230` while silent → refused, error register still 0;
+`C`, `M00000000`, `m` → `M1` (the filter command is ignored); `M0`, `O`, `m` → `M0`; `C`, `M1`,
+`m` → `M1`. Normal mode is now selectable and silent is now real. Before the patch, both opened
+as normal.
+
 **Rules for using it in the car**
-- **Termination jumper OFF.** The car's bus already has its own 120 Ω termination. This
-  adapter taps the middle of it.
-- **Always bring the interface up with `listen-only on`.** Then the adapter never transmits,
-  not even ACK bits. A wrong bit rate or reversed H/L wires just show no traffic, and they
-  cannot put error frames on a bus the car's ECUs depend on.
+- **120R jumper OFF.** The car's bus already has its own 120 Ω termination. This adapter taps
+  the middle of it.
+- **Only the s660 firmware, and check `m` replies `M1` before the OBD-II plug goes in.**
+- Name it by `/dev/serial/by-id/`, never `ttyACMn`. The OPERA MITM Pico is also a `ttyACM`
+  device, and the numbers can swap at boot (the Pico's console-echo hazard).
+- Do not use `slcand -l`. It sends LAWICEL `L`, which this firmware does not implement. Silent
+  is already the default.
 - Overlay FS is on (§29). Anything installed with `apt` (`can-utils`) is gone at the next
   power-off unless the overlay is turned off first.
 
-**Bring-up**
+**Bring-up (s660 firmware)**
 
 ```bash
-ip -details link show can0          # can0 present = candleLight (gs_usb) firmware
-sudo ip link set can0 type can bitrate 500000 listen-only on
+sudo slcand -o -s6 /dev/serial/by-id/usb-*CANable2*-if00 can0   # -s6 = 500 kbit/s
 sudo ip link set can0 up
 candump -cae can0
 ```
 
-If there is no `can0` but a `/dev/ttyACM0` appears, the adapter has slcan firmware instead.
-No traffic: check the wiring against the table first, then try `bitrate 250000`, then
-`125000`. Honda may put a gateway between the OBD-II port and the car's internal buses, so
-the port may show only some of the traffic. Finding out where reverse and lights appear is
-part of this step.
+No traffic: check the wiring against the table first, then try `-s5` (250k), then `-s4` (125k).
+With the silent firmware a wrong bit rate only shows nothing on our side. Honda may put a
+gateway between the OBD-II port and the car's internal buses, so the port may show only some of
+the traffic. ACTY typeR saw all the IDs in `references/S660-CAN-bus.md` there.
 
 ## 35. 2026-10-24 — Buddy Board rev B (`s660-pdb-mitm`): bench test
 
