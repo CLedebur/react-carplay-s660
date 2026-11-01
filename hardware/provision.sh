@@ -372,6 +372,8 @@ sed -e "s/^User=s660$/User=${CARPLAY_USER}/" \
 sudo install -m 755 "${PB}/s660-uplink" /usr/local/sbin/s660-uplink
 sudo install -m 644 "${PB}/s660-uplink.service" /etc/systemd/system/s660-uplink.service
 sudo install -m 644 "${PB}/s660-uplink.timer" /etc/systemd/system/s660-uplink.timer
+# Keep the Wi-Fi passwords the web interface passes to nmcli out of the system log (BUILD_NOTES §38.7).
+sudo visudo -cf "${PB}/sudoers-s660-nmcli" && sudo install -m 440 "${PB}/sudoers-s660-nmcli" /etc/sudoers.d/s660-nmcli
 sudo systemctl daemon-reload
 sudo systemctl enable carplay.service
 sudo systemctl enable s660-uplink.timer

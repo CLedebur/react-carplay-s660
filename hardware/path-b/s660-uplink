@@ -12,7 +12,8 @@ RETRY_AFTER=90 # after a failed attempt, leave the phone alone this long
 
 wifi_up() { nmcli -t -f TYPE,STATE dev | grep -q '^wifi:connected'; }
 bt_up() { nmcli -t -f TYPE,STATE dev | grep -q '^bt:connected'; }
-bt_profile() { nmcli -t -f NAME,TYPE con show | awk -F: '$2 == "bluetooth" { print $1; exit }'; }
+# TYPE first: a profile name may contain an escaped colon, so it is everything after the first one.
+bt_profile() { nmcli -t -f TYPE,NAME con show | sed -n 's/^bluetooth://p' | sed 's/\\:/:/g' | head -n1; }
 
 wifi_down_for=0
 wifi_up_for=0

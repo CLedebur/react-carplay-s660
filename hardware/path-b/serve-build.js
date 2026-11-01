@@ -36,9 +36,11 @@ http.createServer((req, res) => {
 
   if (api.handle(req, res)) return; // /api/* for the native Settings panel
 
-  const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  let urlPath;
+  try { urlPath = decodeURIComponent((req.url || '/').split('?')[0]); }
+  catch (e) { res.writeHead(400); return res.end('bad request'); } // a stray '%' must not kill the kiosk's server
   let fp = path.normalize(path.join(ROOT, urlPath));
-  if (!fp.startsWith(ROOT)) { res.writeHead(403); return res.end('forbidden'); } // no traversal
+  if (fp !== ROOT && !fp.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end('forbidden'); } // no traversal
 
   fs.stat(fp, (err, st) => {
     if (!err && st.isDirectory()) fp = path.join(fp, 'index.html');

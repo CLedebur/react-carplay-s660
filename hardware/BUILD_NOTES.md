@@ -2795,3 +2795,28 @@ CarPlay streams. **Not yet tested:** idle times beyond 30 minutes, and a full dr
 
 Not yet tested: the new UI in the car, idle times beyond 30 minutes, LHD, 60 fps and the 2.4 GHz option
 with a phone, and a fresh `provision.sh` run.
+
+### 38.7 Security review of the web interface (2026-11-01)
+
+An independent read of `web-admin.js`, `s660-api.js`, `s660-uplink` and `serve-build.js` (threat model: someone on
+the same Wi-Fi while the interface is on, a hostile web page, a leaked PIN). **No PIN bypass, no argument
+injection into `sudo nmcli`, no XSS.** What it found, and what was done:
+
+| Finding | Action |
+|---|---|
+| **Wi-Fi passwords in the journal.** `sudo` logs every allowed command line; the `nmcli ... wifi-sec.psk <password>` lines landed in the persistent journal under `carplay.service`, which the Logs page shows. Reproduced on the Pi with the throwaway test profiles. | `sudoers-s660-nmcli` (`Defaults!/usr/bin/nmcli !log_allowed`, installed by `provision.sh`); the Logs page also redacts any `psk`. **The three dummy test passwords already in the journal stay there; they are not real.** |
+| Plain HTTP: a sniffer sees the PIN and the cookie. | The PIN is now **single use** (a new one is made after every login) and a session only works from the address that logged in. TLS is not added: keep the interface on a network you trust, and it stays off by default and expires in 30 minutes. |
+| Error text containing the password could reach the URL and browser history. | Fixed messages only; no command output goes into a redirect or an error page. |
+| `GET /%` killed the kiosk's static server (`decodeURIComponent` threw). | Returns 400. |
+| The traversal guard had no trailing separator. | Compares against `ROOT + path.sep`. |
+| No connection or timeout limits on port 8080. | `maxConnections` 20, 10 s headers, 15 s request, 2 s keep-alive. |
+| The `nmcli -t` parser mishandled a trailing backslash; `s660-uplink` broke on a profile name with a colon. | One-pass parser; the uplink script reads the type first. |
+| A Wi-Fi profile could take the Bluetooth profile's name. | The add form refuses any name already used by any connection; the API now uses `con up id`. |
+| A login in flight when the interface is switched off could leave a session. | Checked again before the session is made. |
+
+Accepted, not changed: the lockout counter is global (anyone on the LAN can force the interface off with 15 wrong
+PINs; guessing odds stay about 1.5e-5 per enable); `GET /api/webadmin` returns the PIN to any script on the
+unit's own origin (the CarPlay app renders no phone-supplied HTML); no Host-header allowlist on port 8080.
+**Open recommendation:** `s660` has `NOPASSWD: ALL` (the Pi OS default). Anything that runs code as `s660`
+(the kiosk, the web interface) is therefore root. A sudoers file allowing only `nmcli` and `systemctl
+reboot|poweroff|restart carplay.service` would shrink that; not done yet.

@@ -153,8 +153,17 @@ const stats = async full => ({
 const run = (cmd, args, timeout = 3000) =>
   new Promise(resolve => execFile(cmd, args, { timeout }, (err, out) => resolve(err ? null : out)))
 
-// nmcli -t separates fields with ':' and escapes literal ones (a Bluetooth address) as '\:'.
-const nmFields = line => line.split(/(?<!\\):/).map(f => f.replace(/\\:/g, ':').replace(/\\\\/g, '\\'))
+// nmcli -t separates fields with ':' and escapes a literal ':' or '\\' with a backslash. Walk the line once so a
+// trailing backslash in a network name cannot swallow the separator after it.
+const nmFields = line => {
+  const fields = ['']
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\' && i + 1 < line.length) fields[fields.length - 1] += line[++i]
+    else if (line[i] === ':') fields.push('')
+    else fields[fields.length - 1] += line[i]
+  }
+  return fields
+}
 const nmRows = out => (out || '').split('\n').filter(Boolean).map(nmFields)
 
 const LINK_TYPES = { wifi: 'wifi', bt: 'bluetooth', ethernet: 'ethernet' }
@@ -223,7 +232,7 @@ const connectBluetooth = async () => {
   const profile = (await savedConnections()).find(c => c.type === 'bluetooth')
   if (!profile) throw new Error('no phone is set up for Bluetooth tethering yet')
   await new Promise((resolve, reject) =>
-    execFile('sudo', ['-n', 'nmcli', 'con', 'up', profile.name], { timeout: 30000 }, err =>
+    execFile('sudo', ['-n', 'nmcli', 'con', 'up', 'id', profile.name], { timeout: 30000 }, err =>
       err ? reject(new Error('could not connect through the phone (is Personal Hotspot on?)')) : resolve(),
     ),
   )
@@ -291,7 +300,7 @@ const writeSettings = patch => {
 }
 
 // The built-in web interface (web-admin.js): off until the unit's own screen turns it on.
-const webAdmin = createWebAdmin({ stats, network, readSettings, writeSettings, SETTINGS })
+const webAdmin = createWebAdmin({ stats, network, readSettings, writeSettings, SETTINGS, nmRows })
 
 // Returns true when it handled the request.
 const handle = (req, res) => {

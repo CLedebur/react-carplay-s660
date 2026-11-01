@@ -39,13 +39,6 @@ const run = (cmd, args, timeout = 8000) =>
     ),
   )
 
-// nmcli -t separates fields with ':' and escapes literal ones as '\:'.
-const nmRows = out =>
-  (out || '')
-    .split('\n')
-    .filter(Boolean)
-    .map(line => line.split(/(?<!\\):/).map(f => f.replace(/\\:/g, ':').replace(/\\\\/g, '\\')))
-
 const CSS = `
 :root{color-scheme:dark light;--bg:#000;--fg:#fff;--dim:#b4b4b4;--line:#6e6e6e;--accent:#ffd400;--ok:#4dff88;--bad:#ff5252}
 @media (prefers-color-scheme:light){:root{--bg:#fff;--fg:#000;--dim:#444;--line:#888;--accent:#7a5c00;--ok:#087a2f;--bad:#b00020}}
@@ -102,12 +95,12 @@ const page = (title, body, { nav = true } = {}) => `<!doctype html><html lang="e
 <main>${body}</main><script>${CLIENT_JS}</script></body></html>`
 
 const createWebAdmin = deps => {
-  const { stats, network, readSettings, writeSettings, SETTINGS } = deps
+  const { stats, network, readSettings, writeSettings, SETTINGS, nmRows } = deps
   let server = null
   let pin = null
   let lastActivity = 0
   let idleTimer = null
-  const sessions = new Map() // token -> last seen
+  const sessions = new Map() // token -> { seen, ip }: a session only works from the address that logged in
   let badPins = 0
   let lockedUntil = 0
   let lockouts = 0
@@ -139,14 +132,21 @@ const createWebAdmin = deps => {
     lockouts = 0
   }
 
+  const newPin = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0')
+
   const enable = () => {
     if (server) return
-    pin = String(crypto.randomInt(0, 1000000)).padStart(6, '0')
+    pin = newPin()
     lastActivity = Date.now()
     server = http.createServer((req, res) => {
-      route(req, res).catch(err => send(res, 500, page('Error', `<h1>Something broke</h1><p class="bad">${esc(err.message)}</p>`)))
+      route(req, res).catch(err => send(res, 500, page('Error', `<h1>Something broke</h1><p class="bad">Please try again.</p>`)))
     })
     server.on('error', () => disable()) // e.g. the port is taken: stay off rather than half on
+    // One person on a phone needs a handful of connections; this stops a flood from starving the kiosk's own server.
+    server.maxConnections = 20
+    server.headersTimeout = 10 * 1000
+    server.requestTimeout = 15 * 1000
+    server.keepAliveTimeout = 2 * 1000
     server.listen(PORT, '0.0.0.0')
     idleTimer = setInterval(() => {
       if (Date.now() - lastActivity > IDLE_MS) disable()
@@ -178,11 +178,12 @@ const createWebAdmin = deps => {
       req.on('error', reject)
     })
   const cookieToken = req => (/(?:^|;\s*)s660s=([0-9a-f]+)/.exec(req.headers.cookie || '') || [])[1]
+  const clientIp = req => req.socket.remoteAddress
   const loggedIn = req => {
     const t = cookieToken(req)
-    const seen = t && sessions.get(t)
-    if (!seen || Date.now() - seen > IDLE_MS) return false
-    sessions.set(t, Date.now())
+    const session = t && sessions.get(t)
+    if (!session || Date.now() - session.seen > IDLE_MS || session.ip !== clientIp(req)) return false
+    session.seen = Date.now()
     lastActivity = Date.now()
     return true
   }
@@ -334,6 +335,8 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
   const logsPage = async url => {
     const which = LOG_UNITS[url.searchParams.get('unit')] ? url.searchParams.get('unit') : 'carplay'
     const out = await run('journalctl', ['-u', LOG_UNITS[which], '-n', '300', '--no-pager', '-o', 'short-iso'])
+    // sudo used to log whole nmcli command lines, Wi-Fi passwords included (sudoers-s660-nmcli stops that). Never show one.
+    if (out.ok) out.out = out.out.replace(/(wifi-sec\.psk\s+)\S+/g, '$1********').replace(/(psk[=:]\s*)\S+/gi, '$1********')
     const tabs = Object.keys(LOG_UNITS).map(k => (k === which ? `<b>${k}</b>` : `<a href="/logs?unit=${k}">${k}</a>`)).join(' · ')
     return page('Logs', `<h1>Logs</h1><p>${tabs}</p><pre>${esc(out.ok ? out.out : out.err || 'no output')}</pre>`)
   }
@@ -388,8 +391,10 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
       if (pinMatches(form.get('pin') || '')) {
         badPins = 0
         lockouts = 0
+        if (!server) return // switched off while this request was in flight
         const token = crypto.randomBytes(24).toString('hex')
-        sessions.set(token, Date.now())
+        sessions.set(token, { seen: Date.now(), ip: clientIp(req) })
+        pin = newPin() // single use: a PIN seen on the network is worthless once it has been used
         lastActivity = Date.now()
         return redirect(res, '/', null, { 'Set-Cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${IDLE_MS / 1000}` })
       }
@@ -416,7 +421,7 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
       try {
         writeSettings(patch)
       } catch (err) {
-        return redirect(res, '/settings', `Not saved: ${err.message}`)
+        return redirect(res, '/settings', 'Not saved: that value is not allowed.')
       }
       return redirect(res, '/settings', 'Saved.')
     }
@@ -432,12 +437,13 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
       if (!ssid || Buffer.byteLength(ssid) > 32 || ssid.startsWith('-') || /[\r\n\0]/.test(ssid)) return redirect(res, '/wifi', 'That network name is not valid.')
       if (psk && (psk.length < 8 || psk.length > 63 || /[\r\n\0]/.test(psk))) return redirect(res, '/wifi', 'A WPA password is 8 to 63 characters.')
       const saved = await savedWifi()
-      if (saved.some(c => c.name === ssid)) return redirect(res, '/wifi', 'That network is already saved. Use Change password on it, or delete it first.')
+      const allNames = nmRows((await run('nmcli', ['-t', '-f', 'NAME', 'con', 'show'])).out).map(r => r[0])
+      if (allNames.includes(ssid)) return redirect(res, '/wifi', 'A saved connection already has that name. Use Change password on it, or delete it first.')
       const args = ['-n', 'nmcli', 'con', 'add', 'type', 'wifi', 'con-name', ssid, 'ifname', 'wlan0', 'ssid', ssid, 'connection.autoconnect', 'yes', 'connection.autoconnect-priority', '1']
       if (f.get('hidden') === '1') args.push('802-11-wireless.hidden', 'yes')
       if (psk) args.push('wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', psk)
       const r = await run('sudo', args)
-      if (!r.ok) return redirect(res, '/wifi', `Could not save: ${r.err}`)
+      if (!r.ok) return redirect(res, '/wifi', 'Could not save that network.')
       const names = saved.map(c => c.name)
       await applyOrder(f.get('place') === 'first' ? [ssid, ...names] : [...names, ssid])
       return redirect(res, '/wifi', `Saved "${ssid}" as your ${f.get('place') === 'first' ? 'first' : 'last'} choice.`)
@@ -459,7 +465,7 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
       if (!(await savedWifi()).some(c => c.name === name)) return redirect(res, '/wifi', 'No such saved network.')
       if (psk.length < 8 || psk.length > 63 || /[\r\n\0]/.test(psk)) return redirect(res, '/wifi', 'A WPA password is 8 to 63 characters.')
       const r = await run('sudo', ['-n', 'nmcli', 'con', 'mod', 'id', name, 'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', psk])
-      return redirect(res, '/wifi', r.ok ? `Password saved for "${name}".` : `Could not save: ${r.err}`)
+      return redirect(res, '/wifi', r.ok ? `Password saved for "${name}".` : 'Could not save that password.')
     }
     if (path === '/wifi/connect' && post) {
       const name = (await readForm(req)).get('name') || ''
@@ -474,7 +480,7 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
       if ((await activeNames()).includes(name)) return redirect(res, '/wifi', 'You are connected through that network, so it is not deleted.')
       const r = await run('sudo', ['-n', 'nmcli', 'con', 'delete', 'id', name])
       if (r.ok) await applyOrder((await savedWifi()).map(c => c.name))
-      return redirect(res, '/wifi', r.ok ? `Deleted "${name}".` : `Could not delete: ${r.err}`)
+      return redirect(res, '/wifi', r.ok ? `Deleted "${name}".` : 'Could not delete that network.')
     }
     if (path === '/logs' && !post) return send(res, 200, await logsPage(url))
     if (path === '/diag' && !post) return send(res, 200, await diagPage())

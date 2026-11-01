@@ -1,0 +1,3 @@
+# Keep the Wi-Fi passwords that the web interface passes to nmcli out of the system log: by default sudo
+# writes every allowed command line, arguments included, into the journal (BUILD_NOTES §38.7).
+Defaults!/usr/bin/nmcli !log_allowed
