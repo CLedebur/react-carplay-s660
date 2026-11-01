@@ -22,12 +22,9 @@ export interface ControlEvent {
   repeat: boolean
 }
 
-// Which screen owns the controls. Only 'carplay' exists today; the native head-unit UI
-// (CAN-bus settings etc.) will be a second view in this same page, never a second tab —
-// the dongle's WebUSB grant is per-origin (BUILD_NOTES §28). Each view gets its own handler,
-// so the panel means "CarPlay knob" in one and "native menu knob" in the other.
-export type View = 'carplay' | 'native'
-
+// The native head-unit UI (nav.ts, NativeUi.tsx) is a second view in this same page, never a
+// second tab — the dongle's WebUSB grant is per-origin (BUILD_NOTES §28). While CarPlay is
+// streaming full screen the panel means "CarPlay knob"; otherwise it means "native menu knob".
 export type ControlHandler = (event: ControlEvent) => void
 
 // CarPlay's non-touch (rotary) model: Left/Right move the focus, Select is a press-and-release
@@ -49,7 +46,9 @@ export const carplayCommandsFor = ({
     case 'back':
       return pressed ? ['back'] : []
     case 'mode':
-      return pressed ? ['home'] : []
+      // On release, not press: holding Mode opens the panel switcher (nav.ts), so a tap can
+      // only be told from a hold once the button comes up.
+      return pressed ? [] : ['home']
     case 'phone':
       // Nudge the focus towards the CarPlay sidebar (recent apps, home). The S660 is right-hand
       // drive, so the sidebar is on the right. One nudge per press: inside an app that reaches

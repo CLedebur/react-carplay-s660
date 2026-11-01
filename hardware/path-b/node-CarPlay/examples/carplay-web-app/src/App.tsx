@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { RotatingLines } from 'react-loader-spinner'
 import './App.css'
 import {
   findDevice,
@@ -18,7 +17,10 @@ import { CarPlayWorker } from './worker/types'
 import useCarplayAudio from './useCarplayAudio'
 import { useCarplayTouch } from './useCarplayTouch'
 import { useControls } from './useControls'
-import { carplayCommandsFor, ControlHandler, View } from './controls'
+import { carplayCommandsFor, ControlHandler } from './controls'
+import { NativeUi } from './NativeUi'
+import { useHeadUnit } from './useHeadUnit'
+import { useSystemStats } from './useSystemStats'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
 
 // Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a
@@ -328,19 +330,25 @@ function App() {
 
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
 
-  // Physical controls (OPERA MITM). Only the CarPlay view exists so far; the native head-unit
-  // view will add its own handler here, and whatever switches views just changes `view`.
-  const [view] = useState<View>('carplay')
-  const carplayControls: ControlHandler = useCallback(
+  // Physical controls (OPERA MITM). The native head-unit UI (nav.ts) gets first call at every
+  // control; what it does not use is forwarded to CarPlay, and only while CarPlay is streaming.
+  const headUnit = useHeadUnit(isPlugged)
+  const onControl: ControlHandler = useCallback(
     event => {
-      if (!isPlugged) return
-      for (const command of carplayCommandsFor(event)) {
+      const forCarplay = headUnit.onControl(event)
+      if (!forCarplay || !isPlugged) return
+      for (const command of carplayCommandsFor(forCarplay)) {
         carplayWorker.postMessage({ type: 'key', payload: { command } })
       }
     },
-    [carplayWorker, isPlugged],
+    [carplayWorker, headUnit.onControl, isPlugged],
   )
-  useControls(view === 'carplay' ? carplayControls : null)
+  useControls(onControl)
+
+  // Poll the Pi only while a native page is up: the stream gets every CPU cycle it can.
+  const nativeShowing = !(headUnit.ui.panel === 'carplay' && isPlugged)
+  const settingsOpen = nativeShowing && headUnit.ui.panel === 'settings'
+  const stats = useSystemStats(nativeShowing ? (settingsOpen ? 2000 : 10000) : null, settingsOpen)
 
   const isLoading = !isPlugged
 
@@ -350,32 +358,17 @@ function App() {
       id={'main'}
       className="App"
     >
-      {isLoading && (
-        <div
-          style={{
-            position: 'absolute',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          {deviceFound === true && (
-            // S660 kiosk: small, dim "waiting for the phone" indicator near the bottom edge
-            // instead of a big grey spinner over the logo.
-            <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
-              <RotatingLines
-                strokeColor="#3a3a3a"
-                strokeWidth="4"
-                animationDuration="1"
-                width="28"
-                visible={true}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      <NativeUi
+        ui={headUnit.ui}
+        streaming={isPlugged}
+        dongle={deviceFound === null ? null : !!deviceFound}
+        linkStatus={status?.text ?? null}
+        stats={stats}
+        holding={headUnit.holding}
+        power={headUnit.power}
+        lastKey={headUnit.lastKey}
+        streamLabel={`${width}×${height} ${config.fps}`}
+      />
       <div
         id="videoContainer"
         onPointerDown={sendTouchEvent}

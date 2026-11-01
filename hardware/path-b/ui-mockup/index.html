@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S660 head unit – UI mockup</title>
+<style>
+  /* Design rules: pure black ground (the panel is only ~200-250 nits), white text, ONE focus
+     treatment (solid yellow block, black text), status never conveyed by colour alone, nothing
+     thinner than 2px, nothing smaller than 18px. No touch: every control is reachable by knob. */
+  :root {
+    --bg: #000;
+    --surface: #101010;
+    --line: #6e6e6e;
+    --text: #fff;
+    --dim: #b4b4b4;
+    --focus: #ffd400;
+    --ok: #4dff88;
+    --warn: #ff9f1a;
+    --bad: #ff5252;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: #1b1b1d; color: #ddd; min-height: 100vh;
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 20px 16px 40px; gap: 16px;
+  }
+  h1 { font-size: 15px; font-weight: 600; color: #aaa; letter-spacing: .04em; text-transform: uppercase; }
+
+  /* ---- the "glass" ---- */
+  #stage { transform-origin: top center; }
+  #device {
+    width: 720px; height: 480px; background: var(--bg); color: var(--text);
+    position: relative; overflow: hidden; outline: 6px solid #333; border-radius: 4px;
+    transform-origin: top center; user-select: none;
+  }
+  #device.stretch { transform: scaleX(1.25); }
+
+  /* ---- chrome: status strip + rail ---- */
+  .chrome { position: absolute; inset: 0; display: none; }
+  .chrome.on { display: block; }
+  .strip {
+    position: absolute; left: 0; right: 0; top: 0; height: 48px; border-bottom: 2px solid var(--line);
+    display: flex; align-items: center; gap: 10px; padding: 0 14px 0 122px; font-size: 20px; font-weight: 700;
+  }
+  .strip .title { margin-right: auto; font-size: 24px; }
+  .pill { display: flex; align-items: center; gap: 6px; padding: 3px 10px; border: 2px solid var(--line); border-radius: 20px; font-size: 17px; font-weight: 700; }
+  .pill i { width: 12px; height: 12px; border-radius: 50%; background: currentColor; display: inline-block; }
+  .pill.ok { color: var(--ok); border-color: var(--ok); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.off { color: var(--dim); }
+  .pill.off i { background: transparent; border: 2px solid currentColor; }
+  .pill b { color: var(--text); font-weight: 700; }
+  .clock { font-variant-numeric: tabular-nums; font-size: 24px; margin-left: 6px; }
+
+  .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 110px; border-right: 2px solid var(--line); display: flex; flex-direction: column; }
+  .rail .item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    font-size: 18px; font-weight: 700; border-bottom: 2px solid var(--line); position: relative;
+  }
+  .rail .item:last-child { border-bottom: 0; }
+  .rail svg { width: 44px; height: 44px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .rail .item.active::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 8px; background: var(--text); }
+  .rail .item.disabled { color: #777; }
+  .rail .item small { font-size: 14px; font-weight: 600; letter-spacing: .03em; }
+
+  /* focus: one treatment everywhere */
+  .f.focused { background: var(--focus) !important; color: #000 !important; border-color: var(--focus) !important; }
+  .f.focused * { color: #000 !important; }
+  .f.focused svg { stroke: #000; }
+
+  .content { position: absolute; left: 110px; right: 0; top: 48px; bottom: 0; padding: 12px 14px; }
+
+  /* ---- connecting ---- */
+  .wait h2 { font-size: 36px; line-height: 1.1; margin-bottom: 4px; }
+  .wait p.sub { font-size: 20px; color: var(--dim); margin-bottom: 14px; }
+  .steps { border: 2px solid var(--line); }
+  .step { display: flex; align-items: center; gap: 14px; padding: 12px 14px; font-size: 24px; font-weight: 700; border-bottom: 2px solid var(--line); }
+  .step:last-child { border-bottom: 0; }
+  .step .mark { width: 34px; height: 34px; border: 3px solid currentColor; border-radius: 50%; display: grid; place-items: center; font-size: 22px; line-height: 1; flex: none; }
+  .step .state { margin-left: auto; font-size: 20px; }
+  .step.done { color: var(--ok); } .step.done .name { color: var(--text); }
+  .step.now { color: var(--warn); } .step.now .name { color: var(--text); }
+  .step.todo { color: #8a8a8a; }
+  .hint { margin-top: 12px; border: 2px solid var(--warn); padding: 10px 14px; font-size: 20px; font-weight: 600; }
+  .hint b { color: var(--warn); }
+
+  /* ---- vehicle dynamics (disabled) ---- */
+  .vd-banner { border: 2px dashed var(--warn); padding: 10px 14px; font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+  .vd-banner span { color: var(--warn); }
+  .vd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .tile { border: 2px solid #4a4a4a; padding: 10px 12px; height: 128px; color: #777; display: flex; flex-direction: column; justify-content: space-between; }
+  .tile .lbl { font-size: 18px; font-weight: 700; }
+  .tile .val { font-size: 52px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .tile .unit { font-size: 18px; font-weight: 700; margin-left: 4px; }
+
+  /* ---- settings ---- */
+  .set { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 62px; gap: 10px; height: 100%; }
+  .card { border: 2px solid var(--line); padding: 6px 12px 8px; }
+  .card h3 { font-size: 16px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
+  .row { display: flex; align-items: baseline; justify-content: space-between; font-size: 19px; line-height: 27px; font-weight: 600; white-space: nowrap; }
+  .row .k { color: var(--dim); font-weight: 600; }
+  .row .v { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .v.ok { color: var(--ok); } .v.warn { color: var(--warn); } .v.bad { color: var(--bad); } .v.off { color: var(--dim); }
+  .card.cm4 { grid-row: span 2; }
+  .big { display: flex; align-items: baseline; gap: 4px; margin: 2px 0 2px; }
+  .big .n { font-size: 64px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .big .u { font-size: 26px; font-weight: 800; }
+  .big .tag { margin-left: auto; font-size: 18px; font-weight: 800; border: 2px solid currentColor; padding: 1px 8px; }
+  .bar { height: 18px; border: 2px solid var(--text); position: relative; margin-bottom: 6px; }
+  .bar > div { position: absolute; inset: 0 auto 0 0; background: var(--text); }
+  .bar .tick { position: absolute; top: -6px; bottom: -6px; width: 3px; background: var(--warn); }
+  .scale { display: flex; justify-content: space-between; font-size: 15px; color: var(--dim); font-weight: 600; margin: -2px 0 4px; }
+  .power { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btn {
+    border: 3px solid var(--text); font-size: 24px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 12px;
+    position: relative; overflow: hidden;
+  }
+  .btn .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--bad); z-index: 0; }
+  .btn > * { position: relative; z-index: 1; }
+  .btn small { font-size: 16px; font-weight: 700; opacity: .85; }
+  .btn svg { width: 28px; height: 28px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---- CarPlay streaming (placeholder art) ---- */
+  .cp { position: absolute; inset: 0; display: none; background: linear-gradient(160deg, #1a2a44, #0b1220 60%, #1d1030); }
+  .cp.on { display: block; }
+  .cp .apps { position: absolute; left: 36px; top: 56px; display: grid; grid-template-columns: repeat(4, 96px); gap: 26px 28px; }
+  .cp .app { width: 96px; height: 96px; border-radius: 22px; display: grid; place-items: center; font-size: 15px; font-weight: 700; color: #fff; outline: 4px solid transparent; }
+  .cp .app.sel { outline-color: #fff; }
+  .cp .side { position: absolute; right: 0; top: 0; bottom: 0; width: 100px; background: rgba(0,0,0,.35); display: grid; grid-template-rows: repeat(3, 1fr); place-items: center; font-size: 14px; color: #ccc; }
+  .cp .note { position: absolute; left: 10px; bottom: 8px; font-size: 14px; color: #8fa; opacity: .85; }
+
+  /* ---- panel switcher overlay (hold Mode) ---- */
+  .switcher { position: absolute; inset: 0; display: none; background: rgba(0,0,0,.72); }
+  .switcher.on { display: block; }
+  .switcher .bar2 { position: absolute; left: 0; right: 0; bottom: 0; height: 168px; background: #000; border-top: 3px solid var(--text); display: grid; grid-template-columns: repeat(3, 1fr); }
+  .switcher .opt { border-right: 2px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 26px; font-weight: 800; position: relative; }
+  .switcher .opt:last-child { border-right: 0; }
+  .switcher .opt svg { width: 56px; height: 56px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .switcher .opt.disabled { color: #777; }
+  .switcher .opt small { font-size: 16px; font-weight: 700; }
+  .switcher .cap { position: absolute; left: 0; right: 0; bottom: 176px; text-align: center; font-size: 18px; font-weight: 700; color: var(--dim); }
+
+  /* ---- power-down screen ---- */
+  .bye { position: absolute; inset: 0; background: #000; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+  .bye.on { display: flex; }
+  .bye h2 { font-size: 44px; } .bye p { font-size: 22px; color: var(--dim); font-weight: 600; max-width: 520px; }
+
+  /* ---- mockup furniture (not part of the UI) ---- */
+  .panel { max-width: 900px; width: 100%; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; justify-content: center; font-size: 14px; }
+  .panel button { background: #2a2a2d; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  .panel button:hover { background: #3a3a3e; }
+  .panel button.sel { background: #ffd400; color: #000; border-color: #ffd400; font-weight: 700; }
+  .keys { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; color: #9a9a9a; font-size: 13px; }
+  kbd { background: #333; border: 1px solid #555; border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; color: #eee; font: 12px ui-monospace, Menlo, monospace; }
+  #log { font: 13px ui-monospace, Menlo, monospace; color: #8fd; background: #101214; border: 1px solid #333; border-radius: 6px; padding: 8px 12px; min-width: 460px; text-align: center; min-height: 36px; }
+</style>
+</head>
+<body>
+<h1>S660 head unit · UI mockup · 720×480</h1>
+
+<div id="stage">
+<div id="device">
+
+  <!-- 1. CarPlay panel, not streaming yet -->
+  <div class="chrome" id="s-connecting">
+    <div class="content wait">
+      <h2>Waiting for your phone</h2>
+      <p class="sub">CarPlay will open by itself once it connects.</p>
+      <div class="steps">
+        <div class="step done" id="st1"><span class="mark">✓</span><span class="name">Dongle</span><span class="state">Found</span></div>
+        <div class="step now"  id="st2"><span class="mark">…</span><span class="name">Phone Bluetooth</span><span class="state">Searching</span></div>
+        <div class="step todo" id="st3"><span class="mark">3</span><span class="name">CarPlay video</span><span class="state">Waiting</span></div>
+      </div>
+      <div class="hint" id="hint"><b>Stuck?</b> Check Bluetooth is ON on the phone, then wait 20 s.</div>
+    </div>
+  </div>
+
+  <!-- 2. Vehicle dynamics (disabled until OBD-II) -->
+  <div class="chrome" id="s-vehicle">
+    <div class="content">
+      <div class="vd-banner"><span>⚠</span>No OBD-II adapter yet. This panel is off.</div>
+      <div class="vd-grid">
+        <div class="tile"><div class="lbl">SPEED</div><div><span class="val">--</span><span class="unit">km/h</span></div></div>
+        <div class="tile"><div class="lbl">ENGINE</div><div><span class="val">--</span><span class="unit">rpm</span></div></div>
+        <div class="tile"><div class="lbl">COOLANT</div><div><span class="val">--</span><span class="unit">°C</span></div></div>
+        <div class="tile"><div class="lbl">BOOST</div><div><span class="val">--</span><span class="unit">kPa</span></div></div>
+        <div class="tile"><div class="lbl">INTAKE AIR</div><div><span class="val">--</span><span class="unit">°C</span></div></div>
+        <div class="tile"><div class="lbl">BATTERY</div><div><span class="val">--</span><span class="unit">V</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Settings -->
+  <div class="chrome" id="s-settings">
+    <div class="content">
+      <div class="set">
+        <div class="card cm4">
+          <h3>Computer (CM4)</h3>
+          <div class="big"><span class="n" id="cpuT">58</span><span class="u">°C</span><span class="tag" id="cpuTag" style="color:var(--ok)">NORMAL</span></div>
+          <div class="bar"><div id="cpuBar" style="width:58%"></div><span class="tick" style="left:80%"></span></div>
+          <div class="scale"><span>0</span><span>throttles at 80</span><span>100</span></div>
+          <div class="row"><span class="k">NVMe drive</span><span class="v">41 °C</span></div>
+          <div class="row"><span class="k">CPU load</span><span class="v" id="load">23 %</span></div>
+          <div class="row"><span class="k">Memory</span><span class="v">1.1 / 3.8 GB</span></div>
+          <div class="row"><span class="k">Power supply</span><span class="v ok">OK</span></div>
+          <div class="row"><span class="k">Throttled</span><span class="v ok">No</span></div>
+          <div class="row"><span class="k">Up for</span><span class="v" id="up">0:12:41</span></div>
+        </div>
+        <div class="card">
+          <h3>Controls (MITM)</h3>
+          <div class="row"><span class="k">Pico link</span><span class="v ok">● Connected</span></div>
+          <div class="row"><span class="k">Console panel</span><span class="v ok">● Receiving</span></div>
+          <div class="row"><span class="k">Last key</span><span class="v" id="lastKey">Knob →</span></div>
+          <div class="row"><span class="k">CAN bus</span><span class="v off">○ Not built</span></div>
+        </div>
+        <div class="card">
+          <h3>CarPlay &amp; storage</h3>
+          <div class="row"><span class="k">Video decode</span><span class="v ok">Hardware</span></div>
+          <div class="row"><span class="k">Stream</span><span class="v">848×480 30</span></div>
+          <div class="row"><span class="k">Overlay disk</span><span class="v warn">ON · temp</span></div>
+          <div class="row"><span class="k">/persist free</span><span class="v">171 GB</span></div>
+        </div>
+        <div class="power">
+          <div class="btn f" data-hold="restart" id="bRestart"><span class="fill"></span>
+            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>
+            <span>Restart</span><small>hold</small></div>
+          <div class="btn f" data-hold="shutdown" id="bShut"><span class="fill"></span>
+            <svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.4 6.8a8 8 0 1 0 11.2 0"/></svg>
+            <span>Shut down</span><small>hold</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- shared chrome: strip + rail (drawn over s-connecting / s-vehicle / s-settings) -->
+  <div id="chromeShared" style="display:none">
+    <div class="strip">
+      <span class="title" id="ttl">CarPlay</span>
+      <span class="pill ok" id="pDongle"><i></i>Dongle</span>
+      <span class="pill off" id="pPhone"><i></i>Phone</span>
+      <span class="pill ok" id="pMitm"><i></i>Controls</span>
+      <span class="clock" id="clk">17:42</span>
+    </div>
+    <div class="rail">
+      <div class="item f" data-go="carplay" id="rCp">
+        <svg viewBox="0 0 24 24"><path d="M5 16V9l2-4h10l2 4v7"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="12.5" r=".6"/><circle cx="16.5" cy="12.5" r=".6"/></svg>CarPlay</div>
+      <div class="item disabled" data-go="vehicle" id="rVd">
+        <svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>Vehicle<small>OBD-II needed</small></div>
+      <div class="item f" data-go="settings" id="rSet">
+        <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Settings</div>
+    </div>
+  </div>
+
+  <!-- CarPlay streaming (placeholder art; real video comes from the dongle) -->
+  <div class="cp" id="s-carplay">
+    <div class="apps" id="apps"></div>
+    <div class="side"><span>Recent</span><span>Recent</span><span>Home</span></div>
+    <div class="note">Full-screen CarPlay. No chrome. Hold MODE for panels.</div>
+  </div>
+
+  <div class="switcher" id="switcher">
+    <div class="cap">Panels · turn knob · press to open · BACK to close</div>
+    <div class="bar2">
+      <div class="opt f" data-go="carplay">
+        <svg viewBox="0 0 24 24"><path d="M5 16V9l2-4h10l2 4v7"/><path d="M3 16h18v3H3z"/></svg>CarPlay</div>
+      <div class="opt disabled" data-go="vehicle">
+        <svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>Vehicle<small>OBD-II needed</small></div>
+      <div class="opt f" data-go="settings">
+        <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Settings</div>
+    </div>
+  </div>
+
+  <div class="bye" id="bye"><h2 id="byeH">Shutting down…</h2><p id="byeP">Wait for the screen to go dark before you switch off the ignition.</p></div>
+</div>
+</div>
+
+<div id="log">Press a key. This line shows where each control goes.</div>
+
+<div class="panel" id="scenes">
+  <span style="color:#888">Jump to:</span>
+  <button data-scene="boot1">Boot: looking for dongle</button>
+  <button data-scene="boot2">Boot: waiting for phone</button>
+  <button data-scene="boot3">Boot: starting video</button>
+  <button data-scene="stuck">Boot: stuck &gt;20 s</button>
+  <button data-scene="carplay">CarPlay streaming</button>
+  <button data-scene="settings">Settings</button>
+  <button data-scene="vehicle">Vehicle (disabled)</button>
+  <button id="tgl">Glass stretch ×1.25: off</button>
+</div>
+<div class="keys">
+  <span><kbd>←</kbd><kbd>→</kbd> knob turn</span>
+  <span><kbd>Enter</kbd> knob push (hold on Restart / Shut down)</span>
+  <span><kbd>Esc</kbd> BACK</span>
+  <span><kbd>M</kbd> MODE (hold = panels)</span>
+  <span><kbd>P</kbd> PHONE</span>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const dev = $('#device'), log = $('#log');
+  const screens = { connecting: $('#s-connecting'), vehicle: $('#s-vehicle'), settings: $('#s-settings') };
+  const TITLES = { connecting: 'CarPlay', vehicle: 'Vehicle Dynamics', settings: 'Settings' };
+  const RAIL_ACTIVE = { connecting: 'rCp', vehicle: 'rVd', settings: 'rSet' };
+
+  let screen = 'connecting';    // connecting | carplay | vehicle | settings
+  let phase = 2;                // boot progress: 1 dongle, 2 phone BT, 3 video, 4 connected
+  let stuck = false;
+  let overlay = false;
+  let fi = 0;                   // focus index within current focusable ring
+  let cpSel = 0;                // fake CarPlay icon focus
+
+  // ---- fake CarPlay grid
+  const APPS = [['Maps','#2a7de1'],['Music','#e0245e'],['Phone','#28a745'],['Waze','#33c0e8'],['Msgs','#34c759'],['Podcasts','#a243d6'],['Calendar','#d33'],['Settings','#777']];
+  $('#apps').innerHTML = APPS.map(([n, c]) => `<div class="app" style="background:${c}">${n}</div>`).join('');
+
+  const say = (t) => { log.textContent = t; };
+
+  // ---- rendering
+  function ring() {
+    if (overlay) return $$('#switcher .f');
+    if (screen === 'carplay') return [];
+    // rail first, then the panel's own controls
+    return [...$$('#chromeShared .rail .f'), ...$$('#s-' + (screen === 'connecting' ? 'connecting' : screen) + ' .f')];
+  }
+  function render() {
+    const native = screen !== 'carplay';
+    $('#s-carplay').classList.toggle('on', !native);
+    $('#chromeShared').style.display = native ? 'block' : 'none';
+    Object.entries(screens).forEach(([k, el]) => el.classList.toggle('on', k === screen));
+    $('#switcher').classList.toggle('on', overlay);
+    if (native) {
+      $('#ttl').textContent = TITLES[screen];
+      $$('#chromeShared .item').forEach(e => e.classList.toggle('active', e.id === RAIL_ACTIVE[screen]));
+    }
+    // status pills follow the boot phase
+    const phone = phase >= 4;
+    $('#pDongle').className = 'pill ' + (phase >= 2 ? 'ok' : 'off');
+    $('#pDongle').innerHTML = '<i></i>Dongle';
+    $('#pPhone').className = 'pill ' + (phone ? 'ok' : 'off');
+    $('#pPhone').innerHTML = '<i></i>' + (phone ? 'Phone <b>connected</b>' : 'Phone');
+    // boot steps
+    const set = (id, cls, mark, st) => { const e = $(id); e.className = 'step ' + cls; $('.mark', e).textContent = mark; $('.state', e).textContent = st; };
+    set('#st1', phase > 1 ? 'done' : 'now', phase > 1 ? '✓' : '…', phase > 1 ? 'Found' : 'Looking');
+    set('#st2', phase > 2 ? 'done' : phase === 2 ? 'now' : 'todo', phase > 2 ? '✓' : phase === 2 ? '…' : '2', phase > 2 ? 'Connected' : phase === 2 ? 'Searching' : 'Waiting');
+    set('#st3', phase > 3 ? 'done' : phase === 3 ? 'now' : 'todo', phase > 3 ? '✓' : phase === 3 ? '…' : '3', phase > 3 ? 'Streaming' : phase === 3 ? 'Starting' : 'Waiting');
+    $('#hint').style.display = stuck ? 'block' : 'none';
+    $$('.app').forEach((e, i) => e.classList.toggle('sel', i === cpSel));
+    // focus
+    $$('.f').forEach(e => e.classList.remove('focused'));
+    const r = ring();
+    if (r.length) { fi = Math.max(0, Math.min(fi, r.length - 1)); r[fi].classList.add('focused'); }
+    $$('#scenes [data-scene]').forEach(b => b.classList.remove('sel'));
+  }
+  function go(target) {
+    overlay = false; fi = 0;
+    if (target === 'carplay') screen = phase >= 4 ? 'carplay' : 'connecting';
+    else screen = target;
+    // land focus on the active rail item when entering a native screen
+    if (screen !== 'carplay') { const r = ring(); const i = r.findIndex(e => e.classList.contains('active') || e.id === RAIL_ACTIVE[screen]); fi = Math.max(0, i); }
+    render();
+  }
+
+  // ---- hold-to-confirm
+  let hold = null;
+  function startHold(btn) {
+    const fill = $('.fill', btn); const t0 = performance.now(); const DUR = 1500;
+    const tick = () => {
+      const p = Math.min(1, (performance.now() - t0) / DUR);
+      fill.style.width = (p * 100) + '%';
+      if (p >= 1) { finish(btn.dataset.hold); stopHold(); return; }
+      hold.raf = requestAnimationFrame(tick);
+    };
+    hold = { btn, raf: requestAnimationFrame(tick) };
+  }
+  function stopHold() { if (!hold) return; cancelAnimationFrame(hold.raf); $('.fill', hold.btn).style.width = '0'; hold = null; }
+  function finish(kind) {
+    $('#byeH').textContent = kind === 'restart' ? 'Restarting…' : 'Shutting down…';
+    $('#byeP').textContent = kind === 'restart' ? 'Back in about 10 seconds. CarPlay reconnects by itself.' : 'Wait for the screen to go dark before you switch off the ignition.';
+    $('#bye').classList.add('on');
+    setTimeout(() => $('#bye').classList.remove('on'), 3500);
+  }
+
+  // ---- control routing (mirrors src/controls.ts: the view owns the controls)
+  let modeTimer = null, modeLong = false;
+  const KEYS = { ArrowRight: 'knobCw', ArrowLeft: 'knobCcw', Enter: 'knobPush', Escape: 'back', KeyM: 'mode', KeyP: 'phone' };
+
+  function onDown(c, repeat) {
+    if (repeat) return;
+    if (c === 'mode') { modeLong = false; modeTimer = setTimeout(() => { modeLong = true; overlay = true; fi = 0; say('MODE held → panel switcher'); render(); }, 600); return; }
+    if (overlay) {
+      const r = ring();
+      if (c === 'knobCw') fi = (fi + 1) % r.length;
+      if (c === 'knobCcw') fi = (fi - 1 + r.length) % r.length;
+      if (c === 'knobPush') { go(r[fi].dataset.go); say('Switcher → ' + r[fi].dataset.go); return; }
+      if (c === 'back') { overlay = false; say('BACK → close switcher'); }
+      return render();
+    }
+    if (screen === 'carplay') {
+      const m = { knobCw: 'CarPlay ← right', knobCcw: 'CarPlay ← left', knobPush: 'CarPlay ← select', back: 'CarPlay ← back', phone: 'CarPlay ← nudge focus to sidebar' };
+      if (c === 'knobCw') cpSel = Math.min(APPS.length - 1, cpSel + 1);
+      if (c === 'knobCcw') cpSel = Math.max(0, cpSel - 1);
+      if (m[c]) say(m[c] + '  (sent to phone)');
+      return render();
+    }
+    // native views own the controls
+    const r = ring();
+    if (c === 'knobCw') { fi = (fi + 1) % r.length; say('Knob → next control'); }
+    if (c === 'knobCcw') { fi = (fi - 1 + r.length) % r.length; say('Knob → previous control'); }
+    if (c === 'back') { say('BACK → leave panel, go to CarPlay'); return go('carplay'); }
+    if (c === 'phone') say('PHONE → (unused in native panels)');
+    if (c === 'knobPush') {
+      const el = r[fi];
+      if (el.dataset.hold) { say('Holding… keep the knob pressed'); startHold(el); }
+      else if (el.dataset.go) { say('Open ' + el.dataset.go); return go(el.dataset.go); }
+    }
+    render();
+  }
+  function onUp(c) {
+    if (c === 'mode') { clearTimeout(modeTimer); if (!modeLong) { say(screen === 'carplay' ? 'MODE tap → CarPlay ← home' : 'MODE tap → CarPlay'); if (screen !== 'carplay' || overlay) go('carplay'); render(); } return; }
+    if (c === 'knobPush' && hold) { stopHold(); say('Released early: nothing happened (that is the point)'); }
+  }
+  addEventListener('keydown', e => { const c = KEYS[e.code]; if (!c) return; e.preventDefault(); onDown(c, e.repeat); });
+  addEventListener('keyup', e => { const c = KEYS[e.code]; if (c) { e.preventDefault(); onUp(c); } });
+
+  // ---- scenes / furniture
+  function scene(s) {
+    stuck = false; overlay = false;
+    if (s === 'boot1') { phase = 1; screen = 'connecting'; }
+    if (s === 'boot2') { phase = 2; screen = 'connecting'; }
+    if (s === 'boot3') { phase = 3; screen = 'connecting'; }
+    if (s === 'stuck') { phase = 2; stuck = true; screen = 'connecting'; }
+    if (s === 'carplay') { phase = 4; screen = 'carplay'; }
+    if (s === 'settings') { screen = 'settings'; }
+    if (s === 'vehicle') { screen = 'vehicle'; }
+    fi = 0; if (screen !== 'carplay') { const r = ring(); fi = Math.max(0, r.findIndex(e => e.id === RAIL_ACTIVE[screen])); }
+    render();
+  }
+  $$('#scenes [data-scene]').forEach(b => b.addEventListener('click', () => { scene(b.dataset.scene); b.blur(); }));
+  $('#tgl').addEventListener('click', e => { const on = dev.classList.toggle('stretch'); e.target.textContent = 'Glass stretch ×1.25: ' + (on ? 'ON' : 'off'); e.target.blur(); fit(); });
+
+  // fit the glass to the window
+  function fit() {
+    const w = dev.classList.contains('stretch') ? 900 : 720;
+    const s = Math.min(1.5, (innerWidth - 32) / w);
+    const stage = $('#stage'); stage.style.transform = `scale(${s})`; stage.style.width = w + 'px'; stage.style.height = (480 * s) + 'px'; stage.style.marginBottom = '0';
+    stage.style.transformOrigin = 'top center';
+  }
+  addEventListener('resize', fit);
+
+  // gentle live numbers so it feels real
+  const t0 = Date.now();
+  setInterval(() => {
+    const T = Math.round(58 + 3 * Math.sin((Date.now() - t0) / 4000));
+    $('#cpuT').textContent = T; $('#cpuBar').style.width = T + '%';
+    $('#load').textContent = Math.round(23 + 8 * Math.sin((Date.now() - t0) / 1700)) + ' %';
+    const s = 761 + Math.floor((Date.now() - t0) / 1000);
+    $('#up').textContent = Math.floor(s / 3600) + ':' + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    const d = new Date(); $('#clk').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }, 1000);
+
+  fit(); render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+import { Control } from './controls'
+
+// Navigation of the native head-unit UI. Pure, so the knob behaviour is unit-tested without React.
+// Vehicle Dynamics is deliberately not a Panel yet: it joins when the OBD-II work lands.
+export type Panel = 'carplay' | 'settings'
+export type PowerAction = 'restart' | 'shutdown'
+
+// What the knob can land on. rail:* is the left rail, sw:* the hold-Mode switcher.
+export type FocusId = 'rail:carplay' | 'rail:settings' | 'sw:carplay' | 'sw:settings' | PowerAction
+
+export interface UiState {
+  panel: Panel
+  switcher: boolean
+  focus: FocusId
+}
+
+export const initialUi: UiState = { panel: 'carplay', switcher: false, focus: 'rail:carplay' }
+
+export const openPanel = (panel: Panel): UiState => ({
+  panel,
+  switcher: false,
+  focus: `rail:${panel}`,
+})
+export const openSwitcher = (ui: UiState): UiState => ({ ...ui, switcher: true, focus: `sw:${ui.panel}` })
+export const closeSwitcher = (ui: UiState): UiState => ({ ...ui, switcher: false, focus: `rail:${ui.panel}` })
+
+// CarPlay owns the panel only when its video is up, on its panel, with no switcher over it.
+// Before the phone connects the CarPlay panel is the native "waiting for your phone" page.
+export const isCarplayView = (ui: UiState, streaming: boolean): boolean =>
+  ui.panel === 'carplay' && streaming && !ui.switcher
+
+// Knob order, rail first, then the panel's own controls.
+export const focusRing = (ui: UiState): FocusId[] => {
+  if (ui.switcher) return ['sw:carplay', 'sw:settings']
+  const rail: FocusId[] = ['rail:carplay', 'rail:settings']
+  return ui.panel === 'settings' ? [...rail, 'restart', 'shutdown'] : rail
+}
+
+const step = (ui: UiState, dir: 1 | -1): FocusId => {
+  const ring = focusRing(ui)
+  const at = Math.max(0, ring.indexOf(ui.focus))
+  return ring[(at + dir + ring.length) % ring.length]
+}
+
+export interface NativeResult {
+  ui: UiState
+  // The knob was pressed on a hold-to-confirm button: the caller times the hold.
+  hold?: PowerAction
+}
+
+// A press (not a release, not a repeat) of a control other than Mode, while a native view is up.
+// Mode is timed by the caller because a tap and a hold differ.
+export const nativeKey = (ui: UiState, control: Control): NativeResult => {
+  switch (control) {
+    case 'knobCw':
+      return { ui: { ...ui, focus: step(ui, 1) } }
+    case 'knobCcw':
+      return { ui: { ...ui, focus: step(ui, -1) } }
+    case 'back':
+      if (ui.switcher) return { ui: closeSwitcher(ui) }
+      return { ui: ui.panel === 'carplay' ? ui : openPanel('carplay') }
+    case 'knobPush': {
+      if (ui.focus === 'restart' || ui.focus === 'shutdown') return { ui, hold: ui.focus }
+      return { ui: openPanel(ui.focus.endsWith('settings') ? 'settings' : 'carplay') }
+    }
+    default:
+      return { ui }
+  }
+}

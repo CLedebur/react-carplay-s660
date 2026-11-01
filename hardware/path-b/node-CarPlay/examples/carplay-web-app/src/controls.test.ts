@@ -25,11 +25,14 @@ test('knob push is a select down/up pair', () => {
 
 test('buttons fire once on press', () => {
   expect(press('back')).toEqual(['back'])
-  expect(press('mode')).toEqual(['home'])
   expect(press('phone')).toEqual(['nudgeRight', 'selectUp'])
   expect(release('back')).toEqual([])
-  expect(release('mode')).toEqual([])
   expect(release('phone')).toEqual([])
+})
+
+test('mode acts on release, so a hold can open the panel switcher instead', () => {
+  expect(press('mode')).toEqual([])
+  expect(release('mode')).toEqual(['home'])
 })
 
 test('auto-repeat while held sends nothing', () => {

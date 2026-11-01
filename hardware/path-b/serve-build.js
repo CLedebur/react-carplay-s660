@@ -5,6 +5,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const api = require('./s660-api');
 
 const ROOT = path.resolve(process.argv[2] ||
   path.join(process.env.HOME, 'react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app/build'));
@@ -32,6 +33,8 @@ http.createServer((req, res) => {
   // Cross-origin isolation for SharedArrayBuffer (matches setupProxy.js).
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+
+  if (api.handle(req, res)) return; // /api/* for the native Settings panel
 
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
   let fp = path.normalize(path.join(ROOT, urlPath));
