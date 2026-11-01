@@ -1,0 +1,4 @@
+# CANable 2.0 running the S660 silent firmware (canable2-fw/, BUILD_NOTES §34).
+# Matches only the patched build: its USB product string contains "s660". A stick with the stock
+# firmware (which cannot listen silently) gets no symlink, so s660-can.service never starts on it.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="117e", ATTRS{product}=="*s660*", SYMLINK+="s660-can", TAG+="systemd", ENV{SYSTEMD_WANTS}+="s660-can.service"

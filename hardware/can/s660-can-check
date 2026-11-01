@@ -1,0 +1,31 @@
+#!/usr/bin/python3
+# Refuse to bring up CAN unless the adapter itself says it runs the S660 firmware and is silent
+# (BUILD_NOTES §34). Asks V (version) and m (mode); m reads back M1 = bus monitoring, no ACKs,
+# no error frames, no TX. Exit 0 only for an "s660" version and M1.
+import os, sys, termios, time
+
+dev = sys.argv[1] if len(sys.argv) > 1 else "/dev/s660-can"
+fd = os.open(dev, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+a = termios.tcgetattr(fd)
+a[0] = a[1] = a[3] = 0                      # raw: no echo, no line editing
+a[6][termios.VMIN] = a[6][termios.VTIME] = 0
+termios.tcsetattr(fd, termios.TCSANOW, a)
+
+def ask(cmd):
+    os.write(fd, (cmd + "\r").encode())
+    out, end = b"", time.time() + 0.5
+    while time.time() < end and not out.endswith(b"\r"):
+        try:
+            out += os.read(fd, 256)
+        except BlockingIOError:
+            time.sleep(0.02)
+    return out.decode(errors="replace").strip()
+
+ask("C")                                    # closed, in case a previous run left it open
+version, mode = ask("V"), ask("m")
+os.close(fd)
+
+print(f"{dev}: version '{version}', mode '{mode}'")
+if "s660" not in version or mode != "M1":
+    print("refusing: not the S660 firmware, or not in silent mode (M1)", file=sys.stderr)
+    sys.exit(1)

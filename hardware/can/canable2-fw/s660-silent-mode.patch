@@ -1,0 +1,122 @@
+diff --git a/inc/can.h b/inc/can.h
+index 9b3fc89..8b62e0b 100644
+--- a/inc/can.h
++++ b/inc/can.h
+@@ -58,6 +58,7 @@ void can_disable(void);
+ void can_set_bitrate(enum can_bitrate bitrate);
+ void can_set_data_bitrate(enum can_data_bitrate bitrate);
+ void can_set_silent(uint8_t silent);
++uint8_t can_is_silent(void);
+ void can_set_autoretransmit(uint8_t autoretransmit);
+ uint32_t can_tx(FDCAN_TxHeaderTypeDef *tx_msg_header, uint8_t *tx_msg_data);
+ uint32_t can_rx(FDCAN_RxHeaderTypeDef *rx_msg_header, uint8_t *rx_msg_data);
+diff --git a/src/can.c b/src/can.c
+index 456c375..37c568a 100644
+--- a/src/can.c
++++ b/src/can.c
+@@ -18,6 +18,9 @@ static uint32_t prescaler;
+ static uint32_t data_prescaler;
+ enum can_bus_state bus_state;
+ static uint8_t can_autoretransmit = ENABLE;
++// S660: power up silent (bus monitoring: no ACKs, no error frames, no TX).
++// Normal mode needs an explicit M0 before O.
++static uint32_t can_mode = FDCAN_MODE_BUS_MONITORING;
+ static can_txbuf_t txqueue = {0};
+ 
+ 
+@@ -89,7 +92,7 @@ void can_enable(void)
+ 
+ 
+     	//can_handle.Init.Prescaler = prescaler;
+-    	can_handle.Init.Mode = FDCAN_MODE_NORMAL;
++    	can_handle.Init.Mode = can_mode; // S660: was hard-coded NORMAL, which discarded M1
+     	can_handle.Init.AutoRetransmission = can_autoretransmit;
+         can_handle.Init.TransmitPause = DISABLE; // emz
+         can_handle.Init.ProtocolException = DISABLE; // emz
+@@ -228,15 +231,27 @@ void can_set_silent(uint8_t silent)
+     }
+     if (silent)
+     {
+-    	can_handle.Init.Mode = FDCAN_MODE_BUS_MONITORING; // !!!?!?!
++    	can_mode = FDCAN_MODE_BUS_MONITORING;
+     } else {
+-    	can_handle.Init.Mode = FDCAN_MODE_NORMAL;
++    	can_mode = FDCAN_MODE_NORMAL;
+     }
+ 
+     led_green_on();
+ }
+ 
+ 
++// S660: report silent mode. On bus, read the peripheral's own CCCR.MON bit,
++// so the answer is what the hardware is doing, not what was requested.
++uint8_t can_is_silent(void)
++{
++    if (bus_state == ON_BUS)
++    {
++        return (FDCAN1->CCCR & FDCAN_CCCR_MON) ? 1 : 0;
++    }
++    return (can_mode == FDCAN_MODE_BUS_MONITORING) ? 1 : 0;
++}
++
++
+ // Set CAN peripheral to silent mode
+ void can_set_autoretransmit(uint8_t autoretransmit)
+ {
+@@ -260,6 +275,10 @@ void can_set_autoretransmit(uint8_t autoretransmit)
+ // Send a message on the CAN bus. Called from USB ISR.
+ uint32_t can_tx(FDCAN_TxHeaderTypeDef *tx_msg_header, uint8_t* tx_msg_data)
+ {
++	// S660: never queue a frame while silent
++	if (can_is_silent())
++		return HAL_ERROR;
++
+ 	// If when we increment the head we're going to hit the tail
+ 	// (if we're filling the last spot in the queue)
+ 	if( ((txqueue.head + 1) % TXQUEUE_LEN) == txqueue.tail)
+diff --git a/src/slcan.c b/src/slcan.c
+index 4cdf4c0..952a0e9 100644
+--- a/src/slcan.c
++++ b/src/slcan.c
+@@ -8,6 +8,7 @@
+ #include "error.h"
+ #include "slcan.h"
+ #include "usbd_cdc_if.h"
++#include "printf.h" // S660: declares snprintf_ (GCC 14 rejects implicit declarations)
+ 
+ 
+ // Private variables
+@@ -198,6 +199,11 @@ int32_t slcan_parse_str(uint8_t *buf, uint8_t len)
+ 
+ 	    // FIXME: Nonstandard!
+ 		case 'M':
++	        // S660: only exactly "M0"/"M1". LAWICEL "Mxxxxxxxx" (acceptance
++	        // code) used to fall through to normal mode; ignore it instead.
++	        if (len != 2 || buf[1] > 1)
++	            return 0;
++
+ 	        // Set mode command
+ 	        if (buf[1] == 1)
+ 	        {
+@@ -210,6 +216,21 @@ int32_t slcan_parse_str(uint8_t *buf, uint8_t len)
+ 	        return 0;
+ 
+ 
++	    // S660: query mode, replies M1 (silent) or M0 (normal)
++		case 'm':
++		{
++			// LAWICEL "mxxxxxxxx" (acceptance mask): not supported, ignore
++			if (len != 1)
++				return 0;
++
++			char modestr[] = "M0\r";
++			if (can_is_silent())
++				modestr[1] = '1';
++			cdc_transmit((uint8_t*)modestr, strlen(modestr));
++	        return 0;
++		}
++
++
+ 	    // FIXME: Nonstandard!
+ 		case 'A':
+ 	        // Set autoretry command
