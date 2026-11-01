@@ -2,7 +2,8 @@ import { ReactNode, useEffect, useState } from 'react'
 import './native.css'
 import { FocusId, HoldAction, Panel, settingsPage, SETTINGS_PAGES, UiState } from './nav'
 import { SettingKey, Settings as SettingsValues, toFahrenheit } from './settings'
-import { PowerNotice } from './useHeadUnit'
+import { NetBusy, PowerNotice } from './useHeadUnit'
+import { NetworkInfo } from './useNetwork'
 import { SystemStats } from './useSystemStats'
 
 const STUCK_AFTER_MS = 20000 // dongle found but no phone for this long: show the Bluetooth hint
@@ -18,6 +19,8 @@ export interface NativeUiProps {
   dongle: boolean | null // null until the first USB check
   linkStatus: string | null // the app's status line, e.g. "Scanning for phone…"
   stats: SystemStats | null
+  network: NetworkInfo | null
+  netBusy: NetBusy | null
   holding: HoldAction | null
   power: PowerNotice | null
   lastKey: string | null
@@ -207,7 +210,35 @@ const Pager = ({ page }: { page: number }) => (
   </div>
 )
 
-const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
+const VIA_LABEL = { wifi: 'Wi-Fi', bluetooth: 'your phone (Bluetooth)', ethernet: 'Ethernet' }
+
+const NetworkPage = ({ network, netBusy, focus }: Pick<NativeUiProps, 'network' | 'netBusy'> & { focus: FocusId }) => {
+  const wifi = network?.links.find(l => l.type === 'wifi')
+  const phone = network?.links.find(l => l.type === 'bluetooth')
+  const headline = network === null ? 'No answer from the unit' : network.via === null ? 'Offline' : network.internet ? `Online via ${VIA_LABEL[network.via]}` : `Linked via ${VIA_LABEL[network.via]}, no internet`
+  const tone = network === null || network.via === null ? 'bad' : network.internet ? 'ok' : 'warn'
+  const pct = (s: number | null) => (s === null ? '' : ` · ${s}%`)
+  const label = netBusy?.state === 'connecting' ? 'Connecting…' : 'Connect through phone (Bluetooth)'
+  return (
+    <div className="content">
+      <div className="card opts">
+        <h3>Network</h3>
+        <div className={`netline v ${tone}`}>{headline}</div>
+        <Row k="Wi-Fi" v={wifi && wifi.state === 'connected' ? `${wifi.name ?? '?'}${pct(wifi.signal)}` : '○ Not connected'} tone={wifi?.state === 'connected' ? 'ok' : 'off'} />
+        <Row k="Phone (Bluetooth)" v={phone && phone.state === 'connected' ? `● ${phone.ip ?? 'linked'}` : network?.bluetoothProfile ? '○ Not connected' : '○ Not set up'} tone={phone?.state === 'connected' ? 'ok' : 'off'} />
+        <Row k="IP address" v={(network && network.links.find(l => l.type === network.via)?.ip) || '--'} />
+        <Row k="Saved Wi-Fi networks" v={network ? String(network.savedWifi) : '--'} />
+      </div>
+      <div className={`btn f net${focusClass(focus, 'netConnect')}${netBusy?.state === 'connecting' ? ' busy' : ''}`}>
+        <span>{label}</span>
+      </div>
+      {netBusy?.state === 'failed' && <div className="hint note"><b>Could not connect.</b> {netBusy.error}</div>}
+      <Pager page={4} />
+    </div>
+  )
+}
+
+const Settings = ({ ui, stats, network, netBusy, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'network' | 'netBusy' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
   const focus = ui.focus
   const page = settingsPage(ui)
 
@@ -227,7 +258,9 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, setting
     )
   }
 
-  if (page === 4) {
+  if (page === 4) return <NetworkPage network={network} netBusy={netBusy} focus={focus} />
+
+  if (page === 5) {
     return (
       <div className="content">
         <div className="card opts">
@@ -241,7 +274,7 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, setting
           <PowerButton action="restart" holding={holding} focus={focus} />
           <PowerButton action="shutdown" holding={holding} focus={focus} />
         </div>
-        <Pager page={4} />
+        <Pager page={5} />
       </div>
     )
   }
@@ -316,10 +349,10 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, setting
 const ReloadNote = ({ pending }: { pending: boolean }) =>
   pending ? (
     <div className="hint note">
-      <b>Changes waiting.</b> Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 4).
+      <b>Changes waiting.</b> Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 5).
     </div>
   ) : (
-    <div className="note dim">Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 4).</div>
+    <div className="note dim">Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 5).</div>
   )
 
 const Switcher = ({ focus }: { focus: FocusId }) => (
@@ -369,7 +402,7 @@ const PowerScreen = ({ power }: { power: PowerNotice }) => {
 }
 
 export const NativeUi = (props: NativeUiProps) => {
-  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, holding, power, lastKey, streamLabel } = props
+  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, network, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
   const pagesUp = !(ui.panel === 'carplay' && streaming) // the switcher alone dims the video instead
   const title = ui.panel === 'settings' ? 'Settings' : 'CarPlay'
@@ -397,7 +430,7 @@ export const NativeUi = (props: NativeUiProps) => {
             </div>
             <Rail panel={ui.panel} focus={ui.focus} />
             {ui.panel === 'settings' ? (
-              <Settings ui={ui} stats={stats} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
+              <Settings ui={ui} stats={stats} network={network} netBusy={netBusy} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
             ) : (
               <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
             )}

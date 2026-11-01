@@ -4,6 +4,8 @@
 //   GET  /api/stats[?full=1]   Pi health numbers. `full` adds the /proc fd scan for the video decoder.
 //   GET  /api/settings         the user's saved settings (defaults filled in)
 //   POST /api/settings         {"units":"f",...} merged into the saved file -- needs the x-s660-ui header
+//   GET  /api/network          which link is up (Wi-Fi, Bluetooth tethering), addresses, internet reachability
+//   POST /api/network/connect  {"link":"bluetooth"}  bring up the phone tethering profile -- needs the x-s660-ui header
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
 //
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
@@ -144,6 +146,87 @@ const stats = async full => ({
   videoDecoderBusy: full ? videoDecoderBusy() : null,
 })
 
+// ---- network (NetworkManager). Wi-Fi is preferred; the phone's Bluetooth tethering is the fallback.
+const run = (cmd, args, timeout = 3000) =>
+  new Promise(resolve => execFile(cmd, args, { timeout }, (err, out) => resolve(err ? null : out)))
+
+// nmcli -t separates fields with ':' and escapes literal ones (a Bluetooth address) as '\:'.
+const nmFields = line => line.split(/(?<!\\):/).map(f => f.replace(/\\:/g, ':').replace(/\\\\/g, '\\'))
+const nmRows = out => (out || '').split('\n').filter(Boolean).map(nmFields)
+
+const LINK_TYPES = { wifi: 'wifi', bt: 'bluetooth', ethernet: 'ethernet' }
+const LINK_IFACE_PREFIX = { wlan: 'wifi', bnep: 'bluetooth', eth: 'ethernet' }
+
+let internetCache = { at: 0, ok: null }
+const internetReachable = async () => {
+  if (Date.now() - internetCache.at < 10000) return internetCache.ok
+  let ok
+  try {
+    const res = await fetch('https://cp.cloudflare.com/generate_204', { signal: AbortSignal.timeout(3000) })
+    ok = res.status === 204
+  } catch {
+    ok = false
+  }
+  internetCache = { at: Date.now(), ok }
+  return ok
+}
+
+const savedConnections = async () =>
+  nmRows(await run('nmcli', ['-t', '-f', 'NAME,TYPE', 'con', 'show'])).map(([name, type]) => ({ name, type }))
+
+const network = async () => {
+  const devices = nmRows(await run('nmcli', ['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'dev']))
+    .filter(([, type]) => LINK_TYPES[type])
+    .map(([device, type, state, connection]) => ({ device, type: LINK_TYPES[type], state, connection }))
+
+  const links = await Promise.all(
+    devices.map(async d => {
+      const link = { type: d.type, state: d.state, name: d.connection || null, ip: null, signal: null }
+      if (d.state !== 'connected') return link
+      const info = nmRows(await run('nmcli', ['-t', '-f', 'IP4.ADDRESS', 'dev', 'show', d.device]))
+      link.ip = (info[0] && info[0][1] ? info[0][1] : '').split('/')[0] || null
+      if (d.type === 'wifi') {
+        const aps = nmRows(await run('nmcli', ['-t', '-f', 'IN-USE,SSID,SIGNAL', 'dev', 'wifi', 'list', '--rescan', 'no']))
+        const mine = aps.find(([inUse]) => inUse === '*')
+        if (mine) {
+          link.name = mine[1] || link.name
+          link.signal = parseInt(mine[2], 10)
+        }
+      }
+      return link
+    }),
+  )
+
+  let via = null
+  try {
+    const routes = JSON.parse((await run('ip', ['-j', 'route', 'show', 'default'])) || '[]')
+    routes.sort((a, b) => (a.metric ?? 0) - (b.metric ?? 0))
+    const prefix = routes[0] && Object.keys(LINK_IFACE_PREFIX).find(p => routes[0].dev.startsWith(p))
+    via = prefix ? LINK_IFACE_PREFIX[prefix] : null
+  } catch {}
+
+  const saved = await savedConnections()
+  const btProfile = saved.find(c => c.type === 'bluetooth')
+  return {
+    links,
+    via,
+    internet: via ? await internetReachable() : false,
+    savedWifi: saved.filter(c => c.type === '802-11-wireless').length,
+    bluetoothProfile: btProfile ? btProfile.name : null,
+  }
+}
+
+const connectBluetooth = async () => {
+  const profile = (await savedConnections()).find(c => c.type === 'bluetooth')
+  if (!profile) throw new Error('no phone is set up for Bluetooth tethering yet')
+  await new Promise((resolve, reject) =>
+    execFile('sudo', ['-n', 'nmcli', 'con', 'up', profile.name], { timeout: 30000 }, err =>
+      err ? reject(new Error('could not connect through the phone (is Personal Hotspot on?)')) : resolve(),
+    ),
+  )
+  internetCache.at = 0
+}
+
 const sendJson = (res, code, body) => {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
@@ -250,6 +333,26 @@ const handle = (req, res) => {
     return true
   }
 
+  if (url === '/api/network' && req.method === 'GET') {
+    network().then(
+      body => sendJson(res, 200, body),
+      err => sendJson(res, 500, { error: String(err.message || err) }),
+    )
+    return true
+  }
+
+  if (url === '/api/network/connect' && req.method === 'POST') {
+    if (req.headers['x-s660-ui'] !== '1') {
+      sendJson(res, 403, { error: 'missing x-s660-ui header' })
+      return true
+    }
+    connectBluetooth().then(
+      () => sendJson(res, 200, { ok: true }),
+      err => sendJson(res, 500, { error: String(err.message || err) }),
+    )
+    return true
+  }
+
   if (url === '/api/power' && req.method === 'POST') {
     // A custom header makes a cross-origin page need a CORS preflight, which this server never grants.
     if (req.headers['x-s660-ui'] !== '1') {
@@ -274,4 +377,4 @@ const handle = (req, res) => {
   return true
 }
 
-module.exports = { handle, stats }
+module.exports = { handle, stats, network }

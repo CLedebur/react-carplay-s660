@@ -21,6 +21,8 @@ import { carplayCommandsFor, ControlHandler } from './controls'
 import { NativeUi } from './NativeUi'
 import { useHeadUnit } from './useHeadUnit'
 import { Settings, StartSettings, reloadPending } from './settings'
+import { settingsPage } from './nav'
+import { useNetwork } from './useNetwork'
 import { useSettings } from './useSettings'
 import { useSystemStats } from './useSystemStats'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
@@ -350,7 +352,14 @@ function App() {
   // Physical controls (OPERA MITM). The native head-unit UI (nav.ts) gets first call at every
   // control; what it does not use is forwarded to CarPlay, and only while CarPlay is streaming.
   const reloadCarplay = useCallback(() => window.location.reload(), []) // same recovery as a failed start
-  const headUnit = useHeadUnit({ plugged: isPlugged, settings, update: updateSettings, reloadCarplay })
+  const refreshNetworkRef = useRef<() => void>(() => {})
+  const headUnit = useHeadUnit({
+    plugged: isPlugged,
+    settings,
+    update: updateSettings,
+    reloadCarplay,
+    onNetworkChanged: () => refreshNetworkRef.current(),
+  })
 
   // Night mode also changes while CarPlay runs, so it is sent as a command, not only at start.
   useEffect(() => {
@@ -375,6 +384,9 @@ function App() {
   const nativeShowing = !(headUnit.ui.panel === 'carplay' && headUnit.carplayShown)
   const settingsOpen = nativeShowing && headUnit.ui.panel === 'settings'
   const stats = useSystemStats(nativeShowing ? (settingsOpen ? 2000 : 10000) : null, settingsOpen)
+  const networkPageOpen = settingsOpen && settingsPage(headUnit.ui) === 4
+  const { network, refresh: refreshNetwork } = useNetwork(networkPageOpen ? 3000 : null)
+  refreshNetworkRef.current = refreshNetwork
 
   const isLoading = !isPlugged
 
@@ -393,6 +405,8 @@ function App() {
         dongle={deviceFound === null ? null : !!deviceFound}
         linkStatus={status?.text ?? null}
         stats={stats}
+        network={network}
+        netBusy={headUnit.netBusy}
         holding={headUnit.holding}
         power={headUnit.power}
         lastKey={headUnit.lastKey}

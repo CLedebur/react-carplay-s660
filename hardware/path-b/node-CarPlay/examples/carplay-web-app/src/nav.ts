@@ -15,6 +15,7 @@ export type FocusId =
   | 'sw:carplay'
   | 'sw:settings'
   | `opt:${SettingKey}`
+  | 'netConnect'
   | HoldAction
 
 // Settings pages. Page 1 is status only and has nothing to focus; the page follows the knob.
@@ -22,6 +23,7 @@ export const SETTINGS_PAGES: { title: string; items: FocusId[] }[] = [
   { title: 'Status', items: [] },
   { title: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock'] },
   { title: 'CarPlay', items: ['opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
+  { title: 'Network', items: ['netConnect'] },
   { title: 'Maintenance & power', items: ['reload', 'restart', 'shutdown'] },
 ]
 
@@ -71,6 +73,8 @@ export interface NativeResult {
   hold?: HoldAction
   // The knob was pressed on a setting: the caller steps it to its next value.
   cycle?: SettingKey
+  // The knob was pressed on "connect through the phone": the caller brings that link up.
+  connect?: 'bluetooth'
   // The user asked for CarPlay (rail, switcher or Back), which also overrides "don't auto-run".
   opensCarplay?: boolean
 }
@@ -89,6 +93,7 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
     case 'knobPush': {
       const f = ui.focus
       if (f === 'reload' || f === 'restart' || f === 'shutdown') return { ui, hold: f }
+      if (f === 'netConnect') return { ui, connect: 'bluetooth' }
       if (f.startsWith('opt:')) return { ui, cycle: f.slice(4) as SettingKey }
       const settings = f.endsWith('settings')
       return { ui: openPanel(settings ? 'settings' : 'carplay'), opensCarplay: !settings }

@@ -4,3 +4,7 @@
 LABEL=persist /persist ext4 defaults,noatime,nofail,x-systemd.device-timeout=5s,errors=remount-ro 0 2
 /persist/journal /var/log/journal none bind,nofail,x-systemd.requires-mounts-for=/persist 0 0
 /persist/timesync /var/lib/systemd/timesync none bind,nofail,x-systemd.requires-mounts-for=/persist 0 0
+# Wi-Fi/Bluetooth tethering (BUILD_NOTES §37): saved connections and the phone's Bluetooth bond,
+# so networks added on the unit survive the overlay. s660-persist-layout.service creates and seeds both.
+/persist/nm-connections /etc/NetworkManager/system-connections none bind,nofail,x-systemd.requires-mounts-for=/persist 0 0
+/persist/bluetooth /var/lib/bluetooth none bind,nofail,x-systemd.requires-mounts-for=/persist 0 0

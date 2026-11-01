@@ -11,6 +11,7 @@ import {
   UiState,
 } from './nav'
 import { nextValue, Settings } from './settings'
+import { requestBluetoothConnect } from './useNetwork'
 import { requestPower } from './useSystemStats'
 
 export const MODE_HOLD_MS = 600 // hold Mode this long to open the panel switcher
@@ -31,18 +32,24 @@ export interface PowerNotice {
   error?: string
 }
 
+export interface NetBusy {
+  state: 'connecting' | 'failed'
+  error?: string
+}
+
 export interface HeadUnitOptions {
   plugged: boolean // the phone is connected and CarPlay is streaming
   settings: Settings
   update: (patch: Partial<Settings>) => void
   reloadCarplay: () => void
+  onNetworkChanged: () => void // a connect attempt finished: refresh the network page
 }
 
 // The native UI's state and its share of the physical controls. `onControl` takes every control
 // event and returns the one CarPlay should receive, or null when the native UI used it.
 // `carplayShown` is whether CarPlay's video is what is on the glass: the phone is connected and
 // either the setting says to run it automatically or the user has asked for it this connection.
-export const useHeadUnit = ({ plugged, settings, update, reloadCarplay }: HeadUnitOptions) => {
+export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetworkChanged }: HeadUnitOptions) => {
   const [ui, setUiState] = useState<UiState>(initialUi)
   const uiRef = useRef(ui)
   const setUi = useCallback((next: UiState) => {
@@ -67,6 +74,11 @@ export const useHeadUnit = ({ plugged, settings, update, reloadCarplay }: HeadUn
   const [holding, setHolding] = useState<HoldAction | null>(null)
   const [power, setPower] = useState<PowerNotice | null>(null)
   const [lastKey, setLastKey] = useState<string | null>(null)
+  const [netBusy, setNetBusy] = useState<NetBusy | null>(null)
+  const netBusyRef = useRef(netBusy)
+  netBusyRef.current = netBusy
+  const networkChangedRef = useRef(onNetworkChanged)
+  networkChangedRef.current = onNetworkChanged
 
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const modeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -154,11 +166,21 @@ export const useHeadUnit = ({ plugged, settings, update, reloadCarplay }: HeadUn
       if (result.ui !== uiRef.current) setUi(result.ui)
       if (result.opensCarplay) setAsked(true)
       if (result.cycle) updateRef.current({ [result.cycle]: nextValue(settingsRef.current, result.cycle) })
+      if (result.connect && netBusyRef.current?.state !== 'connecting') {
+        setNetBusy({ state: 'connecting' })
+        requestBluetoothConnect().then(
+          () => setNetBusy(null),
+          err => {
+            setNetBusy({ state: 'failed', error: String(err.message ?? err) })
+            setTimeout(() => setNetBusy(null), 8000)
+          },
+        ).finally(() => networkChangedRef.current())
+      }
       if (result.hold) beginHold(result.hold)
       return null
     },
     [beginHold, cancelHold, setUi],
   )
 
-  return { ui, carplayShown, holding, power, lastKey, onControl }
+  return { ui, carplayShown, holding, power, lastKey, netBusy, onControl }
 }

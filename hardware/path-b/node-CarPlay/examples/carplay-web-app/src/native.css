@@ -126,3 +126,8 @@
 .nui .note { margin-top: 8px; font-size: 17px; font-weight: 600; line-height: 1.2; }
 .nui .note.dim { color: var(--dim); }
 .nui .hint.note { margin-top: 8px; padding: 6px 10px; font-size: 17px; }
+
+/* settings page 4: network */
+.nui .netline { font-size: 26px; font-weight: 800; margin: 4px 0 6px; }
+.nui .btn.net { margin-top: 10px; height: 62px; }
+.nui .btn.net.busy { border-style: dashed; }
