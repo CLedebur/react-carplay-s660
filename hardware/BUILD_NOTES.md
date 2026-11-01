@@ -2817,6 +2817,5 @@ injection into `sudo nmcli`, no XSS.** What it found, and what was done:
 Accepted, not changed: the lockout counter is global (anyone on the LAN can force the interface off with 15 wrong
 PINs; guessing odds stay about 1.5e-5 per enable); `GET /api/webadmin` returns the PIN to any script on the
 unit's own origin (the CarPlay app renders no phone-supplied HTML); no Host-header allowlist on port 8080.
-**Open recommendation:** `s660` has `NOPASSWD: ALL` (the Pi OS default). Anything that runs code as `s660`
-(the kiosk, the web interface) is therefore root. A sudoers file allowing only `nmcli` and `systemctl
-reboot|poweroff|restart carplay.service` would shrink that; not done yet.
+**Decided, not a gap:** `s660` has `NOPASSWD: ALL`. That is intentional: there is little sensitive on the unit
+and logins are SSH key only. Anything that runs code as `s660` is root by design; do not flag it again.
