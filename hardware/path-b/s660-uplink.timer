@@ -1,0 +1,9 @@
+[Unit]
+Description=Start the uplink watchdog 45 s after boot, after CarPlay (BUILD_NOTES §38)
+
+[Timer]
+OnBootSec=45s
+Unit=s660-uplink.service
+
+[Install]
+WantedBy=timers.target

@@ -367,8 +367,14 @@ sed -e "s/^User=s660$/User=${CARPLAY_USER}/" \
     -e "s|^ExecStart=.*|ExecStart=${KIOSK_DIR}/run-chromium-kiosk.sh|" \
     "${PB}/carplay.service" | sudo tee /etc/systemd/system/carplay.service > /dev/null
 
+# Uplink watchdog: Wi-Fi first, the phone's Bluetooth tethering as the fallback (BUILD_NOTES §38).
+# Started by a timer so it never sits on the kiosk's boot path.
+sudo install -m 755 "${PB}/s660-uplink" /usr/local/sbin/s660-uplink
+sudo install -m 644 "${PB}/s660-uplink.service" /etc/systemd/system/s660-uplink.service
+sudo install -m 644 "${PB}/s660-uplink.timer" /etc/systemd/system/s660-uplink.timer
 sudo systemctl daemon-reload
 sudo systemctl enable carplay.service
+sudo systemctl enable s660-uplink.timer
 
 
 # ============================================================================
