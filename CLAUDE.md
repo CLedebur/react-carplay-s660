@@ -99,9 +99,11 @@ The stack (BUILD_NOTES §8.5; the retired/shelved alternatives are §32 and §27
   in `~/carplay-dev/`. In BUILD_NOTES §5–§20, `carplay.service` means the old **Path A**
   Electron unit, not this one.
 - **Native head-unit UI** (BUILD_NOTES §38): CarPlay shows full screen once the phone connects; the
-  waiting page, the hold-Mode panel switcher and the five-page Settings are native React in the same
+  waiting page, the hold-Mode panel switcher, the Vehicle panel (tabs Drive/Engine/Dynamics/Body, fed by
+  `GET /api/vehicle`, §39) and Settings (tab bar: Status/Options/CarPlay/Network/Display/Power) are native React in the same
   page (`src/NativeUi.tsx`, `nav.ts`, `useHeadUnit.ts`). Mode acts on **release** (tap = Home, hold =
-  switcher). Settings live in `/persist/ui/settings.json` behind a localhost API.
+  switcher). The whole native UI is drawn `glassAspect x 480` wide and squeezed into the 720 px output (§39.2; set on
+  Settings > Display). Settings live in `/persist/ui/settings.json` behind a localhost API.
 - **Kiosk server files:** `serve-build.js` requires `s660-api.js`, which requires `web-admin.js`. Copy
   **all three** into `~/carplay-kiosk/` on every deploy; a missing one crash-loops the kiosk. The web
   interface (port 8080, PIN shown on the unit's screen) is off at every boot.

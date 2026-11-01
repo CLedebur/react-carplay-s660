@@ -6,8 +6,14 @@ import {
   nativeKey,
   openPanel,
   openSwitcher,
-  settingsPage,
+  UiState,
 } from './nav'
+
+// The Settings panel with the knob pushed into a tab, on one of its controls.
+const inside = (tab: UiState['tab']['settings'], focus: UiState['focus']): UiState => {
+  const ui = openPanel('settings')
+  return { ...ui, tab: { ...ui.tab, settings: tab }, focus }
+}
 
 test('boots on the CarPlay panel', () => {
   expect(initialUi.panel).toBe('carplay')
@@ -20,59 +26,73 @@ test('the switcher takes the controls back from CarPlay', () => {
   expect(isCarplayView(openPanel('settings'), true)).toBe(false)
 })
 
-test('knob walks the rail, then every Settings page in order, and wraps', () => {
+test('knob walks the rail, then the panel\'s tabs, and wraps', () => {
   const ring = focusRing(openPanel('settings'))
   expect(ring).toEqual([
-    'rail:carplay',
-    'rail:settings',
-    'opt:autoRunCarplay',
-    'opt:units',
-    'opt:clock',
-    'webAdmin',
-    'opt:handDrive',
-    'opt:fps',
-    'opt:wifiBand',
-    'opt:nightMode',
-    'netConnect',
-    'reload',
-    'restart',
-    'shutdown',
+    'rail:carplay', 'rail:vehicle', 'rail:settings',
+    'tab:status', 'tab:options', 'tab:carplay', 'tab:network', 'tab:display', 'tab:power',
   ])
+  expect(focusRing(openPanel('vehicle')).slice(3)).toEqual(['tab:drive', 'tab:engine', 'tab:dynamics', 'tab:body'])
+  expect(focusRing(openPanel('carplay'))).toEqual(['rail:carplay', 'rail:vehicle', 'rail:settings'])
   let ui = openPanel('settings') // focus starts on its own rail item
-  for (let i = 0; i < ring.length - 2; i++) ui = nativeKey(ui, 'knobCw').ui
-  expect(ui.focus).toBe('shutdown')
+  for (let i = 0; i < ring.length - 3; i++) ui = nativeKey(ui, 'knobCw').ui
+  expect(ui.focus).toBe('tab:power')
   expect(nativeKey(ui, 'knobCw').ui.focus).toBe('rail:carplay') // wraps
-  expect(nativeKey(openPanel('settings'), 'knobCcw').ui.focus).toBe('rail:carplay')
+  expect(nativeKey(openPanel('settings'), 'knobCcw').ui.focus).toBe('rail:vehicle')
 })
 
-test('Settings page 1 is status only; the page follows the knob', () => {
+test('the tab follows the knob, Status first', () => {
   let ui = openPanel('settings')
-  const pages = [settingsPage(ui)]
-  for (let i = 0; i < 12; i++) {
+  expect(ui.tab.settings).toBe('status')
+  const seen: string[] = []
+  for (let i = 0; i < 7; i++) {
     ui = nativeKey(ui, 'knobCw').ui
-    pages.push(settingsPage(ui))
+    seen.push(ui.tab.settings)
   }
-  expect(pages).toEqual([1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 5, 5, 5])
-  expect(settingsPage(nativeKey(openPanel('settings'), 'knobCcw').ui)).toBe(1)
+  expect(seen).toEqual(['status', 'options', 'carplay', 'network', 'display', 'power', 'power'])
+  expect(nativeKey(openPanel('vehicle'), 'knobCw').ui.tab.vehicle).toBe('drive')
+})
+
+test('push on a tab enters it, a loop of its own controls; Back steps out onto the tab, then leaves', () => {
+  let ui = openPanel('settings')
+  ui = nativeKey(ui, 'knobCw').ui // tab:status
+  ui = nativeKey(ui, 'knobCw').ui // tab:options
+  expect(ui.focus).toBe('tab:options')
+  ui = nativeKey(ui, 'knobPush').ui
+  expect(ui.focus).toBe('opt:autoRunCarplay')
+  expect(focusRing(ui)).toEqual(['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'webAdmin'])
+  for (let i = 0; i < 4; i++) ui = nativeKey(ui, 'knobCw').ui
+  expect(ui.focus).toBe('opt:autoRunCarplay') // wraps inside the tab
+  ui = nativeKey(ui, 'back').ui
+  expect(ui.focus).toBe('tab:options')
+  expect(ui.panel).toBe('settings')
+  expect(nativeKey(ui, 'back').opensCarplay).toBe(true) // the next Back leaves
+})
+
+test('read-only tabs have nothing to enter', () => {
+  const ui = { ...openPanel('vehicle'), focus: 'tab:drive' as const }
+  expect(nativeKey(ui, 'knobPush').ui).toBe(ui)
+  const status = { ...openPanel('settings'), focus: 'tab:status' as const }
+  expect(nativeKey(status, 'knobPush').ui).toBe(status)
 })
 
 test('push on a setting asks the caller to step it, and stays put', () => {
-  const ui = { ...openPanel('settings'), focus: 'opt:fps' as const }
+  const ui = inside('carplay', 'opt:fps')
   expect(nativeKey(ui, 'knobPush')).toEqual({ ui, cycle: 'fps' })
 })
 
 test('the Network page button asks the caller to bring the phone link up', () => {
-  const ui = { ...openPanel('settings'), focus: 'netConnect' as const }
+  const ui = inside('network', 'netConnect')
   expect(nativeKey(ui, 'knobPush')).toEqual({ ui, connect: 'bluetooth' })
 })
 
 test('the web interface row asks the caller to switch it, with no hold', () => {
-  const ui = { ...openPanel('settings'), focus: 'webAdmin' as const }
+  const ui = inside('options', 'webAdmin')
   expect(nativeKey(ui, 'knobPush')).toEqual({ ui, toggleWeb: true })
 })
 
 test('Reload CarPlay needs a hold like Restart', () => {
-  const ui = { ...openPanel('settings'), focus: 'reload' as const }
+  const ui = inside('power', 'reload')
   expect(nativeKey(ui, 'knobPush')).toEqual({ ui, hold: 'reload' })
 })
 
@@ -84,9 +104,10 @@ test('asking for CarPlay (rail, switcher, Back) is flagged; Settings and options
   expect(nativeKey(rail, 'knobCw').opensCarplay).toBeUndefined()
 })
 
-test('the vehicle panel is not in any ring', () => {
-  const all = [initialUi, openPanel('settings'), openSwitcher(initialUi)].flatMap(focusRing)
-  expect(all.some(id => id.includes('vehicle'))).toBe(false)
+test('the rail and the switcher both reach the Vehicle panel', () => {
+  const rail = { ...openPanel('carplay'), focus: 'rail:vehicle' as const }
+  expect(nativeKey(rail, 'knobPush')).toEqual({ ui: openPanel('vehicle'), opensCarplay: false })
+  expect(focusRing(openSwitcher(initialUi))).toEqual(['sw:carplay', 'sw:vehicle', 'sw:settings'])
 })
 
 test('push on the rail opens that panel', () => {
@@ -95,7 +116,7 @@ test('push on the rail opens that panel', () => {
 })
 
 test('push on Restart or Shut down asks for a hold, it never acts at once', () => {
-  const ui = { ...openPanel('settings'), focus: 'shutdown' as const }
+  const ui = inside('power', 'shutdown')
   expect(nativeKey(ui, 'knobPush')).toEqual({ ui, hold: 'shutdown' })
 })
 
@@ -110,5 +131,22 @@ test('switcher: push picks a panel', () => {
   let ui = openSwitcher(initialUi)
   expect(ui.focus).toBe('sw:carplay')
   ui = nativeKey(ui, 'knobCw').ui
+  ui = nativeKey(ui, 'knobCw').ui
   expect(nativeKey(ui, 'knobPush').ui).toEqual(openPanel('settings'))
+})
+
+test('Display: push opens the test pattern; there the knob steps the ratio, push toggles fine, Back saves and leaves', () => {
+  let ui = inside('display', 'aspect')
+  ui = nativeKey(ui, 'knobPush').ui
+  expect(ui.pattern).toBe(true)
+  expect(nativeKey(ui, 'knobCw').aspect).toBe(1)
+  expect(nativeKey(ui, 'knobCcw').aspect).toBe(-1)
+  expect(nativeKey(ui, 'knobCw').ui).toBe(ui) // the knob does not move focus
+  ui = nativeKey(ui, 'knobPush').ui
+  expect(ui.fine).toBe(true)
+  const left = nativeKey(ui, 'back')
+  expect(left.ui.pattern).toBe(false)
+  expect(left.ui.focus).toBe('aspect')
+  expect(left.opensCarplay).toBeUndefined()
+  expect(nativeKey(inside('display', 'aspectReset'), 'knobPush').resetAspect).toBe(true)
 })

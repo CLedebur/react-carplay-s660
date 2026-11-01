@@ -35,5 +35,11 @@ export const useSettings = () => {
     post(patch).then(saved => setSettings(saved), () => setSettings(before))
   }, [])
 
-  return { settings, loaded, update }
+  // Shows a change without saving it, for values that move many times a second (the aspect pattern).
+  const preview = useCallback((patch: Partial<Settings>) => {
+    latest.current = { ...latest.current, ...patch }
+    setSettings(latest.current)
+  }, [])
+
+  return { settings, loaded, update, preview }
 }

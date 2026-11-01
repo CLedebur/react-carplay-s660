@@ -274,7 +274,14 @@ const SETTINGS = {
   fps: { default: 30, allowed: [30, 60] },
   wifiBand: { default: '5ghz', allowed: ['5ghz', '2.4ghz'] },
   nightMode: { default: false, allowed: [true, false] },
+  carplayWidth: { default: 896, allowed: [848, 896] },
+  carplayShape: { default: 'fill', allowed: ['fill', 'exact'] },
+  // Visible glass width / height x 1000: a range, not a list (carplay-web-app/src/settings.ts GLASS_ASPECT).
+  glassAspect: { default: 1875, min: 1500, max: 2400 },
 }
+
+const isAllowed = (spec, v) =>
+  spec.allowed ? spec.allowed.includes(v) : Number.isInteger(v) && v >= spec.min && v <= spec.max
 
 // Saved values that are no longer allowed fall back to their default instead of breaking the UI.
 const readSettings = () => {
@@ -283,14 +290,14 @@ const readSettings = () => {
     saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
   } catch {}
   return Object.fromEntries(
-    Object.entries(SETTINGS).map(([k, spec]) => [k, spec.allowed.includes(saved[k]) ? saved[k] : spec.default]),
+    Object.entries(SETTINGS).map(([k, spec]) => [k, isAllowed(spec, saved[k]) ? saved[k] : spec.default]),
   )
 }
 
 // Only known keys with an allowed value are accepted; anything else is a 400, not a silent drop.
 const writeSettings = patch => {
   for (const [k, v] of Object.entries(patch)) {
-    if (!SETTINGS[k] || !SETTINGS[k].allowed.includes(v)) throw new Error(`bad setting: ${k}`)
+    if (!SETTINGS[k] || !isAllowed(SETTINGS[k], v)) throw new Error(`bad setting: ${k}`)
   }
   const next = { ...readSettings(), ...patch }
   const tmp = `${SETTINGS_FILE}.tmp`

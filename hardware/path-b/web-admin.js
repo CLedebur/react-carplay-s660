@@ -27,8 +27,10 @@ const LABELS = {
   fps: 'Video frame rate',
   wifiBand: 'Dongle Wi-Fi band',
   nightMode: 'CarPlay night mode',
+  carplayShape: 'CarPlay picture',
+  carplayWidth: 'CarPlay width (needs Restart CarPlay)',
 }
-const VALUE_LABELS = { true: 'On', false: 'Off', c: '°C', f: '°F', rhd: 'Right', lhd: 'Left', '5ghz': '5 GHz', '2.4ghz': '2.4 GHz', '24h': '24-hour', '12h': '12-hour' }
+const VALUE_LABELS = { true: 'On', false: 'Off', c: '°C', f: '°F', rhd: 'Right', lhd: 'Left', '5ghz': '5 GHz', '2.4ghz': '2.4 GHz', '24h': '24-hour', '12h': '12-hour', fill: 'Fill screen', exact: 'True shape (bar on the left)' }
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
@@ -233,6 +235,7 @@ ${n.links.map(l => row(`${l.type}`, [l.state, l.name, l.ip, l.signal === null ? 
   const settingsPage = url => {
     const cur = readSettings()
     const fields = Object.keys(SETTINGS)
+      .filter(k => SETTINGS[k].allowed) // glassAspect is a range, set on the unit's own Display tab
       .map(k => {
         const opts = SETTINGS[k].allowed
           .map(v => `<option value="${esc(JSON.stringify(v))}"${v === cur[k] ? ' selected' : ''}>${esc(VALUE_LABELS[v] ?? v)}${k === 'fps' ? ' fps' : ''}</option>`)
@@ -243,7 +246,7 @@ ${n.links.map(l => row(`${l.type}`, [l.state, l.name, l.ip, l.signal === null ? 
     return page(
       'Settings',
       `${flash(url)}<h1>Settings</h1><form method="post" action="/settings">${fields}<p><button>Save</button></p></form>
-<p class="dim">Hand drive, frame rate and Wi-Fi band only reach the dongle when CarPlay restarts: use <a href="/power">Power → Restart CarPlay</a>.</p>`,
+<p class="dim">Hand drive, frame rate, Wi-Fi band and CarPlay width only reach the dongle when CarPlay restarts: use <a href="/power">Power → Restart CarPlay</a>.</p>`,
     )
   }
 

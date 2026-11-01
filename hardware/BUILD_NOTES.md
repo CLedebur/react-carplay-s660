@@ -2819,3 +2819,45 @@ PINs; guessing odds stay about 1.5e-5 per enable); `GET /api/webadmin` returns t
 unit's own origin (the CarPlay app renders no phone-supplied HTML); no Host-header allowlist on port 8080.
 **Decided, not a gap:** `s660` has `NOPASSWD: ALL`. That is intentional: there is little sensitive on the unit
 and logins are SSH key only. Anything that runs code as `s660` is root by design; do not flag it again.
+
+## 39. 2026-11-01 — Vehicle panel, Settings tab bar, and the aspect-ratio tool (UI only)
+
+### 39.1 Navigation and the Vehicle panel
+- The rail now has **CarPlay, Vehicle, Settings**. Vehicle and Settings each have a **tab bar** under the title strip
+  (Vehicle: Drive, Engine, Dynamics, Body; Settings: Status, Options, CarPlay, Network, Display, Power). Turning the knob
+  from the rail walks the tabs and the page follows; **push** enters a tab that has controls (a short loop of its own
+  items); **Back** steps out onto the tab, and Back again leaves for CarPlay. The Vehicle tabs are read-only.
+  Logic and tests: `nav.ts`, `nav.test.ts`.
+- The title strip's bottom line used to run across the rail's top icon; it now starts at the rail's divider.
+- `src/VehicleTabs.tsx` draws the four tabs. Values are `null` until their CAN message has been seen, and then show `--`;
+  with no live data a dialog says so. Open the app with **`?demo=1`** to see the screens move with made-up data.
+- **The contract the CAN service must answer: `GET /api/vehicle`** (localhost only, like the other `/api/*`), JSON,
+  the `VehicleData` interface in `src/vehicle.ts`, **physical units, already decoded**: km/h, rpm, bar (relative to the
+  atmosphere), MPa, °C, g, degrees, `fuelPct` 0-100, booleans. Sign conventions are in that file (steering and yaw +
+  right; `latG` + = pushed left; `longG` + = accelerating). `live:false` (or any field `null`) when the bus is silent.
+  The UI polls it every **200 ms while the Vehicle panel is up**, every 2 s while Settings > Status is up (for its "CAN bus"
+  row), and never otherwise, so the backend can start and stop its candump on demand. No backend for it is in this repo yet.
+- Display thresholds in `VehicleTabs.tsx` (coolant amber 105 °C, red 110 °C; low fuel 10 %) are placeholders, not
+  Honda's numbers.
+
+### 39.2 The aspect-ratio tool (Settings > Display)
+- §22.8 squeezed only the CarPlay video. The native UI was laid out 720 wide and so appeared **25 % too wide** on the
+  1.875 : 1 glass. Everything native is now drawn **`glassAspect x 480`** logical pixels wide (900 at 1.875) and squeezed by
+  `scaleX(720 / width)` into the 720 x 480 output (`Fit` in `NativeUi.tsx`), so the panel's stretch gives square pixels back.
+- `glassAspect` is a setting (x 1000, default 1875, range 1500-2400; `settings.ts`, validated in `s660-api.js`; not on the
+  web interface's form). **Display > Adjust with test pattern** shows a full-screen grid: cells are 1/10 of the height
+  (7.2 mm on a 72 mm glass), square, circles, a diagonal cross, and a yellow frame at the edges. Turn the knob until
+  the squares are square and the circles round; push toggles fine (0.005) and coarse (0.020) steps; **Back saves**
+  (the value is only written when the pattern closes). **Reset** returns to 1.875.
+- Once the ratio is known, the measured value goes in as the default. **The CarPlay video is unchanged**: it is still
+  848 x 480 stretched over the frame, so it stays about 6 % wide at 1.875. A "true shape" option (black bars either
+  side, width 720 x 848/480 / aspect = 678 px at 1.875) would remove that at the cost of 6 % of the screen width.
+
+### 39.3 CarPlay picture: true shape and render width (Settings > Display)
+- **CarPlay picture** (`carplayShape`): *Fill screen* (default, as before) or *True shape*: the video is drawn at its real shape on
+  the glass, `720 x (width/480) / glassAspect` px wide (678 px for 848 at 1.875), pushed to the right edge, with the black bar on the left.
+  Applies at once.
+- **CarPlay width** (`carplayWidth`): the width the dongle renders at, **896** (default; 1.867 : 1, the glass's own shape) or **848**.
+  Height is always 480. Applies after Reload CarPlay. 896 is the setting that made Waze move its speed-limit badge off the frame
+  in §22.8; **Retested 2026-11-01 on the glass: Waze no longer misplaces the badge at 896** (a newer Waze than in September), and CarPlay looked sharp and filled the screen. **896 is now the default**; 848 stays in the setting for anyone whose Waze or phone still misbehaves. With 896 and *True shape*, the bar is 6 px, not 42 (with 848 it is 42).
+

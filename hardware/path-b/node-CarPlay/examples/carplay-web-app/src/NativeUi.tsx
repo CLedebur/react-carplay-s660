@@ -1,7 +1,10 @@
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import './native.css'
-import { FocusId, HoldAction, Panel, settingsPage, SETTINGS_PAGES, UiState } from './nav'
-import { SettingKey, Settings as SettingsValues, toFahrenheit } from './settings'
+import { FocusId, HoldAction, Panel, SETTINGS_TABS, tabsOf, UiState } from './nav'
+import { CycleKey, logicalWidth, OUTPUT_HEIGHT, OUTPUT_WIDTH, Settings as SettingsValues, toFahrenheit } from './settings'
+import { VehicleData } from './vehicle'
+import { VehiclePage } from './VehicleTabs'
+import { vehicleDemo } from './useVehicle'
 import { NetBusy, PowerNotice } from './useHeadUnit'
 import { NetworkInfo } from './useNetwork'
 import { WebAdminState } from './useWebAdmin'
@@ -20,6 +23,7 @@ export interface NativeUiProps {
   dongle: boolean | null // null until the first USB check
   linkStatus: string | null // the app's status line, e.g. "Scanning for phone…"
   stats: SystemStats | null
+  vehicle: VehicleData | null
   network: NetworkInfo | null
   web: WebAdminState | null
   netBusy: NetBusy | null
@@ -94,10 +98,9 @@ const Rail = ({ panel, focus }: { panel: Panel; focus: FocusId }) => (
       <CarIcon />
       CarPlay
     </div>
-    <div className="item disabled">
+    <div className={`item f${panel === 'vehicle' ? ' active' : ''}${focusClass(focus, 'rail:vehicle')}`}>
       <GaugeIcon />
       Vehicle
-      <small>OBD-II needed</small>
     </div>
     <div className={`item f${panel === 'settings' ? ' active' : ''}${focusClass(focus, 'rail:settings')}`}>
       <SlidersIcon />
@@ -183,7 +186,7 @@ const PowerButton = ({ action, holding, focus }: { action: HoldAction; holding: 
   </div>
 )
 
-const OPTIONS: { [K in SettingKey]: { label: string; check?: boolean; show?: (v: SettingsValues[K]) => string } } = {
+const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: SettingsValues[K]) => string } } = {
   autoRunCarplay: { label: 'Automatically run CarPlay when the car starts', check: true },
   units: { label: 'Temperature units', show: v => (v === 'c' ? '°C' : '°F') },
   clock: { label: 'Clock', show: v => (v === '24h' ? '24-hour' : '12-hour') },
@@ -191,9 +194,11 @@ const OPTIONS: { [K in SettingKey]: { label: string; check?: boolean; show?: (v:
   fps: { label: 'Video frame rate', show: v => `${v} fps` },
   wifiBand: { label: 'Dongle Wi-Fi band', show: v => (v === '5ghz' ? '5 GHz' : '2.4 GHz') },
   nightMode: { label: 'CarPlay night mode', check: true },
+  carplayWidth: { label: 'CarPlay width (after Reload)', show: v => `${v} px${v === 896 ? ' · true shape' : ''}` },
+  carplayShape: { label: 'CarPlay picture', show: v => (v === 'fill' ? 'Fill screen' : 'True shape') },
 }
 
-const OptionRow = <K extends SettingKey>({ k, settings, focus }: { k: K; settings: SettingsValues; focus: FocusId }) => {
+const OptionRow = <K extends CycleKey>({ k, settings, focus }: { k: K; settings: SettingsValues; focus: FocusId }) => {
   const meta = OPTIONS[k]
   const value = settings[k]
   return (
@@ -205,13 +210,6 @@ const OptionRow = <K extends SettingKey>({ k, settings, focus }: { k: K; setting
   )
 }
 
-const Pager = ({ page }: { page: number }) => (
-  <div className="pager">
-    Page {page} of {SETTINGS_PAGES.length} · {SETTINGS_PAGES[page - 1].title} ·{' '}
-    {page === 1 ? 'turn the knob → for options' : 'turn the knob ← →'}
-  </div>
-)
-
 const VIA_LABEL = { wifi: 'Wi-Fi', bluetooth: 'your phone (Bluetooth)', ethernet: 'Ethernet' }
 
 const NetworkPage = ({ network, netBusy, focus }: Pick<NativeUiProps, 'network' | 'netBusy'> & { focus: FocusId }) => {
@@ -222,7 +220,7 @@ const NetworkPage = ({ network, netBusy, focus }: Pick<NativeUiProps, 'network' 
   const pct = (s: number | null) => (s === null ? '' : ` · ${s}%`)
   const label = netBusy?.state === 'connecting' ? 'Connecting…' : 'Connect through phone (Bluetooth)'
   return (
-    <div className="content">
+    <div className="content tabbed">
       <div className="card opts">
         <h3>Network</h3>
         <div className={`netline v ${tone}`}>{headline}</div>
@@ -235,7 +233,6 @@ const NetworkPage = ({ network, netBusy, focus }: Pick<NativeUiProps, 'network' 
         <span>{label}</span>
       </div>
       {netBusy?.state === 'failed' && <div className="hint note"><b>Could not connect.</b> {netBusy.error}</div>}
-      <Pager page={4} />
     </div>
   )
 }
@@ -256,32 +253,34 @@ const WebRow = ({ web, focus }: { web: WebAdminState | null; focus: FocusId }) =
   </div>
 )
 
-const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'network' | 'web' | 'netBusy' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
+const Settings = ({ ui, stats, vehicle, network, web, netBusy, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'vehicle' | 'network' | 'web' | 'netBusy' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
   const focus = ui.focus
-  const page = settingsPage(ui)
+  const tab = ui.tab.settings
 
-  if (page === 2 || page === 3) {
-    const keys = SETTINGS_PAGES[page - 1].items.filter(id => id.startsWith('opt:')).map(id => id.slice(4) as SettingKey)
+  if (tab === 'options' || tab === 'carplay') {
+    const items = SETTINGS_TABS.find(t => t.id === tab)!.items
+    const keys = items.filter(id => id.startsWith('opt:')).map(id => id.slice(4) as CycleKey)
     return (
-      <div className="content">
+      <div className="content tabbed">
         <div className="card opts">
-          <h3>{SETTINGS_PAGES[page - 1].title}</h3>
+          <h3>{tab === 'options' ? 'Options' : 'CarPlay'}</h3>
           {keys.map(k => (
             <OptionRow key={k} k={k} settings={settings} focus={focus} />
           ))}
-          {page === 2 && <WebRow web={web} focus={focus} />}
+          {tab === 'options' && <WebRow web={web} focus={focus} />}
         </div>
-        {page === 3 && <ReloadNote pending={reloadPending} />}
-        <Pager page={page} />
+        {tab === 'carplay' && <ReloadNote pending={reloadPending} />}
       </div>
     )
   }
 
-  if (page === 4) return <NetworkPage network={network} netBusy={netBusy} focus={focus} />
+  if (tab === 'network') return <NetworkPage network={network} netBusy={netBusy} focus={focus} />
 
-  if (page === 5) {
+  if (tab === 'display') return <DisplayPage focus={focus} settings={settings} />
+
+  if (tab === 'power') {
     return (
-      <div className="content">
+      <div className="content tabbed">
         <div className="card opts">
           <h3>Maintenance</h3>
           <div className="maint">
@@ -293,7 +292,6 @@ const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streamin
           <PowerButton action="restart" holding={holding} focus={focus} />
           <PowerButton action="shutdown" holding={holding} focus={focus} />
         </div>
-        <Pager page={5} />
       </div>
     )
   }
@@ -319,7 +317,7 @@ const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streamin
   const nvme = stats?.nvmeTempC ?? null
 
   return (
-    <div className="content">
+    <div className="content tabbed">
       <div className="set">
         <div className="card cm4">
           <h3>Computer (CM4)</h3>
@@ -350,7 +348,7 @@ const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streamin
           <h3>Controls (MITM)</h3>
           <Row k="Pico link" v={stats ? (stats.mitmLinked ? '● Connected' : '○ Not found') : '--'} tone={stats ? (stats.mitmLinked ? 'ok' : 'bad') : 'off'} />
           <Row k="Last key" v={lastKey ?? '--'} />
-          <Row k="CAN bus" v="○ Not built" tone="off" />
+          <Row k="CAN bus" v={vehicle === null ? '--' : vehicle.live ? '● Receiving' : '○ No signal'} tone={vehicle?.live ? 'ok' : 'off'} />
         </div>
         <div className="card">
           <h3>CarPlay &amp; storage</h3>
@@ -360,7 +358,109 @@ const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streamin
           <Row k="/persist free" v={fmt(stats?.persistFreeGb ?? null, ' GB')} />
         </div>
       </div>
-      <Pager page={1} />
+    </div>
+  )
+}
+
+
+const ratio = (g: number) => (g / 1000).toFixed(3)
+
+const DisplayPage = ({ focus, settings }: { focus: FocusId; settings: SettingsValues }) => {
+  const glassAspect = settings.glassAspect
+  return (
+  <div className="content tabbed">
+    <div className="card opts">
+      <h3>Screen shape</h3>
+      <div className="aspectline">
+        <span className="n">{ratio(glassAspect)}</span> : 1<span className="px"> · drawn {logicalWidth(glassAspect)} × {OUTPUT_HEIGHT}</span>
+      </div>
+      <div className="note dim">
+        The glass is 135×72 mm (1.875 : 1); the panel is fed {OUTPUT_WIDTH}×{OUTPUT_HEIGHT}.
+      </div>
+    </div>
+    <div className={`btn f net compact${focusClass(focus, 'aspect')}`}>
+      <span>Adjust with test pattern</span>
+    </div>
+    <div className={`btn f net two${focusClass(focus, 'aspectReset')}`}>
+      <span>Reset to 1.875 : 1</span>
+    </div>
+    <OptionRow k="carplayShape" settings={settings} focus={focus} />
+    <OptionRow k="carplayWidth" settings={settings} focus={focus} />
+  </div>
+  )
+}
+
+// Full-screen grid, drawn square on the glass. Cells are 1/10 of the height (7.2 mm on a 72 mm glass).
+// If the ratio is right: every cell is square, the circles are round, the diagonals cross the corners
+// of the big square, and the frame touches all four edges.
+const AspectPattern = ({ glassAspect, fine }: { glassAspect: number; fine: boolean }) => {
+  const w = logicalWidth(glassAspect)
+  const h = OUTPUT_HEIGHT
+  const cell = h / 10
+  const cx = w / 2
+  const cy = h / 2
+  const vx = Array.from({ length: Math.floor(w / cell) + 1 }, (_, i) => i * cell)
+  const vy = Array.from({ length: 11 }, (_, i) => i * cell)
+  return (
+    <div className="pattern">
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        {vx.map(x => (
+          <line key={`v${x}`} x1={x} y1={0} x2={x} y2={h} className={Math.abs(x - cx) < 1 ? 'axis' : 'grid'} />
+        ))}
+        {vy.map(y => (
+          <line key={`h${y}`} x1={0} y1={y} x2={w} y2={y} className={y === h / 2 ? 'axis' : 'grid'} />
+        ))}
+        <line x1={0} y1={0} x2={w} y2={h} className="diag" />
+        <line x1={w} y1={0} x2={0} y2={h} className="diag" />
+        <circle cx={cx} cy={cy} r={h / 2 - 4} className="shape" />
+        <circle cx={cx} cy={cy} r={h / 4} className="shape" />
+        <rect x={cx - h / 4} y={cy - h / 4} width={h / 2} height={h / 2} className="shape solid" />
+        <rect x={cx - h / 2 + 4} y={cy - h / 2 + 4} width={h - 8} height={h - 8} className="shape" />
+        <circle cx={h / 2 - 12} cy={h / 2} r={h / 6} className="shape" />
+        <circle cx={w - h / 2 + 12} cy={h / 2} r={h / 6} className="shape" />
+        <rect x={2} y={2} width={w - 4} height={h - 4} className="frame" />
+      </svg>
+      <div className="pattern-cap">
+        <div className="big">
+          <span className="n">{ratio(glassAspect)}</span> : 1
+        </div>
+        <div>
+          Knob ← → changes it · PUSH: fine / coarse (now {fine ? 'FINE' : 'COARSE'}) · BACK saves
+        </div>
+        <div className="dim">Squares square, circles round, frame touching all four edges.</div>
+      </div>
+    </div>
+  )
+}
+
+const TabBar = ({ ui }: { ui: UiState }) => {
+  const tabs = tabsOf(ui.panel)
+  const current = ui.panel === 'settings' ? ui.tab.settings : ui.tab.vehicle
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = box.current
+    const on = el?.querySelector<HTMLElement>('.tab.on')
+    if (!el || !on) return
+    el.scrollLeft = Math.max(0, on.offsetLeft - (el.clientWidth - on.offsetWidth) / 2) // keep the shown tab in view
+  }, [current, ui.panel])
+  return (
+    <div className="tabs" ref={box}>
+      {tabs.map(t => (
+        <div key={t.id} className={`tab f${t.id === current ? ' on' : ''}${focusClass(ui.focus, `tab:${t.id}`)}`}>
+          {t.label}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Everything is drawn on a canvas as wide as the glass is (aspect x 480) and squeezed into the 720 pixels
+// the panel is fed, so the panel's own stretch gives square pixels back.
+const Fit = ({ glassAspect, className = '', children }: { glassAspect: number; className?: string; children: ReactNode }) => {
+  const w = logicalWidth(glassAspect)
+  return (
+    <div className={`fit ${className}`} style={{ width: w, transform: `scaleX(${OUTPUT_WIDTH / w})` }}>
+      {children}
     </div>
   )
 }
@@ -368,96 +468,115 @@ const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streamin
 const ReloadNote = ({ pending }: { pending: boolean }) =>
   pending ? (
     <div className="hint note">
-      <b>Changes waiting.</b> Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 5).
+      <b>Changes waiting.</b> Hand drive, frame rate, Wi-Fi band and CarPlay width apply after Reload CarPlay (Power tab).
     </div>
   ) : (
-    <div className="note dim">Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 5).</div>
+    <div className="note dim">Hand drive, frame rate, Wi-Fi band and CarPlay width apply after Reload CarPlay (Power tab).</div>
   )
 
-const Switcher = ({ focus }: { focus: FocusId }) => (
+const Switcher = ({ focus, glassAspect }: { focus: FocusId; glassAspect: number }) => (
   <>
     <div className="nui-dim" />
     <div className="nui">
+     <Fit glassAspect={glassAspect}>
       <div className="cap">Panels · turn knob · press to open · BACK to close</div>
       <div className="bar2">
         <div className={`opt f${focusClass(focus, 'sw:carplay')}`}>
           <CarIcon />
           CarPlay
         </div>
-        <div className="opt disabled">
+        <div className={`opt f${focusClass(focus, 'sw:vehicle')}`}>
           <GaugeIcon />
           Vehicle
-          <small>OBD-II needed</small>
         </div>
         <div className={`opt f${focusClass(focus, 'sw:settings')}`}>
           <SlidersIcon />
           Settings
         </div>
       </div>
+     </Fit>
     </div>
   </>
 )
 
-const PowerScreen = ({ power }: { power: PowerNotice }) => {
+const PowerScreen = ({ power, glassAspect }: { power: PowerNotice; glassAspect: number }) => {
   const word = power.action === 'restart' ? 'restart' : 'shut down'
-  if (power.state === 'failed') {
-    return (
-      <div className="nui-bye failed">
-        <h2>Could not {word}</h2>
-        <p>{power.error}</p>
-      </div>
-    )
-  }
   return (
-    <div className="nui-bye">
-      <h2>{power.action === 'restart' ? 'Restarting…' : 'Shutting down…'}</h2>
-      <p>
-        {power.action === 'restart'
-          ? 'Back in about 10 seconds. CarPlay reconnects by itself.'
-          : 'Wait for the screen to go dark before you switch off the ignition.'}
-      </p>
+    <div className={`nui-bye${power.state === 'failed' ? ' failed' : ''}`}>
+      <div className="nui">
+        <Fit glassAspect={glassAspect} className="bye">
+          {power.state === 'failed' ? (
+            <>
+              <h2>Could not {word}</h2>
+              <p>{power.error}</p>
+            </>
+          ) : (
+            <>
+              <h2>{power.action === 'restart' ? 'Restarting…' : 'Shutting down…'}</h2>
+              <p>
+                {power.action === 'restart'
+                  ? 'Back in about 10 seconds. CarPlay reconnects by itself.'
+                  : 'Wait for the screen to go dark before you switch off the ignition.'}
+              </p>
+            </>
+          )}
+        </Fit>
+      </div>
     </div>
   )
 }
 
+const TITLES = { carplay: 'CarPlay', vehicle: 'Vehicle', settings: 'Settings' }
+
 export const NativeUi = (props: NativeUiProps) => {
-  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, network, web, netBusy, holding, power, lastKey, streamLabel } = props
+  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, vehicle, network, web, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
   const pagesUp = !(ui.panel === 'carplay' && streaming) // the switcher alone dims the video instead
-  const title = ui.panel === 'settings' ? 'Settings' : 'CarPlay'
+  const g = settings.glassAspect
 
   return (
     <div className="nui-root">
       {pagesUp && (
         <div className="nui-page">
           <div className="nui">
-            <div className="strip">
-              <span className="title">{title}</span>
-              <span className={`pill ${dongle ? 'ok' : 'off'}`}>
-                <i />
-                Dongle
-              </span>
-              <span className={`pill ${phone ? 'ok' : 'off'}`}>
-                <i />
-                {phone ? <>Phone <b>connected</b></> : 'Phone'}
-              </span>
-              <span className={`pill ${stats?.mitmLinked ? 'ok' : 'off'}`}>
-                <i />
-                Controls
-              </span>
-              <span className="clock">{clock}</span>
-            </div>
-            <Rail panel={ui.panel} focus={ui.focus} />
-            {ui.panel === 'settings' ? (
-              <Settings ui={ui} stats={stats} network={network} web={web} netBusy={netBusy} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
-            ) : (
-              <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
-            )}
+            <Fit glassAspect={g}>
+              {ui.pattern ? (
+                <AspectPattern glassAspect={g} fine={ui.fine} />
+              ) : (
+                <>
+                  <div className="strip">
+                    <span className="title">{TITLES[ui.panel]}</span>
+                    <span className={`pill ${dongle ? 'ok' : 'off'}`}>
+                      <i />
+                      Dongle
+                    </span>
+                    <span className={`pill ${phone ? 'ok' : 'off'}`}>
+                      <i />
+                      {phone ? <>Phone <b>connected</b></> : 'Phone'}
+                    </span>
+                    <span className={`pill ${stats?.mitmLinked ? 'ok' : 'off'}`}>
+                      <i />
+                      Controls
+                    </span>
+                    <span className="clock">{clock}</span>
+                  </div>
+                  <Rail panel={ui.panel} focus={ui.focus} />
+                  {ui.panel !== 'carplay' && <TabBar ui={ui} />}
+                  {ui.panel === 'settings' ? (
+                    <Settings ui={ui} stats={stats} vehicle={vehicle} network={network} web={web} netBusy={netBusy} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
+                  ) : ui.panel === 'vehicle' ? (
+                    <VehiclePage tab={ui.tab.vehicle} data={vehicle} settings={settings} demo={vehicleDemo} />
+                  ) : (
+                    <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
+                  )}
+                </>
+              )}
+            </Fit>
           </div>
         </div>
       )}
-      {ui.switcher && <Switcher focus={ui.focus} />}
-      {power && <PowerScreen power={power} />}
+      {ui.switcher && <Switcher focus={ui.focus} glassAspect={g} />}
+      {power && <PowerScreen power={power} glassAspect={g} />}
     </div>
   )
 }

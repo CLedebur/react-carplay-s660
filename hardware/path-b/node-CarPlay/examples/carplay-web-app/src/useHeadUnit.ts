@@ -10,7 +10,7 @@ import {
   PowerAction,
   UiState,
 } from './nav'
-import { nextValue, Settings } from './settings'
+import { defaultSettings, nextValue, Settings, stepAspect } from './settings'
 import { requestBluetoothConnect } from './useNetwork'
 import { requestPower } from './useSystemStats'
 
@@ -40,7 +40,8 @@ export interface NetBusy {
 export interface HeadUnitOptions {
   plugged: boolean // the phone is connected and CarPlay is streaming
   settings: Settings
-  update: (patch: Partial<Settings>) => void
+  update: (patch: Partial<Settings>) => void // changes and saves
+  preview: (patch: Partial<Settings>) => void // changes on screen only (the aspect pattern saves when it closes)
   reloadCarplay: () => void
   onNetworkChanged: () => void // a connect attempt finished: refresh the network page
   toggleWebAdmin: () => void
@@ -50,7 +51,7 @@ export interface HeadUnitOptions {
 // event and returns the one CarPlay should receive, or null when the native UI used it.
 // `carplayShown` is whether CarPlay's video is what is on the glass: the phone is connected and
 // either the setting says to run it automatically or the user has asked for it this connection.
-export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetworkChanged, toggleWebAdmin }: HeadUnitOptions) => {
+export const useHeadUnit = ({ plugged, settings, update, preview, reloadCarplay, onNetworkChanged, toggleWebAdmin }: HeadUnitOptions) => {
   const [ui, setUiState] = useState<UiState>(initialUi)
   const uiRef = useRef(ui)
   const setUi = useCallback((next: UiState) => {
@@ -69,8 +70,16 @@ export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetwor
   settingsRef.current = settings
   const updateRef = useRef(update)
   updateRef.current = update
+  const previewRef = useRef(preview)
+  previewRef.current = preview
   const reloadRef = useRef(reloadCarplay)
   reloadRef.current = reloadCarplay
+
+  const patternOpen = useRef(false)
+  useEffect(() => {
+    if (patternOpen.current && !ui.pattern) updateRef.current({ glassAspect: settingsRef.current.glassAspect })
+    patternOpen.current = ui.pattern
+  }, [ui.pattern])
 
   const [holding, setHolding] = useState<HoldAction | null>(null)
   const [power, setPower] = useState<PowerNotice | null>(null)
@@ -168,6 +177,12 @@ export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetwor
       const result = nativeKey(uiRef.current, control)
       if (result.ui !== uiRef.current) setUi(result.ui)
       if (result.opensCarplay) setAsked(true)
+      if (result.aspect) {
+        const next = stepAspect(settingsRef.current.glassAspect, result.aspect, uiRef.current.fine)
+        settingsRef.current = { ...settingsRef.current, glassAspect: next } // fast clicks must build on each other
+        previewRef.current({ glassAspect: next })
+      }
+      if (result.resetAspect) updateRef.current({ glassAspect: defaultSettings.glassAspect })
       if (result.cycle) updateRef.current({ [result.cycle]: nextValue(settingsRef.current, result.cycle) })
       if (result.toggleWeb) toggleWebRef.current()
       if (result.connect && netBusyRef.current?.state !== 'connecting') {

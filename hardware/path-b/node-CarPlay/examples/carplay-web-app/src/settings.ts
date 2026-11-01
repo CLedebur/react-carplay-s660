@@ -8,9 +8,14 @@ export interface Settings {
   fps: 30 | 60 // video frame rate
   wifiBand: '5ghz' | '2.4ghz' // the dongle's own Wi-Fi to the phone
   nightMode: boolean // tell CarPlay it is night
+  carplayWidth: 848 | 896 // width the dongle renders at (height is always 480); 896 is the glass's own shape
+  carplayShape: 'fill' | 'exact' // fill = the picture stretched over the whole frame; exact = true shape, black bar on the left
+  glassAspect: number // visible glass width / height, x1000 (1875 = 1.875:1); the native UI is drawn to it
 }
 
 export type SettingKey = keyof Settings
+// The settings that step through a short list when the knob is pressed. glassAspect has its own screen.
+export type CycleKey = Exclude<SettingKey, 'glassAspect'>
 
 export const defaultSettings: Settings = {
   autoRunCarplay: true,
@@ -20,10 +25,13 @@ export const defaultSettings: Settings = {
   fps: 30,
   wifiBand: '5ghz',
   nightMode: false,
+  carplayWidth: 896, // the glass's own shape. 848 is for a Waze that moves its badge off the frame (2026-09; fine again 2026-11, BUILD_NOTES 39.3)
+  carplayShape: 'fill',
+  glassAspect: 1875, // 135 x 72 mm, measured (BUILD_NOTES 22.8)
 }
 
 // The values a key steps through, in order, when the knob is pressed on its row.
-const CYCLES: { [K in SettingKey]: readonly Settings[K][] } = {
+const CYCLES: { [K in CycleKey]: readonly Settings[K][] } = {
   autoRunCarplay: [true, false],
   units: ['c', 'f'],
   clock: ['24h', '12h'],
@@ -31,18 +39,32 @@ const CYCLES: { [K in SettingKey]: readonly Settings[K][] } = {
   fps: [30, 60],
   wifiBand: ['5ghz', '2.4ghz'],
   nightMode: [false, true],
+  carplayShape: ['fill', 'exact'],
+  carplayWidth: [848, 896],
 }
 
-export const nextValue = <K extends SettingKey>(settings: Settings, key: K): Settings[K] => {
+export const nextValue = <K extends CycleKey>(settings: Settings, key: K): Settings[K] => {
   const cycle = CYCLES[key]
   return cycle[(cycle.indexOf(settings[key]) + 1) % cycle.length]
 }
 
 // These only reach the dongle when CarPlay (re)starts, so changing one leaves a reload pending.
-export const RELOAD_KEYS: readonly SettingKey[] = ['handDrive', 'fps', 'wifiBand']
-export type StartSettings = Pick<Settings, 'handDrive' | 'fps' | 'wifiBand'>
+export const RELOAD_KEYS: readonly SettingKey[] = ['handDrive', 'fps', 'wifiBand', 'carplayWidth']
+export type StartSettings = Pick<Settings, 'handDrive' | 'fps' | 'wifiBand' | 'carplayWidth'>
 
 export const reloadPending = (now: Settings, started: StartSettings | null): boolean =>
   started !== null && RELOAD_KEYS.some(k => now[k as keyof StartSettings] !== started[k as keyof StartSettings])
 
 export const toFahrenheit = (c: number): number => (c * 9) / 5 + 32
+
+// The native UI's drawing aspect is a range, not a list: keep in step with s660-api.js.
+export const GLASS_ASPECT = { min: 1500, max: 2400, coarse: 20, fine: 5 } as const
+
+export const stepAspect = (current: number, dir: 1 | -1, fine: boolean): number =>
+  Math.min(GLASS_ASPECT.max, Math.max(GLASS_ASPECT.min, current + dir * (fine ? GLASS_ASPECT.fine : GLASS_ASPECT.coarse)))
+
+// The output is always 720 x 480; the panel stretches it to the glass. Drawing the UI `width` logical
+// pixels wide and squeezing it into 720 makes the stretch give square pixels again.
+export const OUTPUT_WIDTH = 720
+export const OUTPUT_HEIGHT = 480
+export const logicalWidth = (glassAspect: number): number => Math.round((OUTPUT_HEIGHT * glassAspect) / 1000)
