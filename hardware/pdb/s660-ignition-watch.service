@@ -1,0 +1,13 @@
+[Unit]
+Description=Power off 4:30 after the ignition goes off (S660-PDB, BUILD_NOTES §36)
+# Bench work without ACC: `sudo touch /persist/s660-bench`, or the Pi powers off 4:30 after
+# every boot. /persist is writable with the overlay on; delete the file before the car.
+ConditionPathExists=!/persist/s660-bench
+
+[Service]
+ExecStart=/usr/local/bin/s660-ignition-watch
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

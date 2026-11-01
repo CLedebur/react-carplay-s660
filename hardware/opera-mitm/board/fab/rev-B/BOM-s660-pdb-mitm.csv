@@ -37,4 +37,4 @@
 "TP101","SHDN_TP","TestPoint:TestPoint_Pad_D1.5mm","","",""
 "U101","ATtiny85-20SU","Package_SO:SOIC-8_5.3x5.3mm_P1.27mm","C31540447","ATtiny85-20SU","Microchip"
 "U102","LM2936MPX-3.3","Package_TO_SOT_SMD:SOT-223-3_TabPin2","C2872050","LM2936MPX-3.3","Texas Instruments"
-"U103","EL817S","Package_SO:SOP-4_3.8x4.1mm_P2.54mm","C63268","EL817S","Everlight"
+"U103","LTV-357T-B","Package_SO:SOP-4_3.8x4.1mm_P2.54mm","C33068","LTV-357T-B","Lite-On"

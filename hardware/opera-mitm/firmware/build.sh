@@ -9,5 +9,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release >/dev/null
 ninja -C build
 ls -l build/opera_mitm.uf2
 if [ "${1:-}" = "flash" ]; then
-    picotool load -f -v -x build/opera_mitm.uf2
+    # A running firmware takes 'b' on its console to reboot into BOOTSEL. The first time (or if
+    # it is hung), hold the Pico's BOOTSEL button and tap the board's reset (SW2) instead.
+    if [ -e /dev/ttyACM0 ]; then printf b > /dev/ttyACM0; sleep 3; fi
+    picotool load -v -x build/opera_mitm.uf2
 fi

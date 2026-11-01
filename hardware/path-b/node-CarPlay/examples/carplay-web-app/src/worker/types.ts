@@ -2,6 +2,7 @@ import {
   DongleConfig,
   CarplayMessage,
   AudioData,
+  CommandValue,
   TouchAction,
 } from 'node-carplay/web'
 
@@ -36,6 +37,7 @@ export type Command =
       type: 'touch'
       payload: { x: number; y: number; action: TouchAction }
     }
+  | { type: 'key'; payload: { command: CommandValue } }
 
 export interface CarPlayWorker
   extends Omit<Worker, 'postMessage' | 'onmessage'> {

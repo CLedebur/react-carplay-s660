@@ -6,7 +6,8 @@
 //     PWR SW line is mirrored, so the stock controls work as if we weren't here.
 //  Back held + Power tapped → toggle mode (the Power tap is never passed to the head unit).
 //  Power held 3 s → pulse the CM4's RUN pin (hard reset; Overlay FS makes that safe).
-//  A USB CDC console (/dev/ttyACM*) logs everything and takes one-letter commands.
+//  A USB CDC console (/dev/ttyACM*) logs everything and takes one-letter commands
+//  (b = reboot into BOOTSEL, used by build.sh flash).
 //
 // See hardware/opera-mitm/tap-board.md for the wiring and BUILD_NOTES §30 for the protocol.
 
@@ -20,6 +21,7 @@
 #include "hardware/adc.h"
 #include "hardware/irq.h"
 #include "hardware/watchdog.h"
+#include "pico/bootrom.h"
 #include "tusb.h"
 #include "config.h"
 #include "opera.h"
@@ -110,6 +112,23 @@ static void knob_service(void) {
     if (next) { knob_active = next; hid_set_key(next, true); knob_t = get_absolute_time(); }
 }
 
+// Back goes to the CM4 on RELEASE, as a short tap, and only if Power was not pressed while it
+// was held: Back is also the first half of the Back+Power mode toggle, and pressing it must not
+// send CarPlay a "back" every time the driver switches modes (in-car test, 2026-10-26).
+static bool back_combo = false;          // Power was pressed during this Back hold
+static bool back_tap = false;
+static absolute_time_t back_tap_t;
+
+static void back_released(void) {
+    if (mode != MODE_CARPLAY || back_combo) return;
+    hid_set_key(KEY_BACK, true); back_tap = true; back_tap_t = get_absolute_time();
+}
+static void back_service(void) {
+    if (back_tap && absolute_time_diff_us(back_tap_t, get_absolute_time()) >= KNOB_KEY_PULSE_MS * 1000) {
+        hid_set_key(KEY_BACK, false); back_tap = false;
+    }
+}
+
 // ---- head unit side ------------------------------------------------------------------------
 static void hu_send_frame(const uint8_t *payload, uint8_t len) {
     uint8_t out[OPERA_MAX_RAW];
@@ -129,6 +148,7 @@ static void set_mode(ctl_mode_t m, const char *why) {
     if (mode == MODE_HEADUNIT) {
         hid_release_all();
         knob_pending_cw = knob_pending_ccw = 0;
+        back_tap = false;
     } else {
         hu_send_release();   // don't leave the head unit thinking a key is still down
     }
@@ -152,7 +172,7 @@ static void pw_edge(bool pressed) {
     if (pressed) {
         pw_press_t = get_absolute_time(); pw_rst_done = false;
         pw_swallow = back_held;
-        if (pw_swallow) log_line("PWR press swallowed (Back held)");
+        if (pw_swallow) { back_combo = true; log_line("PWR press swallowed (Back held)"); }
         else { gpio_put(PIN_PW_OUT, 1); log_line("PWR press -> head unit"); }
     } else {
         gpio_put(PIN_PW_OUT, 0);
@@ -184,8 +204,19 @@ static void on_panel_event(const opera_event_t *ev) {
         bool changed = ev->nkeys != held.nkeys || memcmp(ev->keys, held.keys, sizeof ev->keys) != 0;
         if (changed) {
             // release keys no longer listed, press new ones
-            for (int i = 0; i < held.nkeys; i++) if (!opera_key_held(ev, held.keys[i])) { uint8_t h = opera_to_hid(held.keys[i]); if (h && mode == MODE_CARPLAY) hid_set_key(h, false); log_line("KEY %04X up", held.keys[i]); }
-            for (int i = 0; i < ev->nkeys; i++) if (!opera_key_held(&held, ev->keys[i])) { uint8_t h = opera_to_hid(ev->keys[i]); if (h && mode == MODE_CARPLAY) hid_set_key(h, true); log_line("KEY %04X down", ev->keys[i]); }
+            // (Back is not held down on the HID side: see back_released())
+            for (int i = 0; i < held.nkeys; i++) if (!opera_key_held(ev, held.keys[i])) {
+                uint16_t k = held.keys[i]; uint8_t h = opera_to_hid(k);
+                if (k == OPERA_KEY_BACK) back_released();
+                else if (h && mode == MODE_CARPLAY) hid_set_key(h, false);
+                log_line("KEY %04X up", k);
+            }
+            for (int i = 0; i < ev->nkeys; i++) if (!opera_key_held(&held, ev->keys[i])) {
+                uint16_t k = ev->keys[i]; uint8_t h = opera_to_hid(k);
+                if (k == OPERA_KEY_BACK) back_combo = false;
+                else if (h && mode == MODE_CARPLAY) hid_set_key(h, true);
+                log_line("KEY %04X down", k);
+            }
             held = *ev;
             back_held = opera_key_held(&held, OPERA_KEY_BACK);
         }
@@ -232,7 +263,10 @@ static void console_service(void) {
         case 'r': cm4_reset_pulse("console"); break;
         case 'p': gpio_put(PIN_PW_OUT, 1); sleep_ms(200); gpio_put(PIN_PW_OUT, 0); log_line("fake PWR press sent"); break;
         case 'k': hid_set_key(HID_KEY_ENTER, true); hid_service(); sleep_ms(30); hid_set_key(HID_KEY_ENTER, false); log_line("test key sent"); break;
-        case '?': log_line("c=carplay h=headunit t=toggle s=status r=reset-cm4 p=fake-power k=test-key"); break;
+        // The firmware's own USB descriptors have no picotool reset interface, so `picotool -f`
+        // cannot reach it: build.sh flash sends this instead. Relays drop until the new image runs.
+        case 'b': log_line("rebooting into BOOTSEL"); sleep_ms(100); reset_usb_boot(0, 0); break;
+        case '?': log_line("c=carplay h=headunit t=toggle s=status r=reset-cm4 p=fake-power k=test-key b=bootsel"); break;
         default: break;
         }
     }
@@ -294,6 +328,7 @@ int main(void) {
         panel_service();
         pw_service();
         knob_service();
+        back_service();
         hid_service();
         console_service();
     }

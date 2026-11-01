@@ -17,6 +17,8 @@ import {
 import { CarPlayWorker } from './worker/types'
 import useCarplayAudio from './useCarplayAudio'
 import { useCarplayTouch } from './useCarplayTouch'
+import { useControls } from './useControls'
+import { carplayCommandsFor, ControlHandler, View } from './controls'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
 
 // Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a
@@ -325,6 +327,20 @@ function App() {
   }, [carplayWorker, checkDevice])
 
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+  // Physical controls (OPERA MITM). Only the CarPlay view exists so far; the native head-unit
+  // view will add its own handler here, and whatever switches views just changes `view`.
+  const [view] = useState<View>('carplay')
+  const carplayControls: ControlHandler = useCallback(
+    event => {
+      if (!isPlugged) return
+      for (const command of carplayCommandsFor(event)) {
+        carplayWorker.postMessage({ type: 'key', payload: { command } })
+      }
+    },
+    [carplayWorker, isPlugged],
+  )
+  useControls(view === 'carplay' ? carplayControls : null)
 
   const isLoading = !isPlugged
 

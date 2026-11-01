@@ -1,0 +1,25 @@
+#!/bin/bash
+# The Pi half of the S660-PDB shutdown (PDB reference §4.1 / §10.3, BUILD_NOTES §36).
+# IGN_STATE (GPIO17, J103 pin 2) is LOW while ACC or ON is present. When it has been HIGH for
+# S660_IGN_OFF_SEC (default 270 s = 4:30), power off. The ATtiny keeps the relay closed until
+# the halt signal (s660-halt-signal) or its own 5:15 backstop.
+# GPIO17 has the Pi's default pull-down, so if J103 comes off it reads LOW ("ignition on"):
+# a loose cable can never shut the Pi down.
+GPIO=${S660_IGN_GPIO:-17}
+LIMIT=${S660_IGN_OFF_SEC:-270}
+
+off=0
+while true; do
+  if [ "$(pinctrl lev "$GPIO")" = 1 ]; then
+    [ "$off" -eq 0 ] && echo "ignition off: powering off in ${LIMIT} s unless it comes back"
+    off=$((off + 1))
+    if [ "$off" -ge "$LIMIT" ]; then
+      echo "ignition off for ${LIMIT} s: powering off"
+      exec systemctl poweroff
+    fi
+  else
+    [ "$off" -gt 0 ] && echo "ignition back after ${off} s: power-off cancelled"
+    off=0
+  fi
+  sleep 1
+done

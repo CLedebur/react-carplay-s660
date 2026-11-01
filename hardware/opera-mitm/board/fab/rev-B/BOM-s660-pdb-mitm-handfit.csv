@@ -1,4 +1,5 @@
 Designator,Comment,Footprint,LCSC Part #,MPN,Manufacturer
+K1,"G6K-2F-Y 5VDC (JLCPCB ""Standard Only"": hand-solder; DigiKey/Mouser G6K-2F-Y DC5)",Relay_SMD:Relay_DPDT_Omron_G6K-2F-Y,C2982926,G6K-2F-Y 5VDC,Omron
 FAN101,FAN1,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,,,
 FAN102,FAN2,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,,,
 FAN103,FAN3,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,,,

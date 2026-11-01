@@ -63,7 +63,7 @@ Renamed so they cannot be confused with the MITM's J3 (the USB-C):
 | JP101 | Phoenix MKDS 1/2-3,5 (1751248) + removable wire bridge | — | `Connector:Screw_Terminal_01x02` / `s660-pdb-mitm:Phoenix_MKDS_1_2_3.5_1751248` (project library, copied unchanged from the 90 × 90 PDB; KiCad's stock library has no MKDS 3.5 mm part) | 1 `12V_IN`, 2 `12V_SW`. Fitted = relay bypass (programming/recovery only) |
 | D102, D103 | SS34 | C8678 | `Diode:SS34` / `Diode_SMD:D_SMA` | A `ACC_IN` / `ON_IN`, K `IGN_12V` |
 | R106 | 2.2k | C4190 | 0603 | `IGN_12V` → U103 pin 1 |
-| U103 | EL817S opto | C63268 | `Isolator:PC817` / `Package_SO:SOP-4_3.8x4.1mm_P2.54mm` | 1 anode ← R106, 2 cathode `GND`, 3 emitter `GND`, 4 collector `IGN_STATE` |
+| U103 | LTV-357T-B opto (was EL817S: wrong package, see note) | C33068 | `Isolator:PC817` / `Package_SO:SOP-4_3.8x4.1mm_P2.54mm` | 1 anode ← R106, 2 cathode `GND`, 3 emitter `GND`, 4 collector `IGN_STATE` |
 | R112 | 10k | C25804 | 0603 | `+3V3_AON` → `IGN_STATE` |
 | R113 | 1k | C21190 | 0603 | `IGN_STATE` → `IGN_MCU` |
 | U102 | LM2936MPX-3.3 | C2872050 | `Regulator_Linear:LM2936-3.3` / `Package_TO_SOT_SMD:SOT-223-3_TabPin2` | IN `12V_IN`, GND, OUT `+3V3_AON` |
@@ -156,3 +156,28 @@ Changes to `DESIGN.md` values made on this board:
 `PWR_FLAG` on `12V_IN` (at J101 pin 1) and on `12V_SW` (it is driven through relay contacts,
 which ERC cannot see as a source). `+5V` and `+3V3` need none: the Pico symbol's VBUS and 3V3 pins
 are power outputs. The `GND` flag stays only if ERC still needs it.
+
+### U103 optocoupler part change (2026-10-14)
+
+JLCPCB rejected C63268 (EL817S1) against U103's footprint. The EL817S1 is a gull-wing SMD DIP-4 with
+about 10 mm lead span, while the footprint `SOP-4_3.8x4.1mm_P2.54mm` has pad centres 5.5 mm apart.
+U103 is now the Lite-On LTV-357T-B (C33068), a true mini-flat SOP-4 with 2.54 mm pitch and 7.0 mm
+lead span that lands on the existing pads. Pinout is identical (1 anode, 2 cathode, 3 emitter,
+4 collector). CTR bin B is 130–260 %; R106 gives about 5 mA LED current from 12 V, so the opto
+easily sinks the 0.33 mA from R112's 10k pull-up. No copper changed.
+
+
+## Changes for the next revision (found in the rev B bench and car tests, 2026-10-24/25)
+
+Rev B works with these handled in firmware or by hand. Details: BUILD_NOTES §35–§36.
+
+| # | Change | Why | Rev B workaround |
+|---|---|---|---|
+| 1 | **Add a 100k pull-down on `HALT_IN`** (U101 pin 7 to GND) | No part pulls the node. With J103 unplugged it floats HIGH, which looked like "Pi halted" and power-cycled the relay every few seconds. 100k does not load the ISP SCK. | Firmware trusts HALT only after 3 s LOW. Or plug a 100k across J104 pins 3 and 6. |
+| 2 | **Z102 → DNP** | The BZT52C3V6 leaks approx. 28 µA at 2.3 V, which made `BATT_SENSE` read 1.97 V, not 2.31 V, and triggered the low-battery cut. R101 limits the pin current without it. | Remove Z102. |
+| 3 | **D8 → DNP, or a low-leakage clamp** | The same part on the `CONT` divider, with the same error. `CONT` is only logged. | None needed. |
+| 4 | **Lower R4** (RX divider to GND), so GP13's pull to GND is ≤ 8.2 kΩ with J1 pin 5 open | RP2350 erratum E9: GP13 latched HIGH (`car=1`) with no car. | Check in the car before J2 is connected. |
+| 5 | **Keyed, one-way harness connectors** for J1 (the 3 + 4 split plug) and J101 | ACC and GND swapped at J101 blew the car's ACC fuse 37. A swap of the J1 blocks would short the audio unit's `CONT` to GND through K1. | Label the plugs, and check them with a meter before each connection. |
+| 6 | **A keyed 2×5 IDC cable for J103**, not single wires | Single wires on the Pi header went one row off, and one landed on 5 V. | The colour diagram `j103-pi-gpio-wiring.png`. |
+| 7 | **On-board fuses on J101's supply inputs:** F101 5 A on `12V_IN`, ahead of D101; F102 / F103 0.5 A on `ACC_IN` / `ON_IN`. Through-hole PICO II or a blade holder, so they can be hand-fitted. **No fuse on GND.** | The design put F1–F3 off-board at add-a-circuit taps (PDB reference §7). The option-coupler harness has none, so `12V_IN` is protected only by the car's 10 A slot 38, and the TOFU has no input fuse. F101 also protects the car circuit if D101 fails shorted. They would **not** have prevented the J101 ACC/GND swap: that fault current flowed in the GND path, and a GND fuse is unsafe (if it blows, the return current goes through J1, USB and HDMI). Item 5 prevents that fault. | Add inline fuses in the harness: 5 A on +B, 0.5–1 A on ACC and ON. |
+| 8 | **Isolate the Pi's J103 lines from the PDB's logic nodes** (a buffer or series isolation on `IGN_STATE` → GPIO17, and on the ISP lines) | An unpowered CM4 clamps its GPIO pins to about 0.6 V through its protection diodes. At plug-in the ATtiny briefly read "ignition on". The parked state tested fine (pins near 3.3 V), but the margin depends on the CM4's rail leakage. | None needed: the car test passed. |

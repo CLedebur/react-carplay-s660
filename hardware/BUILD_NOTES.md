@@ -18,6 +18,11 @@ start, because several steps fail in ways that are hard to diagnose without the 
 > The kiosk unit is `carplay.service` (§33). **Unit names in §5–§20:** `carplay.service` there
 > means the old Path A Electron unit, and `carplay-dev-chromium.service` is today's
 > `carplay.service`.
+>
+> **2026-10-18:** CAN-bus work has started with a USB discovery adapter; wiring and rules are in §34.
+>
+> **2026-10-24:** The Buddy Board rev B passed its bench test; results and open findings are in §35.
+> The ATtiny85 power-supervisor firmware and the Pi-side programmer are in §36.
 
 **What works now:**
 - Raspberry Pi OS Lite (64-bit) boots on the CM4 + TOFU.
@@ -2390,3 +2395,275 @@ would turn their A/B switch commands into nonsense like "disable `carplay.servic
 
 **Logs.** For the kiosk's own logs, use `journalctl -u carplay`. Logs from earlier drives
 were recorded under the old name, so read those with `-u carplay-dev-chromium`.
+
+## 34. 2026-10-18 — CAN bus: discovery adapter (CANable V2.0 Pro) and its wiring
+
+**Status.** Bus discovery has not started yet. Nothing below has been run in the car. The bit
+rate is still **unknown**. Find it out with this adapter before designing the permanent
+connection.
+
+**Prior work (added 2026-10-26).** A Japanese S660 owner (ACTY typeR) has already decoded
+42 CAN IDs, listening at the **OBD-II port**. Our restatement of their findings, with sources,
+is in [`references/S660-CAN-bus.md`](../references/S660-CAN-bus.md). The signals this project
+wants first are all reported there: reverse light (0x1A6 byte 2 bit 2), headlights (0x1A6
+byte 0 bits 1–0), speed (0x309) and turn signals (0x294). So the OBD-II port should be enough
+for them, and the gateway worry below probably does not apply. All of it is unverified until
+our own capture shows it.
+
+**Plan.** Use a USB adapter now to find out what is on the bus. Later, move to a CAN section
+on the combined PDB + MITM board (rev B). The software does not care which: both show up in
+Linux as the SocketCAN interface `can0`, which Path A's `Canbus.ts` (tag `path-a-final`)
+already read. Code written against the adapter carries over unchanged. The rev B direction
+favoured so far is an SPI CAN controller (MCP2518FD/MCP2515) on the Pi, plus an automotive
+transceiver whose silent-mode pin is strapped silent. That makes listen-only a hardware
+guarantee. It cannot share `PI_MOSI`/`PI_MISO` on J103: when the ATtiny is not held in
+reset, `PI_MISO` is driven by its `LED3_DRV` output. It needs SPI1, or its own pins from
+the TOFU's 40-pin header.
+
+**The adapter.** It is a **Makerbase MKS CANable V2.0 Pro**, the *isolated* variant. Its
+terminal GND is **not** connected to the USB ground, so a continuity test from the GND
+terminal to the USB shell will not beep. The 3-pin screw terminal is unmarked. This order
+was confirmed from the board's diagram:
+
+| Terminal position | Signal | OBD-II pin (discovery tap) |
+|---|---|---|
+| 1 — nearest the termination jumper | **CAN-L** | 14 |
+| 2 — middle | **CAN-H** | 6 |
+| 3 — far end | **GND** | 5 (signal ground) |
+
+Leave OBD-II pin 16 (+12 V) unconnected.
+
+**Rules for using it in the car**
+- **Termination jumper OFF.** The car's bus already has its own 120 Ω termination. This
+  adapter taps the middle of it.
+- **Always bring the interface up with `listen-only on`.** Then the adapter never transmits,
+  not even ACK bits. A wrong bit rate or reversed H/L wires just show no traffic, and they
+  cannot put error frames on a bus the car's ECUs depend on.
+- Overlay FS is on (§29). Anything installed with `apt` (`can-utils`) is gone at the next
+  power-off unless the overlay is turned off first.
+
+**Bring-up**
+
+```bash
+ip -details link show can0          # can0 present = candleLight (gs_usb) firmware
+sudo ip link set can0 type can bitrate 500000 listen-only on
+sudo ip link set can0 up
+candump -cae can0
+```
+
+If there is no `can0` but a `/dev/ttyACM0` appears, the adapter has slcan firmware instead.
+No traffic: check the wiring against the table first, then try `bitrate 250000`, then
+`125000`. Honda may put a gateway between the OBD-II port and the car's internal buses, so
+the port may show only some of the traffic. Finding out where reverse and lights appear is
+part of this step.
+
+## 35. 2026-10-24 — Buddy Board rev B (`s660-pdb-mitm`): bench test
+
+**Status.** The PDB half and the MITM half pass on the bench (12 V bench supply, 100 mA limit,
+ON and ACC open; Pico USB to the CM4). Not tested yet: the CM4 reset output (J2, the cable is not
+built), and everything that needs the car's audio switch panel (knob, keys, Back + Power toggle).
+The ATtiny85 (U101) has no firmware yet, so K101 does not close by itself and LED103 stays dark.
+These are not faults. Board sources: `opera-mitm/board/COMBINED.md`, `DESIGN.md`, `fab/rev-B/README.md`.
+
+| Stage | Check | Result |
+|---|---|---|
+| 0 | Visual: C107/C103 polarity, U101 pin 1, D101 band, bridges | Pass |
+| 1 | Resistance, power off: no shorts on `12V_IN` / `12V_SW` | Pass |
+| 3 | First power-up: < 1 mA, `+3V3_AON` 3.343 V, `IGN_STATE` ≈ 3.3 V | Pass |
+| 4 | Ignition sense: ACC or ON at 12 V → `IGN_STATE` ≈ 0.05 V | Pass |
+| 5 | K101 driven by hand | Fail, then pass: bad solder joints on K101 and K1, reworked |
+| 6 | JP101 bridge bypass | Pass |
+| 7a | MITM resistance, Pico out | Pass |
+| 7b | Pico seated, firmware running: K1 energised; J1 pin 1 `TXp` ≈ 3.6 V, pin 3 `PWp` ≈ 5 V | Pass. Pins 2 / 4 (`TXh`, `PWh`) read 0.65 / 0.47 V: they float (no head unit), not a fault |
+| 7c | Socket resistance, Pico out: `RUN`, `+5V`, `+3V3` to GND open; SW2 closes `RUN` | Pass |
+| 7d | J1 pin 5 `RX`, no car: 0 V; STATUS `car=0` | Pass (see E9 below) |
+| 7e | Console `k`: the Pi gets `KEY_ENTER` from the "OPERA MITM" HID keyboard | Pass |
+
+**Finding 1 — one CM4 USB port caused the Pico restarts.** On port `1-1.3` the Pico restarted
+again and again, and the kernel log showed `device descriptor read/64, error -32` and
+`device not accepting address, error -71`. Then the hub gave up (`unable to enumerate USB
+device`), and `/dev/ttyACM0` disappeared (picocom: `FATAL: read zero bytes from port`). K1 never
+engaged, because the Pico restarted before the 1.5 s relay delay. On port `1-1.4` with the same
+board the Pico ran with no USB errors. Do not use that port for the Pico. If the Pico disappears,
+read `sudo dmesg | grep "usb 1-1"` before you suspect the board.
+
+**Finding 2 — RP2350 erratum E9 on GP13 (`RX_IN`) when J1 pin 5 is open.** After one power-up,
+STATUS showed `car=1` with no car. After the next restart it showed `car=0`. With pin 5 open,
+only R4 (15 kΩ) pulls GP13 down, which is more than the ~8.2 kΩ limit, so the pad can stay high.
+In the car the head unit drives this line, so the risk depends on how it holds RX with ACC off.
+This matters because `car_on()` enables the PWR SW logic: a false `car=1` with `PWp` at 0 V reads
+as "Power held", and after 3 s the firmware pulses the CM4 reset (once J2 is connected). Not fixed
+yet. Choices: a lower R4, or a firmware workaround. Check it in the car before J2 is connected.
+
+**Firmware follow-ups.** Add `LED_PIN 22` for LED1 (GPIO25 is the W's wireless chip). Log the
+restart reason (`watchdog_caused_reboot()`) on the console greeting.
+
+### 35.1 Later the same day — car harness, J103 and the ignition path
+
+- **Option coupler +B read 0 V.** The cause was not a blown fuse: **fuse slot 38** in the
+  driver-side interior box (above the accelerator, top row, third from the left) is **empty
+  from the factory**, and it is the slot that powers the option coupler. A 10 A low-profile
+  fuse fixed it. Honda's owner's manual lists slot 38 with no circuit.
+- **J103 ribbon short.** On the first connection, some J103 wires got hot. The CM4 lost power
+  (the journal of that boot stops at 15:18:53), and no damage was found afterwards
+  (`throttled=0x0`, wires and board intact). Probable cause: the 40-pin header was read in a
+  different orientation from the wiring plan, so a GND wire landed on a 5 V pin. The wires
+  were then also one row off (each in the right column, other row). The Pi's pin levels
+  showed it: the ignition signal arrived on GPIO18, and GPIO3 was held low. The colour
+  diagram `hardware/opera-mitm/board/j103-pi-gpio-wiring.png` shows the header with pin 1
+  at the top right, odd pins in the top row.
+- **Ignition path verified** after the rewire: GPIO17 goes LOW for ACC and for ON, and HIGH
+  for OFF. It stayed LOW without a single 0.1 s glitch through an engine start.
+
+## 36. 2026-10-24 — ATtiny85 power-supervisor firmware and the Pi-side programmer
+
+**Firmware:** `pdb-circuit/firmware/`. `src/pdb.c` is the §4.3 state machine in plain C,
+tested on the host (`make test`). `src/main.c` is the ATtiny glue. It builds to 1166 bytes.
+There is one addition to the spec, **CYCLE**: if the Pi halts while the ignition is on, the
+relay opens for 5 s, so the Pi restarts without a key cycle. LED103 shows the state: RUN a
+short blink every 2 s, GRACE 4 Hz, CYCLE 1 Hz, CUT solid for 1 s, SLEEP dark.
+**Status: written and tested on the host. Not yet flashed.**
+
+**Programmer.** Debian Trixie's `avrdude` 7.1 is built **without** `linuxgpio`. avrdude
+v8.3 was built from source with libgpiod into `/usr/local` (`provision.sh` PHASE 4b). The
+overlay was off for the install. The programmer definition is `pdb_isp.conf`. First contact
+over J103, with the JP101 bridge fitted: signature `1E 93 0B` (ATtiny85), read correctly 5
+times out of 5. Factory fuses: `lfuse 0x62`, `hfuse 0xDF`, `efuse 0xFF`. So the R117 MOSI
+margin concern (`REV-D-REVIEW.md`) did not stop programming on this unit at room
+temperature.
+
+**GPIO pulls** (`config.txt`, also in PHASE 4b): `gpio=5=ip,pd`, `gpio=6,13=ip,pn`. Before
+this, the Pi's default pull-up on GPIO5 fed approx. 50 µA through R117 and R103 into the
+relay transistor's base while the ATtiny was blank.
+
+**First flash (same evening).** Fuses written and verified: `E2 / DD / FF`. Note: `make flash`
+rebuilds the hex, so pass `FAST=1` to `make flash` as well, or the NORMAL build is written. This
+happened once. The Makefile now prints which build it writes.
+
+**Z102 leaks and must not be fitted.** The first key-off cut the relay after 10 s (the
+low-battery rule), with the battery at 12.78 V. `BATT_SENSE` measured 1.970 V; the 68k/15k
+divider should give 2.31 V. R101 (marking `683`) and R102 (`18C`) were correct. Z102
+(BZT52C3V6) conducted approx. 28 µA at 2.3 V: a low-voltage zener's knee is soft, far below
+its rated 3.6 V. With Z102 removed: 12.75 V → 2.30 V, exact. Protection without it: R101
+limits the pin current to 0.37 mA at D101's 29 V clamp, within the ATtiny's clamp diodes.
+**Z102 = DNP.** D8 (the same part on the MITM `CONT` divider) has the same error; `CONT` is
+only logged. The 90×90 PDB's 1N5227B (Z2) is probably the same. These design files are
+not changed yet.
+
+**Bench results (FAST build, JP101 fitted, key in the car):**
+
+| Test | Result |
+|---|---|
+| Key on → RUN | Pass: relay on 192–197 ms after the key |
+| Key off → GRACE → CUT → SLEEP | Pass: cut 29.8 s after the key (30.2 s expected; RC oscillator approx. 1.3 % fast, so 5:15 ≈ 5:11 in the normal build) |
+| Fuel stop: key off 12.6 s, then on again | Pass: the relay stayed closed |
+| HALT in RUN (CYCLE) and HALT in GRACE | **Not done yet**. The test was paused. |
+
+The relay drive and LED103 can be watched from the Pi through J103 without a meter:
+`pinctrl lev 5,6,17,26` = COIL_DRV, LED3_DRV, IGN_STATE, PI_HALT. HALT can be simulated with
+`pinctrl set 26 op dh` / `pinctrl set 26 ip pd`.
+
+**Second day (2026-10-25), bench.** A J101 re-termination had ACC and GND swapped, which
+put 12 V onto the board GND at key-on and blew the car's **ACC fuse 37 (7.5 A)**. The audio
+unit then had no ACC: dark screen, OPERA TX/CONT/PWR SW all 0 V. On an MT S660 there is no
+glove-box fuse box. The audio unit's ACC comes from fuse 37 in the driver-side box.
+Bench checks after the fault: all J1 line resistances and the power-up readings matched rev B
+Stage 1–7, so no protection part failed shorted. The board-only ignition test (12 V jumper
+to ACC, then to ON) passed with the bench build.
+
+**`HALT_IN` floats with J103 unplugged.** On the bench, the relay cycled on and off: a
+floating HIGH looked like "Pi halted" for 2 s, so the ATtiny started CYCLE again and
+again. Grounding J103 pin 3 stopped it. Firmware fix: HALT counts only after 3 s LOW since
+the Pi got power (`halt_armed`). The hardware fix (a 100k pull-down) is on the
+next-revision list (`COMBINED.md`).
+
+**Guard build on the bench, then the normal build.** The CM4 can imitate the ignition: it
+drives GPIO17 (`IGN_STATE`) LOW through J103 pin 2, which is only 0.33 mA against R112. So
+no jumpers are needed. Results with the bench build: HALT in RUN → relay off 1.97 s (CYCLE),
+then on again; HALT in GRACE → cut 1.98 s later. The guard armed, and it armed again after
+the CYCLE. The **normal build** (5:15 / 10 s / 3 s arming) is now on the chip.
+
+### 36.1 The Pi half of the shutdown (`hardware/pdb/`, provision.sh PHASE 4b)
+
+- **`s660-ignition-watch`** (a service): when GPIO17 has been HIGH for 270 s (4:30), it runs
+  `systemctl poweroff`. If the ignition comes back first, it cancels. The Pi's pull-down
+  makes an unplugged J103 read "ignition on", so a loose cable never shuts the Pi down.
+  **Bench work without ACC:** `sudo touch /persist/s660-bench` disables it
+  (`ConditionPathExists=`). **Delete that file before the car.**
+- **`s660-halt-signal`** (a `systemd-shutdown` hook in `/usr/lib/systemd/system-shutdown/`):
+  on poweroff/halt only, it raises GPIO26 and then **sleeps 15 s**, so the ATtiny cuts the
+  power during the sleep. The first version raised the pin and let the halt finish: the
+  halted CM4 (EEPROM `WAKE_ON_GPIO=1`, `POWER_OFF_ON_HALT=0`) released GPIO26 (0 V on J103
+  pin 3), and the ATtiny fell back to its 5:15 backstop. The filesystems are already
+  read-only when the hook runs, so the cut is safe. Not the `gpio-poweroff` overlay: it
+  would claim GPIO26, which avrdude needs as SCK.
+
+**Full chain, bench (JP101 fitted, 30 s test timeout):** ignition off → power-off 30 s later
+(the CM4 stopped answering ping at the expected second) → HALT 3.3 V on J103 pin 3 → relay
+off approx. 10 s later, LED103 1 s then dark. **Pass.** The backstop was also proven in the
+failed first run: the relay opened 5:15 (approx. 5:11 by the ATtiny's clock) after key-off.
+
+### 36.2 2026-10-26 — Car test, JP101 removed: pass
+
+The new 7.5 A fuse was fitted in slot 37, the J101 plug was checked, and JP101 was removed
+(with ACC on, so the relay held the CM4 up). `/persist/s660-bench` was deleted.
+
+| Time | Event |
+|---|---|
+| 21:00:03 | Key OFF. The watch logged "powering off in 270 s". |
+| 21:04:38 | The CM4 stopped answering: power-off, 4:30 after key-off |
+| approx. 21:04:50 | K101 clicked off (HALT → 10 s → CUT) |
+| after | No restart. LED103 dark. `IGN_STATE` and `PI_ISP_RST` (J103 pins 2 and 9) near 3.3 V with the CM4 unpowered. |
+
+A concern was checked and found not to occur: an unpowered CM4 could clamp `IGN_STATE` (or
+the ATtiny's RESET, through R119) LOW through its GPIO protection diodes, and so restart the
+CM4 in a loop while parked. It did not. At plug-in with JP101 still fitted, the ATtiny briefly
+saw "ignition on" (RUN → GRACE), probably while the CM4 was starting up. That has no effect in
+use, but **for the next revision:** buffer or isolate the Pi's GPIO17 from `IGN_STATE` (and
+the ISP lines from the ATtiny), so that an unpowered CM4 cannot load them.
+
+**Still to test:** the low-battery cut (host-tested only); the fuel stop and cranking in the
+car with the normal build.
+
+## 37. 2026-10-26 — OPERA MITM in the car: panel controls drive CarPlay
+
+**Harness.** Before the first connection, J1's plug was checked at ACC with the board
+unplugged: about 11 V only at position 6 (`CONT`), 5 V at 2, 4 and 5. The 3-pin and 4-pin
+blocks are now glued together, so they cannot be swapped (a swap shorts the audio unit's
+`CONT` to GND through K1's NC contacts).
+
+| Test | Result |
+|---|---|
+| Pico unpowered: stock pass-through (power, volume, mode, back, phone on the stock unit) | Pass |
+| Pico on: each panel control decoded and sent as its HID key | Pass, about 5 ms from panel to Chromium; two knob steps 109 ms apart both arrive |
+| Back + Power: toggle to head-unit mode and back | Pass. Leaving head-unit mode sends the unit a "keys released" frame. |
+| Panel controls on the CarPlay screen (web app `620f89b`) | Pass |
+
+**Back is now sent on release** (Pico firmware). Back is also the first half of the
+Back+Power toggle, and sending it on press made CarPlay go back one screen on every mode
+switch. Now Back goes out as a 25 ms tap when it is released, and only if Power was not pressed
+during the hold. **New console command `b`** reboots the Pico into BOOTSEL. The firmware's own
+USB descriptors have no picotool reset interface, so `picotool -f` could not reach it.
+`build.sh flash` sends `b`. The first flash needed BOOTSEL held + SW2 tapped.
+
+**Input lag, not reproduced.** Once, knob input stalled for a few seconds, then all the
+inputs ran at once, while the video kept moving. Temporary timing logs then covered
+about 830 knob steps: every command reached the dongle within 2 ms of the browser's keydown.
+So if the stall comes back, it is between the dongle and the phone, not on the CM4. Adding
+`optimizeForLatency` to the decoder made no difference, and it was removed.
+
+**Phone button = nudge right into the CarPlay sidebar.** Raw command values sent to the
+dongle, read on the screen (iOS, RHD so the sidebar is on the right):
+
+| Value | iOS action |
+|---|---|
+| 100, 107, 109 | focus previous (as knob anticlockwise) |
+| 101, 108, 110 | focus next (as knob clockwise) |
+| 102, 113 | nudge up |
+| 103, 114 | nudge down |
+| **111 / 112** | **nudge left / right**. Held until another real button event: `invalid` (0) does not end it, `selectUp` (105) does. |
+
+The library now names 111/112 `nudgeLeft`/`nudgeRight`. The Phone button sends
+`nudgeRight` + `selectUp`, one nudge per press. Inside an app that reaches the sidebar; on
+home-screen page 1 the first press goes to page 2. Back-to-back nudges are dropped during the
+page slide, and nudges 0.4 s apart worked but felt too slow, so the choice was one per press.
