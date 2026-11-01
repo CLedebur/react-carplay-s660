@@ -5,6 +5,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const api = require('./s660-api');
 
 const ROOT = path.resolve(process.argv[2] ||
   path.join(process.env.HOME, 'react-carplay-s660/hardware/path-b/node-CarPlay/examples/carplay-web-app/build'));
@@ -33,9 +34,13 @@ http.createServer((req, res) => {
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 
-  const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  if (api.handle(req, res)) return; // /api/* for the native Settings panel
+
+  let urlPath;
+  try { urlPath = decodeURIComponent((req.url || '/').split('?')[0]); }
+  catch (e) { res.writeHead(400); return res.end('bad request'); } // a stray '%' must not kill the kiosk's server
   let fp = path.normalize(path.join(ROOT, urlPath));
-  if (!fp.startsWith(ROOT)) { res.writeHead(403); return res.end('forbidden'); } // no traversal
+  if (fp !== ROOT && !fp.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end('forbidden'); } // no traversal
 
   fs.stat(fp, (err, st) => {
     if (!err && st.isDirectory()) fp = path.join(fp, 'index.html');

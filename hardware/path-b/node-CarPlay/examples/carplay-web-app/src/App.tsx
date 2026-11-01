@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { RotatingLines } from 'react-loader-spinner'
 import './App.css'
 import {
   findDevice,
@@ -18,7 +17,15 @@ import { CarPlayWorker } from './worker/types'
 import useCarplayAudio from './useCarplayAudio'
 import { useCarplayTouch } from './useCarplayTouch'
 import { useControls } from './useControls'
-import { carplayCommandsFor, ControlHandler, View } from './controls'
+import { carplayCommandsFor, ControlHandler } from './controls'
+import { NativeUi } from './NativeUi'
+import { useHeadUnit } from './useHeadUnit'
+import { Settings, StartSettings, reloadPending } from './settings'
+import { settingsPage } from './nav'
+import { useNetwork } from './useNetwork'
+import { useSettings } from './useSettings'
+import { useWebAdmin } from './useWebAdmin'
+import { useSystemStats } from './useSystemStats'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
 
 // Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a
@@ -39,13 +46,19 @@ const height = 480
 const videoChannel = new MessageChannel()
 const micChannel = new MessageChannel()
 
-const config: Partial<DongleConfig> = {
+// What the dongle starts with. fps, hand drive, Wi-Fi band and night mode come from the user's
+// settings (settings.ts); the defaults are the S660's: 30 fps (60 was heavy on top of software
+// decode, 30 halves it again, plenty for a dash) and right-hand drive, so iOS puts the CarPlay
+// sidebar on the right.
+const buildConfig = (s: Settings): Partial<DongleConfig> => ({
   width,
   height,
-  fps: 30, // 60 was heavy on top of software decode; 30 halves it again, plenty for a dash
+  fps: s.fps,
   mediaDelay: 300,
-  hand: HandDriveType.RHD, // S660 is right-hand drive: iOS puts the CarPlay sidebar on the right
-}
+  hand: s.handDrive === 'rhd' ? HandDriveType.RHD : HandDriveType.LHD,
+  wifiType: s.wifiBand,
+  nightMode: s.nightMode,
+})
 
 const RETRY_DELAY_MS = 30000
 
@@ -287,6 +300,12 @@ function App() {
   // show, and exactly what would have said "the phone never joined the dongle's Wi-Fi". On an
   // unchanged poll we now leave the status (and the already-started, idempotent worker) alone;
   // the worker's own link-status / plugged / unplugged / failure events drive the line from here.
+  const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings()
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  // The settings CarPlay was last started with: what is on the dongle now, not what is saved.
+  const [started, setStarted] = useState<StartSettings | null>(null)
+
   const devicePresentRef = useRef<boolean | null>(null)
   const checkDevice = useCallback(
     async () => {
@@ -296,7 +315,9 @@ function App() {
       if (present) {
         setDeviceFound(true)
         clearStatus()
-        carplayWorker.postMessage({ type: 'start', payload: { config } })
+        const s = settingsRef.current
+        setStarted({ handDrive: s.handDrive, fps: s.fps, wifiBand: s.wifiBand })
+        carplayWorker.postMessage({ type: 'start', payload: { config: buildConfig(s) } })
       } else {
         carplayWorker.postMessage({ type: 'stop' })
         setDeviceFound(false)
@@ -313,6 +334,7 @@ function App() {
   // on a short, predictable cadence so a real disconnect is never worse-case-bound by that OS
   // event's own latency.
   useEffect(() => {
+    if (!settingsLoaded) return // start the dongle with the saved settings, not the defaults
     navigator.usb.onconnect = async () => {
       checkDevice()
     }
@@ -324,23 +346,53 @@ function App() {
     checkDevice()
     const pollId = setInterval(checkDevice, POLL_INTERVAL_MS)
     return () => clearInterval(pollId)
-  }, [carplayWorker, checkDevice])
+  }, [carplayWorker, checkDevice, settingsLoaded])
 
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
 
-  // Physical controls (OPERA MITM). Only the CarPlay view exists so far; the native head-unit
-  // view will add its own handler here, and whatever switches views just changes `view`.
-  const [view] = useState<View>('carplay')
-  const carplayControls: ControlHandler = useCallback(
+  // Physical controls (OPERA MITM). The native head-unit UI (nav.ts) gets first call at every
+  // control; what it does not use is forwarded to CarPlay, and only while CarPlay is streaming.
+  const reloadCarplay = useCallback(() => window.location.reload(), []) // same recovery as a failed start
+  const toggleWebRef = useRef<() => void>(() => {})
+  const refreshNetworkRef = useRef<() => void>(() => {})
+  const headUnit = useHeadUnit({
+    plugged: isPlugged,
+    settings,
+    update: updateSettings,
+    reloadCarplay,
+    onNetworkChanged: () => refreshNetworkRef.current(),
+    toggleWebAdmin: () => toggleWebRef.current(),
+  })
+
+  // Night mode also changes while CarPlay runs, so it is sent as a command, not only at start.
+  useEffect(() => {
+    if (!isPlugged) return
+    const command = settings.nightMode ? 'enableNightMode' : 'disableNightMode'
+    carplayWorker.postMessage({ type: 'key', payload: { command } })
+  }, [carplayWorker, isPlugged, settings.nightMode])
+  const onHeadUnitControl = headUnit.onControl
+  const onControl: ControlHandler = useCallback(
     event => {
-      if (!isPlugged) return
-      for (const command of carplayCommandsFor(event)) {
+      const forCarplay = onHeadUnitControl(event)
+      if (!forCarplay || !isPlugged) return
+      for (const command of carplayCommandsFor(forCarplay)) {
         carplayWorker.postMessage({ type: 'key', payload: { command } })
       }
     },
-    [carplayWorker, isPlugged],
+    [carplayWorker, onHeadUnitControl, isPlugged],
   )
-  useControls(view === 'carplay' ? carplayControls : null)
+  useControls(onControl)
+
+  // Poll the Pi only while a native page is up: the stream gets every CPU cycle it can.
+  const nativeShowing = !(headUnit.ui.panel === 'carplay' && headUnit.carplayShown)
+  const settingsOpen = nativeShowing && headUnit.ui.panel === 'settings'
+  const stats = useSystemStats(nativeShowing ? (settingsOpen ? 2000 : 10000) : null, settingsOpen)
+  const networkPageOpen = settingsOpen && settingsPage(headUnit.ui) === 4
+  const { network, refresh: refreshNetwork } = useNetwork(networkPageOpen ? 3000 : null)
+  refreshNetworkRef.current = refreshNetwork
+  const optionsPageOpen = settingsOpen && settingsPage(headUnit.ui) === 2
+  const { web, toggle: toggleWeb } = useWebAdmin(optionsPageOpen ? 3000 : null)
+  toggleWebRef.current = toggleWeb
 
   const isLoading = !isPlugged
 
@@ -350,32 +402,23 @@ function App() {
       id={'main'}
       className="App"
     >
-      {isLoading && (
-        <div
-          style={{
-            position: 'absolute',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          {deviceFound === true && (
-            // S660 kiosk: small, dim "waiting for the phone" indicator near the bottom edge
-            // instead of a big grey spinner over the logo.
-            <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
-              <RotatingLines
-                strokeColor="#3a3a3a"
-                strokeWidth="4"
-                animationDuration="1"
-                width="28"
-                visible={true}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      <NativeUi
+        ui={headUnit.ui}
+        streaming={headUnit.carplayShown}
+        phone={isPlugged}
+        settings={settings}
+        reloadPending={reloadPending(settings, started)}
+        dongle={deviceFound === null ? null : !!deviceFound}
+        linkStatus={status?.text ?? null}
+        stats={stats}
+        network={network}
+        web={web}
+        netBusy={headUnit.netBusy}
+        holding={headUnit.holding}
+        power={headUnit.power}
+        lastKey={headUnit.lastKey}
+        streamLabel={`${width}×${height} ${started?.fps ?? settings.fps}`}
+      />
       <div
         id="videoContainer"
         onPointerDown={sendTouchEvent}

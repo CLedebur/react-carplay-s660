@@ -98,6 +98,20 @@ The stack (BUILD_NOTES §8.5; the retired/shelved alternatives are §32 and §27
   `~/carplay-kiosk/` (BUILD_NOTES §33). Before 2026-10-07 it was `carplay-dev-chromium.service`
   in `~/carplay-dev/`. In BUILD_NOTES §5–§20, `carplay.service` means the old **Path A**
   Electron unit, not this one.
+- **Native head-unit UI** (BUILD_NOTES §38): CarPlay shows full screen once the phone connects; the
+  waiting page, the hold-Mode panel switcher and the five-page Settings are native React in the same
+  page (`src/NativeUi.tsx`, `nav.ts`, `useHeadUnit.ts`). Mode acts on **release** (tap = Home, hold =
+  switcher). Settings live in `/persist/ui/settings.json` behind a localhost API.
+- **Kiosk server files:** `serve-build.js` requires `s660-api.js`, which requires `web-admin.js`. Copy
+  **all three** into `~/carplay-kiosk/` on every deploy; a missing one crash-loops the kiosk. The web
+  interface (port 8080, PIN shown on the unit's screen) is off at every boot.
+- **Networking:** Wi-Fi first; the phone's Bluetooth tethering is the fallback (`s660-uplink`). An idle
+  iPhone Wi-Fi hotspot disappears from scans after a few minutes, so do not plan on it. Saved networks and
+  the Bluetooth bond live on `/persist` (bind mounts).
+- **Overlay switch:** `overlayroot=tmpfs:recurse=0` (on) or `overlayroot=disabled` (off) in
+  `/boot/firmware/cmdline.txt`. **Do not use `raspi-config` for it**, always check `mount | grep " / "`, and
+  never run `apt` with it on: the kernel/initramfs land on the non-overlaid boot partition while the
+  modules vanish, and the unit comes up gray (BUILD_NOTES §38.1). Keep `:recurse=0` when switching it on.
 
 ## Gotchas worth remembering
 - The Carlinkit dongle is **required** — it performs the Apple MFi handshake. You

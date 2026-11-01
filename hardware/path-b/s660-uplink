@@ -1,0 +1,51 @@
+#!/bin/sh
+# Keep Wi-Fi as the normal uplink and the phone's Bluetooth tethering as the fallback.
+# NetworkManager has no "only when nothing else is up", and an always-on Bluetooth link would keep the
+# phone's hotspot awake and the Pi's one radio busy during CarPlay. So: when Wi-Fi has been down for
+# DOWN_AFTER seconds, bring the phone link up; when Wi-Fi has been back for UP_AFTER seconds, take it
+# down again -- but only if THIS script brought it up (a link you started on the Network page stays).
+# Started by s660-uplink.timer well after CarPlay (BUILD_NOTES §38). Needs root for nmcli.
+DOWN_AFTER=30
+UP_AFTER=30
+STEP=10
+RETRY_AFTER=90 # after a failed attempt, leave the phone alone this long
+
+wifi_up() { nmcli -t -f TYPE,STATE dev | grep -q '^wifi:connected'; }
+bt_up() { nmcli -t -f TYPE,STATE dev | grep -q '^bt:connected'; }
+# TYPE first: a profile name may contain an escaped colon, so it is everything after the first one.
+bt_profile() { nmcli -t -f TYPE,NAME con show | sed -n 's/^bluetooth://p' | sed 's/\\:/:/g' | head -n1; }
+
+wifi_down_for=0
+wifi_up_for=0
+owned=0
+backoff=0
+
+while true; do
+  profile=$(bt_profile)
+  if [ -n "$profile" ]; then
+    if wifi_up; then
+      wifi_down_for=0
+      wifi_up_for=$((wifi_up_for + STEP))
+      if [ "$owned" = 1 ] && bt_up && [ "$wifi_up_for" -ge "$UP_AFTER" ]; then
+        echo "Wi-Fi is back: taking the phone link down"
+        nmcli con down "$profile" >/dev/null 2>&1
+        owned=0
+      fi
+      [ "$owned" = 1 ] && ! bt_up && owned=0
+    else
+      wifi_up_for=0
+      wifi_down_for=$((wifi_down_for + STEP))
+      [ "$backoff" -gt 0 ] && backoff=$((backoff - STEP))
+      if ! bt_up && [ "$wifi_down_for" -ge "$DOWN_AFTER" ] && [ "$backoff" -le 0 ]; then
+        echo "No Wi-Fi for ${wifi_down_for}s: connecting through the phone ($profile)"
+        if nmcli -w 30 con up "$profile" >/dev/null 2>&1; then
+          owned=1
+        else
+          echo "Could not connect through the phone; trying again in ${RETRY_AFTER}s"
+          backoff=$RETRY_AFTER
+        fi
+      fi
+    fi
+  fi
+  sleep "$STEP"
+done

@@ -357,6 +357,8 @@ sudo systemctl disable getty@tty1.service 2>/dev/null || true
 mkdir -p "${KIOSK_DIR}"
 install -m 775 "${PB}/run-chromium-kiosk.sh" "${KIOSK_DIR}/run-chromium-kiosk.sh"
 install -m 664 "${PB}/serve-build.js" "${KIOSK_DIR}/serve-build.js"
+install -m 664 "${PB}/s660-api.js" "${KIOSK_DIR}/s660-api.js"   # /api/stats + /api/power (serve-build.js requires it)
+install -m 664 "${PB}/web-admin.js" "${KIOSK_DIR}/web-admin.js"   # the optional web interface (s660-api.js requires it)
 
 # The unit. No PAMName=login: cage talks to seatd directly, RuntimeDirectory= provides
 # XDG_RUNTIME_DIR, and skipping the logind session saves user@1000 + a session bus at boot
@@ -365,8 +367,16 @@ sed -e "s/^User=s660$/User=${CARPLAY_USER}/" \
     -e "s|^ExecStart=.*|ExecStart=${KIOSK_DIR}/run-chromium-kiosk.sh|" \
     "${PB}/carplay.service" | sudo tee /etc/systemd/system/carplay.service > /dev/null
 
+# Uplink watchdog: Wi-Fi first, the phone's Bluetooth tethering as the fallback (BUILD_NOTES §38).
+# Started by a timer so it never sits on the kiosk's boot path.
+sudo install -m 755 "${PB}/s660-uplink" /usr/local/sbin/s660-uplink
+sudo install -m 644 "${PB}/s660-uplink.service" /etc/systemd/system/s660-uplink.service
+sudo install -m 644 "${PB}/s660-uplink.timer" /etc/systemd/system/s660-uplink.timer
+# Keep the Wi-Fi passwords the web interface passes to nmcli out of the system log (BUILD_NOTES §38.7).
+sudo visudo -cf "${PB}/sudoers-s660-nmcli" && sudo install -m 440 "${PB}/sudoers-s660-nmcli" /etc/sudoers.d/s660-nmcli
 sudo systemctl daemon-reload
 sudo systemctl enable carplay.service
+sudo systemctl enable s660-uplink.timer
 
 
 # ============================================================================

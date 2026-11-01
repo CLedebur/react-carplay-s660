@@ -2667,3 +2667,155 @@ The library now names 111/112 `nudgeLeft`/`nudgeRight`. The Phone button sends
 `nudgeRight` + `selectUp`, one nudge per press. Inside an app that reaches the sidebar; on
 home-screen page 1 the first press goes to page 2. Back-to-back nudges are dropped during the
 page slide, and nudges 0.4 s apart worked but felt too slow, so the choice was one per press.
+
+---
+
+## 38. 2026-11-01 — Gray screen after an `apt dist-upgrade` with the overlay on; the native UI; tethering
+
+### 38.1 The incident: new kernel on the boot partition, old modules on root
+
+**What happened.** An `apt update && dist-upgrade` was run while the overlay (§29) was still active:
+`mount` showed `overlayroot on / type overlay`, although the overlay had been turned off in
+`raspi-config` and the unit rebooted. The upgrade's package files went into the tmpfs layer and were
+gone at the next reboot. `/boot/firmware` is not overlaid (§29.2), so its new files stayed: `kernel8.img`
+and `initramfs8` (both rewritten 21:05–21:06 the night before) held kernel **6.18.50**, while the NVMe root
+still held modules only up to **6.18.39**. After the next reboot the unit stopped at a gray screen.
+
+**Why `raspi-config` did not switch it off: unknown.** `cmdline.txt` still began with
+`overlayroot=tmpfs:recurse=0`. The switch this build really uses is that word in `cmdline.txt`
+(`tmpfs` = on, `disabled` = off; §26, §29.1), so check it directly.
+
+**Recovery (the same route as §26).**
+1. Boot mode (nRPIBOOT), `sudo rpiboot` on the Mac. The FAT boot partition mounts as a normal volume.
+2. The ext4 root was read with `sudo debugfs -c -R ... /dev/rdisk10s2` (`-c` opens it read-only).
+   Root's own `/boot` still held `vmlinuz-6.18.39+rpt-rpi-v8` and `initrd.img-6.18.39+rpt-rpi-v8`.
+   That initramfs includes the overlay hook and NVMe support (checked: 63 `overlayroot` strings).
+3. Backed up the 6.18.50 files on the boot partition (`kernel8.img.bak-6.18.50-2026-11-01`,
+   `initramfs8.bak-6.18.50-2026-11-01`, `cmdline.txt.bak-2026-11-01`), copied the 6.18.39 pair over
+   `kernel8.img` / `initramfs8`, checked both byte for byte, and set `overlayroot=disabled`.
+   Device tree files and overlays were not touched by the upgrade and were left alone.
+4. Booted fine. `uname -r` is 6.18.39, root is plain ext4. The newer firmware blobs from the upgrade
+   (`start4.elf`, `fixup4.dat`, `bootcode.bin`) stay in place with the older kernel and work.
+
+**State left behind.** dpkg on the root still believes the old package versions are installed.
+The big upgrade (Chromium 152→156, cage 0.2→0.3, Mesa) has **not** been redone: those are exactly the
+GPU and decode pieces §8.5 and §27.1 depend on, so it should be its own deliberate step.
+
+**Rules that follow.**
+- Before any `apt` run or other persistent change: `mount | grep " / "` must show ext4, not `overlayroot`.
+- To switch the overlay, edit `cmdline.txt` and reboot, then check `mount`.
+- A kernel, firmware or initramfs update with the overlay on desynchronises `/boot/firmware` and root.
+
+### 38.2 The native head-unit UI (draft PR #9)
+
+CarPlay shows full screen once the phone connects; otherwise, and from the hold-Mode switcher, a native UI
+in the same page (`src/NativeUi.tsx`, `nav.ts`, `useHeadUnit.ts`; mockup in `hardware/path-b/ui-mockup/`).
+
+- **Controls.** Mode now acts on **release**: a tap is CarPlay Home (or back to CarPlay), a hold of
+  600 ms opens the panel switcher. Restart, Shut down and Reload CarPlay need the knob held 1.5 s.
+- **Settings pages** (the knob turns past the rail through them): Status, Options (auto-run CarPlay,
+  units, clock, web interface), CarPlay (hand drive, frame rate, dongle Wi-Fi band, night mode),
+  Network, Maintenance & power. Vehicle Dynamics is a disabled rail entry until OBD-II.
+- **Auto-run off:** a connected phone shows "Press the knob on CarPlay to open it" instead of taking over.
+- **Server.** `serve-build.js` loads `s660-api.js` (localhost only): `/api/stats`, `/api/settings`,
+  `/api/network`, `/api/network/connect`, `/api/webadmin`, `/api/power`. Writes need the `x-s660-ui`
+  header. Power uses `sudo -n systemctl` (`s660` has passwordless sudo and no logind session).
+- **Settings live in `/persist/ui/settings.json`**, made and chowned by `s660-persist-layout.service`.
+  Every value is checked against an allowed list. Hand drive, frame rate and Wi-Fi band reach the dongle
+  only when CarPlay starts, so the UI shows "Changes waiting" until Reload CarPlay. CarPlay now waits for
+  the saved settings before starting the dongle. Night mode is also sent live.
+- **Deploy.** Copy **all three** of `serve-build.js`, `s660-api.js`, `web-admin.js` into `~/carplay-kiosk/`
+  (the first requires the others; a missing file crash-loops the kiosk), rebuild the web app, restart
+  `carplay.service`. `provision.sh` installs them.
+- **Not available:** "Forget phone" (the library has no such command), "keep running after ignition off"
+  (the PDB firmware sets that window, §36).
+
+### 38.3 Web interface (`web-admin.js`)
+
+Off at every boot. The Options row turns it on and shows the address and a fresh 6-digit PIN on the
+unit's screen only. Port 8080, plain HTTP, local network only. A session and the server expire after
+30 minutes unused; five wrong PINs lock it for a minute; three lockouts turn it off. Pages: status,
+settings, saved Wi-Fi networks (add, priority, delete; saving does not connect), logs, diagnostics,
+restart CarPlay / reboot / shut down. The Wi-Fi page lists your networks as "1st choice, 2nd choice..."
+(move up/down; priorities are set to 10, 20, 30... behind the scenes), Connect now, Change password,
+hidden networks, Rescan, and a Nearby list with one-tap Add (the CarPlay dongle's own `AutoKit-*` network
+is marked and cannot be added). Actions update the page in place. Tested on the Pi with a throwaway
+profile: add, reorder, change password and delete all worked and persisted on `/persist/nm-connections`.
+
+### 38.4 Network: Wi-Fi first, the phone over Bluetooth as the fallback
+
+**Measurements (iPhone, Personal Hotspot on, bench, 2026-11-01).**
+
+| Test | Result |
+|---|---|
+| Hotspot visible to the Pi with the Personal Hotspot screen closed, phone just used | Yes (2.4 GHz ch 6) |
+| Same, phone locked, nothing connected | **Gone after about 2–3 minutes**, stayed gone for 6 |
+| Bluetooth PAN (NAP) pairing, then `nmcli con up` | Works, internet through the phone |
+| PAN reconnect after about 6 min locked | Works, by itself |
+| PAN reconnect after **30 min** untouched | **Works**, connected in 9 s |
+| Wi-Fi dropped on purpose | Phone link up 29 s later; Wi-Fi back; phone link down 21 s after that |
+| Bluetooth link brought up **while CarPlay streams** (90 s, 2026-11-01 11:59) | Hardware decoder held throughout, no `carplay.service` errors, no dongle USB reset; ping over the phone 89/90 replies, 75 ms average, one 966 ms spike |
+
+So an idle iPhone Wi-Fi hotspot is not a usable fallback, but Bluetooth tethering is, including while
+CarPlay streams. **Not yet tested:** idle times beyond 30 minutes, and a full drive.
+
+**What is in place.**
+- `/persist/nm-connections` and `/persist/bluetooth` are bind-mounted over
+  `/etc/NetworkManager/system-connections` and `/var/lib/bluetooth` (`persist/fstab.persist`), so saved
+  networks and the phone's pairing survive the overlay. `s660-persist-layout.service` creates them
+  (modes 755 and 700) and seeds them from the root the first time; an empty bind mount would hide the
+  imager's Wi-Fi profile. On the live Pi they were migrated by hand, `/etc/fstab` backed up as
+  `fstab.bak-2026-11-01-phase2`.
+- The home Wi-Fi profile has `autoconnect-priority 100`. The `iPhone BT` profile does not autoconnect.
+- `s660-uplink` (`/usr/local/sbin`, started by `s660-uplink.timer` 45 s after boot): after 30 s without
+  Wi-Fi it brings the phone link up; 30 s after Wi-Fi is back it takes it down, but only a link it started.
+  NetworkManager itself still starts 20 s after boot (§24), so networking stays behind CarPlay.
+- Pairing recipe that worked: a persistent `bluetoothctl` with `agent DisplayYesNo`, `pair`, answer `yes`
+  to the passkey while tapping Pair on the phone, `trust`, then
+  `nmcli con add type bluetooth con-name "iPhone BT" autoconnect no bluetooth.bdaddr <MAC> bluetooth.type panu`.
+
+### 38.5 Smaller findings
+
+- **The G915 keyboard** (Lightspeed receiver) logged `can't set config #1, error -71` while the keyboard was
+  in *Bluetooth* mode. Nothing was wrong with the Pi. In Lightspeed mode it enumerates normally.
+  Its micro-USB cable is not a data path.
+- **Decisions kept:** the CANable adapter stays the CAN interface (§34); no GPIO needed. Home Assistant
+  integration and a GPS module (UART2 on GPIO0/1, since GPIO14/15 are the debug console) are ideas, not built.
+
+### 38.6 Checks run on the bench before the PR was merged (2026-11-01, overlay on and off)
+
+| Check | Result |
+|---|---|
+| Reboot with the overlay off: the four `/persist` bind mounts, Wi-Fi profile, iPhone bond, kiosk, uplink timer | All present; boot 5.3 s (2.07 s kernel + 3.27 s userspace) |
+| Overlay switched on (`overlayroot=tmpfs:recurse=0`), boot 5.1 s | `mount` showed `overlayroot on /`; all four `/persist` mounts present |
+| Overlay on: a setting, a Wi-Fi profile and Bluetooth activity written, then a second reboot | All three survived; the markers written under `/etc` and `/root` were gone; the iPhone link reconnected; the journal kept every boot |
+| Controls, driven with `panel-keys.py` over SSH | Hold-Mode switcher, Settings navigation, web-interface toggle, Network connect button (6 s), Reload CarPlay (decoder released, then re-held about 10 s later) all worked |
+| Restart: a 0.6 s press, then a 1.8 s hold | The short press did nothing; the hold rebooted the unit |
+| Shut down (1.8 s hold) on the bench with an AC adapter on the TOFU and no Buddy Board | The unit halted and stayed off until the adapter was replugged. With the Buddy Board fitted, §36's HALT path cuts the power instead. |
+
+Not yet tested: the new UI in the car, idle times beyond 30 minutes, LHD, 60 fps and the 2.4 GHz option
+with a phone, and a fresh `provision.sh` run.
+
+### 38.7 Security review of the web interface (2026-11-01)
+
+An independent read of `web-admin.js`, `s660-api.js`, `s660-uplink` and `serve-build.js` (threat model: someone on
+the same Wi-Fi while the interface is on, a hostile web page, a leaked PIN). **No PIN bypass, no argument
+injection into `sudo nmcli`, no XSS.** What it found, and what was done:
+
+| Finding | Action |
+|---|---|
+| **Wi-Fi passwords in the journal.** `sudo` logs every allowed command line; the `nmcli ... wifi-sec.psk <password>` lines landed in the persistent journal under `carplay.service`, which the Logs page shows. Reproduced on the Pi with the throwaway test profiles. | `sudoers-s660-nmcli` (`Defaults!/usr/bin/nmcli !log_allowed`, installed by `provision.sh`); the Logs page also redacts any `psk`. **The three dummy test passwords already in the journal stay there; they are not real.** |
+| Plain HTTP: a sniffer sees the PIN and the cookie. | The PIN is now **single use** (a new one is made after every login) and a session only works from the address that logged in. TLS is not added: keep the interface on a network you trust, and it stays off by default and expires in 30 minutes. |
+| Error text containing the password could reach the URL and browser history. | Fixed messages only; no command output goes into a redirect or an error page. |
+| `GET /%` killed the kiosk's static server (`decodeURIComponent` threw). | Returns 400. |
+| The traversal guard had no trailing separator. | Compares against `ROOT + path.sep`. |
+| No connection or timeout limits on port 8080. | `maxConnections` 20, 10 s headers, 15 s request, 2 s keep-alive. |
+| The `nmcli -t` parser mishandled a trailing backslash; `s660-uplink` broke on a profile name with a colon. | One-pass parser; the uplink script reads the type first. |
+| A Wi-Fi profile could take the Bluetooth profile's name. | The add form refuses any name already used by any connection; the API now uses `con up id`. |
+| A login in flight when the interface is switched off could leave a session. | Checked again before the session is made. |
+
+Accepted, not changed: the lockout counter is global (anyone on the LAN can force the interface off with 15 wrong
+PINs; guessing odds stay about 1.5e-5 per enable); `GET /api/webadmin` returns the PIN to any script on the
+unit's own origin (the CarPlay app renders no phone-supplied HTML); no Host-header allowlist on port 8080.
+**Decided, not a gap:** `s660` has `NOPASSWD: ALL`. That is intentional: there is little sensitive on the unit
+and logins are SSH key only. Anything that runs code as `s660` is root by design; do not flag it again.

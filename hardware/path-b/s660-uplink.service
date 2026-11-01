@@ -1,0 +1,10 @@
+[Unit]
+Description=Fall back to the phone's Bluetooth tethering when Wi-Fi is gone (BUILD_NOTES §38)
+After=NetworkManager.service bluetooth.service
+
+[Service]
+ExecStart=/usr/local/sbin/s660-uplink
+Restart=on-failure
+RestartSec=10
+# Nothing here is time-critical and it must never compete with the kiosk
+Nice=10

@@ -6,12 +6,21 @@ Description=Create the /persist directory layout before its bind mounts (BUILD_N
 DefaultDependencies=no
 Requires=persist.mount
 After=persist.mount
-Before=var-log-journal.mount var-lib-systemd-timesync.mount
+Before=var-log-journal.mount var-lib-systemd-timesync.mount var-lib-bluetooth.mount etc-NetworkManager-system\x2dconnections.mount
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/mkdir -p /persist/journal /persist/timesync
+ExecStart=/bin/mkdir -p /persist/journal /persist/timesync /persist/ui
+# /persist/ui holds the native UI's settings file, written by the kiosk user (path-b/s660-api.js)
+ExecStart=/bin/chown s660:s660 /persist/ui
+# Saved Wi-Fi/tethering profiles and the phone's Bluetooth bond. NetworkManager and BlueZ insist on
+# root-only modes. The first time, copy in what the root already has (the Wi-Fi from the imager),
+# because an empty bind mount would hide it. This runs before the bind mounts, so the copy sees the root's own.
+ExecStart=/usr/bin/install -d -m 755 /persist/nm-connections
+ExecStart=/usr/bin/install -d -m 700 /persist/bluetooth
+ExecStart=/bin/sh -c '[ -n "$(ls -A /persist/nm-connections)" ] || cp -a /etc/NetworkManager/system-connections/. /persist/nm-connections/'
+ExecStart=/bin/sh -c '[ -n "$(ls -A /persist/bluetooth)" ] || cp -a /var/lib/bluetooth/. /persist/bluetooth/'
 
 [Install]
 WantedBy=local-fs.target
