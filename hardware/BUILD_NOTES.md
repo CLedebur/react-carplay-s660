@@ -2836,7 +2836,26 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   atmosphere), MPa, °C, g, degrees, `fuelPct` 0-100, booleans. Sign conventions are in that file (steering and yaw +
   right; `latG` + = pushed left; `longG` + = accelerating). `live:false` (or any field `null`) when the bus is silent.
   The UI polls it every **200 ms while the Vehicle panel is up**, every 2 s while Settings > Status is up (for its "CAN bus"
-  row), and never otherwise, so the backend can start and stop its candump on demand. No backend for it is in this repo yet.
+  row), and never otherwise, so the backend can start and stop its candump on demand.
+
+### 39.4 The CAN service: `hardware/path-b/s660-can.js` (2026-11-01)
+- **Loaded by `s660-api.js`** (a guarded `require`: without the file `/api/vehicle` answers `{"live":false}` and the
+  kiosk keeps running). No npm deps. **Listen-only**: it spawns `candump -L can0` filtered to the 16 IDs the panel
+  needs (`s660-can.service`, §34, brings `can0` up from the adapter's silent firmware), keeps each ID's last frame,
+  and decodes on request. candump starts on the first `/api/vehicle` request and **stops 10 s after the last one**, so
+  with the Vehicle panel and Settings > Status closed it costs nothing. A value older than 1 s is `null`.
+- **Decoding** follows `references/S660-CAN-bus.md`, including the on-car corrections: clutch 0x13C byte 6 bit 2;
+  wheel order FL, FR, RL, RR; yaw 0x091 (raw − 32768) × 0.0037 °/s; G 0.00169 m/s² per count (lateral assumed);
+  gear from 0x1DC rpm ÷ 0x158 speed within 6 % of the measured ratios with the clutch up, `R` from the reverse
+  bit; boost against the manifold pressure last seen with the engine stopped (else 760 mmHg); brake pressure from
+  the sheet's points, zero up to raw 106 (our car rests at 101–105); fuel raw 5–105 → 0–100 %.
+- **Unverified on the car, shown anyway:** seat belts (0x305) and the three warning bits (0x324). With the ignition on
+  and the engine off, the "engine" and "EPS" bits read 1, as the dash's own lamps do then; during the drive they were 0.
+- **Tests:** `node --test hardware/path-b/s660-can.test.js` (real frames from the 2026-11-01 captures). The whole
+  drive capture was also replayed through `createVehicle` at the panel's 200 ms rate: speed 0–128.4 km/h, gears 1–6 in
+  a plausible order, R while reversing out of the garage, odometer ending at the dash's 44,697 km. The G values
+  are often exactly 0.00: 28 % of 0x1EA frames are zero (the sensor's dead band), so a steady cruise reads 0 g.
+- Live check on the Pi (listening while a diagnostic sweep ran): `live:true`, odometer 44,697, no stray candump after `stop()`.
 - Display thresholds in `VehicleTabs.tsx` (coolant amber 105 °C, red 110 °C; low fuel 10 %) are placeholders, not
   Honda's numbers.
 

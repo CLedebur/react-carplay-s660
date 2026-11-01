@@ -104,8 +104,10 @@ The stack (BUILD_NOTES §8.5; the retired/shelved alternatives are §32 and §27
   page (`src/NativeUi.tsx`, `nav.ts`, `useHeadUnit.ts`). Mode acts on **release** (tap = Home, hold =
   switcher). The whole native UI is drawn `glassAspect x 480` wide and squeezed into the 720 px output (§39.2; set on
   Settings > Display). Settings live in `/persist/ui/settings.json` behind a localhost API.
-- **Kiosk server files:** `serve-build.js` requires `s660-api.js`, which requires `web-admin.js`. Copy
-  **all three** into `~/carplay-kiosk/` on every deploy; a missing one crash-loops the kiosk. The web
+- **Kiosk server files:** `serve-build.js` requires `s660-api.js`, which requires `web-admin.js` and
+  (optionally) `s660-can.js`, the CAN service behind `/api/vehicle`. Copy **all four** into `~/carplay-kiosk/`
+  on every deploy. A missing `web-admin.js` crash-loops the kiosk; a missing `s660-can.js` only leaves the
+  Vehicle panel saying "no data". The web
   interface (port 8080, PIN shown on the unit's screen) is off at every boot.
 - **Networking:** Wi-Fi first; the phone's Bluetooth tethering is the fallback (`s660-uplink`). An idle
   iPhone Wi-Fi hotspot disappears from scans after a few minutes, so do not plan on it. Saved networks and

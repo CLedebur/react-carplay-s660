@@ -9,6 +9,7 @@
 //   GET  /api/webadmin         whether the web interface is on, its addresses and (when on) the login PIN
 //   POST /api/webadmin         {"toggle":true} or {"enabled":bool} -- needs the x-s660-ui header
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
+//   GET  /api/vehicle          decoded CAN data for the Vehicle panel (s660-can.js; listen-only)
 //
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
 'use strict'
@@ -17,6 +18,14 @@ const os = require('os')
 const path = require('path')
 const { execFile } = require('child_process')
 const { createWebAdmin } = require('./web-admin')
+
+// The CAN service is optional: without s660-can.js the panel just shows "no data", the kiosk keeps running.
+let vehicle = null
+try {
+  vehicle = require('./s660-can').createVehicle()
+} catch (err) {
+  console.error(`s660-api: no CAN service (${err.message})`)
+}
 
 const MITM_INPUT_NAME = 'S660 CarPlay OPERA MITM' // hardware/opera-mitm/firmware USB product string
 const VIDEO_DECODER = '/dev/video10' // bcm2835-codec-decode: held by Chromium's GPU process while it HW-decodes
@@ -326,6 +335,11 @@ const handle = (req, res) => {
       body => sendJson(res, 200, body),
       err => sendJson(res, 500, { error: String(err.message || err) }),
     )
+    return true
+  }
+
+  if (url === '/api/vehicle' && req.method === 'GET') {
+    sendJson(res, 200, vehicle ? vehicle.snapshot() : { live: false })
     return true
   }
 
