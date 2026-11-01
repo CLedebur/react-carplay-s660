@@ -2781,3 +2781,17 @@ CarPlay streams. **Not yet tested:** idle times beyond 30 minutes, and a full dr
   Its micro-USB cable is not a data path.
 - **Decisions kept:** the CANable adapter stays the CAN interface (§34); no GPIO needed. Home Assistant
   integration and a GPS module (UART2 on GPIO0/1, since GPIO14/15 are the debug console) are ideas, not built.
+
+### 38.6 Checks run on the bench before the PR was merged (2026-11-01, overlay on and off)
+
+| Check | Result |
+|---|---|
+| Reboot with the overlay off: the four `/persist` bind mounts, Wi-Fi profile, iPhone bond, kiosk, uplink timer | All present; boot 5.3 s (2.07 s kernel + 3.27 s userspace) |
+| Overlay switched on (`overlayroot=tmpfs:recurse=0`), boot 5.1 s | `mount` showed `overlayroot on /`; all four `/persist` mounts present |
+| Overlay on: a setting, a Wi-Fi profile and Bluetooth activity written, then a second reboot | All three survived; the markers written under `/etc` and `/root` were gone; the iPhone link reconnected; the journal kept every boot |
+| Controls, driven with `panel-keys.py` over SSH | Hold-Mode switcher, Settings navigation, web-interface toggle, Network connect button (6 s), Reload CarPlay (decoder released, then re-held about 10 s later) all worked |
+| Restart: a 0.6 s press, then a 1.8 s hold | The short press did nothing; the hold rebooted the unit |
+| Shut down (1.8 s hold) on the bench with an AC adapter on the TOFU and no Buddy Board | The unit halted and stayed off until the adapter was replugged. With the Buddy Board fitted, §36's HALT path cuts the power instead. |
+
+Not yet tested: the new UI in the car, idle times beyond 30 minutes, LHD, 60 fps and the 2.4 GHz option
+with a phone, and a fresh `provision.sh` run.
