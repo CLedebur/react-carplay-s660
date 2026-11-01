@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Control, ControlEvent } from './controls'
 import {
+  HoldAction,
   initialUi,
   isCarplayView,
   nativeKey,
@@ -9,6 +10,7 @@ import {
   PowerAction,
   UiState,
 } from './nav'
+import { nextValue, Settings } from './settings'
 import { requestPower } from './useSystemStats'
 
 export const MODE_HOLD_MS = 600 // hold Mode this long to open the panel switcher
@@ -31,15 +33,16 @@ export interface PowerNotice {
 
 export interface HeadUnitOptions {
   plugged: boolean // the phone is connected and CarPlay is streaming
-  autoRun: boolean // setting: show CarPlay full screen as soon as the phone connects
-  setAutoRun: (value: boolean) => void
+  settings: Settings
+  update: (patch: Partial<Settings>) => void
+  reloadCarplay: () => void
 }
 
 // The native UI's state and its share of the physical controls. `onControl` takes every control
 // event and returns the one CarPlay should receive, or null when the native UI used it.
 // `carplayShown` is whether CarPlay's video is what is on the glass: the phone is connected and
 // either the setting says to run it automatically or the user has asked for it this connection.
-export const useHeadUnit = ({ plugged, autoRun, setAutoRun }: HeadUnitOptions) => {
+export const useHeadUnit = ({ plugged, settings, update, reloadCarplay }: HeadUnitOptions) => {
   const [ui, setUiState] = useState<UiState>(initialUi)
   const uiRef = useRef(ui)
   const setUi = useCallback((next: UiState) => {
@@ -51,15 +54,17 @@ export const useHeadUnit = ({ plugged, autoRun, setAutoRun }: HeadUnitOptions) =
   useEffect(() => {
     if (!plugged) setAsked(false)
   }, [plugged])
-  const carplayShown = plugged && (autoRun || asked)
+  const carplayShown = plugged && (settings.autoRunCarplay || asked)
   const shownRef = useRef(carplayShown)
   shownRef.current = carplayShown
-  const autoRunRef = useRef(autoRun)
-  autoRunRef.current = autoRun
-  const setAutoRunRef = useRef(setAutoRun)
-  setAutoRunRef.current = setAutoRun
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  const updateRef = useRef(update)
+  updateRef.current = update
+  const reloadRef = useRef(reloadCarplay)
+  reloadRef.current = reloadCarplay
 
-  const [holding, setHolding] = useState<PowerAction | null>(null)
+  const [holding, setHolding] = useState<HoldAction | null>(null)
   const [power, setPower] = useState<PowerNotice | null>(null)
   const [lastKey, setLastKey] = useState<string | null>(null)
 
@@ -77,12 +82,13 @@ export const useHeadUnit = ({ plugged, autoRun, setAutoRun }: HeadUnitOptions) =
   }, [])
 
   const beginHold = useCallback(
-    (action: PowerAction) => {
+    (action: HoldAction) => {
       cancelHold()
       setHolding(action)
       holdTimer.current = setTimeout(() => {
         holdTimer.current = null
         setHolding(null)
+        if (action === 'reload') return reloadRef.current()
         setPower({ action, state: 'sending' })
         requestPower(action).then(
           () => setPower({ action, state: 'done' }), // stays up: the Pi is going away
@@ -147,7 +153,7 @@ export const useHeadUnit = ({ plugged, autoRun, setAutoRun }: HeadUnitOptions) =
       const result = nativeKey(uiRef.current, control)
       if (result.ui !== uiRef.current) setUi(result.ui)
       if (result.opensCarplay) setAsked(true)
-      if (result.toggle === 'autoRun') setAutoRunRef.current(!autoRunRef.current)
+      if (result.cycle) updateRef.current({ [result.cycle]: nextValue(settingsRef.current, result.cycle) })
       if (result.hold) beginHold(result.hold)
       return null
     },

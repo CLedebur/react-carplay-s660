@@ -3,7 +3,7 @@
 //
 //   GET  /api/stats[?full=1]   Pi health numbers. `full` adds the /proc fd scan for the video decoder.
 //   GET  /api/settings         the user's saved settings (defaults filled in)
-//   POST /api/settings         {"autoRunCarplay":bool,...} merged into the saved file -- needs the x-s660-ui header
+//   POST /api/settings         {"units":"f",...} merged into the saved file -- needs the x-s660-ui header
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
 //
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
@@ -170,22 +170,32 @@ const readBody = (req, limit = 1024) =>
 const SETTINGS_FILE =
   process.env.S660_SETTINGS_FILE ||
   (fs.existsSync('/persist/ui') ? '/persist/ui/settings.json' : path.join(os.homedir(), '.s660-ui-settings.json'))
-const SETTING_DEFAULTS = { autoRunCarplay: true }
-
-const readSettings = () => {
-  try {
-    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
-    const known = Object.keys(SETTING_DEFAULTS).filter(k => typeof saved[k] === typeof SETTING_DEFAULTS[k])
-    return { ...SETTING_DEFAULTS, ...Object.fromEntries(known.map(k => [k, saved[k]])) }
-  } catch {
-    return { ...SETTING_DEFAULTS }
-  }
+// Each setting's default and its allowed values (keep in step with carplay-web-app/src/settings.ts).
+const SETTINGS = {
+  autoRunCarplay: { default: true, allowed: [true, false] },
+  units: { default: 'c', allowed: ['c', 'f'] },
+  clock: { default: '24h', allowed: ['24h', '12h'] },
+  handDrive: { default: 'rhd', allowed: ['rhd', 'lhd'] },
+  fps: { default: 30, allowed: [30, 60] },
+  wifiBand: { default: '5ghz', allowed: ['5ghz', '2.4ghz'] },
+  nightMode: { default: false, allowed: [true, false] },
 }
 
-// Only known keys of the right type are accepted; anything else is a 400, not a silent drop.
+// Saved values that are no longer allowed fall back to their default instead of breaking the UI.
+const readSettings = () => {
+  let saved = {}
+  try {
+    saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
+  } catch {}
+  return Object.fromEntries(
+    Object.entries(SETTINGS).map(([k, spec]) => [k, spec.allowed.includes(saved[k]) ? saved[k] : spec.default]),
+  )
+}
+
+// Only known keys with an allowed value are accepted; anything else is a 400, not a silent drop.
 const writeSettings = patch => {
   for (const [k, v] of Object.entries(patch)) {
-    if (!(k in SETTING_DEFAULTS) || typeof v !== typeof SETTING_DEFAULTS[k]) throw new Error(`bad setting: ${k}`)
+    if (!SETTINGS[k] || !SETTINGS[k].allowed.includes(v)) throw new Error(`bad setting: ${k}`)
   }
   const next = { ...readSettings(), ...patch }
   const tmp = `${SETTINGS_FILE}.tmp`

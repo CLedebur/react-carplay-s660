@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react'
 import './native.css'
-import { FocusId, Panel, PowerAction, settingsPage, UiState } from './nav'
+import { FocusId, HoldAction, Panel, settingsPage, SETTINGS_PAGES, UiState } from './nav'
+import { SettingKey, Settings as SettingsValues, toFahrenheit } from './settings'
 import { PowerNotice } from './useHeadUnit'
 import { SystemStats } from './useSystemStats'
 
@@ -12,11 +13,12 @@ export interface NativeUiProps {
   ui: UiState
   streaming: boolean // CarPlay's video is what is on the glass
   phone: boolean // the phone is connected (whether or not CarPlay is shown)
-  autoRun: boolean // setting: run CarPlay as soon as the phone connects
+  settings: SettingsValues
+  reloadPending: boolean // a setting changed that only reaches the dongle when CarPlay reloads
   dongle: boolean | null // null until the first USB check
   linkStatus: string | null // the app's status line, e.g. "Scanning for phone…"
   stats: SystemStats | null
-  holding: PowerAction | null
+  holding: HoldAction | null
   power: PowerNotice | null
   lastKey: string | null
   streamLabel: string
@@ -61,13 +63,16 @@ const PowerIcon = () => (
   </Icon>
 )
 
-const useClock = () => {
+const useClock = (format: SettingsValues['clock']) => {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 5000)
     return () => clearInterval(id)
   }, [])
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const h = now.getHours()
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  if (format === '24h') return `${String(h).padStart(2, '0')}:${mm}`
+  return `${h % 12 || 12}:${mm} ${h < 12 ? 'AM' : 'PM'}`
 }
 
 const fmt = (n: number | null, unit = '', digits = 0) => (n === null ? '--' : `${n.toFixed(digits)}${unit}`)
@@ -153,24 +158,97 @@ const Row = ({ k, v, tone = '' }: { k: string; v: string; tone?: '' | 'ok' | 'wa
   </div>
 )
 
-const PowerButton = ({ action, label, holding, focus }: { action: PowerAction; label: string; holding: PowerAction | null; focus: FocusId }) => (
+const ReloadIcon = () => (
+  <Icon>
+    <path d="M4 12a8 8 0 0 1 14-5" />
+    <path d="M18 3v4h-4" />
+    <path d="M20 12a8 8 0 0 1-14 5" />
+    <path d="M6 21v-4h4" />
+  </Icon>
+)
+
+const HOLD_LABEL: Record<HoldAction, string> = { reload: 'Reload CarPlay', restart: 'Restart', shutdown: 'Shut down' }
+
+const PowerButton = ({ action, holding, focus }: { action: HoldAction; holding: HoldAction | null; focus: FocusId }) => (
   <div className={`btn f${focusClass(focus, action)}${holding === action ? ' holding' : ''}`}>
     <span className="fill" />
-    {action === 'restart' ? <RestartIcon /> : <PowerIcon />}
-    <span>{label}</span>
+    {action === 'reload' ? <ReloadIcon /> : action === 'restart' ? <RestartIcon /> : <PowerIcon />}
+    <span>{HOLD_LABEL[action]}</span>
     <small>hold</small>
   </div>
 )
 
-const Pager = ({ page }: { page: 1 | 2 }) => (
+const OPTIONS: { [K in SettingKey]: { label: string; check?: boolean; show?: (v: SettingsValues[K]) => string } } = {
+  autoRunCarplay: { label: 'Automatically run CarPlay when the car starts', check: true },
+  units: { label: 'Temperature units', show: v => (v === 'c' ? '°C' : '°F') },
+  clock: { label: 'Clock', show: v => (v === '24h' ? '24-hour' : '12-hour') },
+  handDrive: { label: 'Hand drive (CarPlay sidebar side)', show: v => (v === 'rhd' ? 'Right' : 'Left') },
+  fps: { label: 'Video frame rate', show: v => `${v} fps` },
+  wifiBand: { label: 'Dongle Wi-Fi band', show: v => (v === '5ghz' ? '5 GHz' : '2.4 GHz') },
+  nightMode: { label: 'CarPlay night mode', check: true },
+}
+
+const OptionRow = <K extends SettingKey>({ k, settings, focus }: { k: K; settings: SettingsValues; focus: FocusId }) => {
+  const meta = OPTIONS[k]
+  const value = settings[k]
+  return (
+    <div className={`optrow f${focusClass(focus, `opt:${k}`)}`}>
+      {meta.check && <span className="box">{value ? '✓' : ''}</span>}
+      <span className="lbl">{meta.label}</span>
+      {meta.check ? <span className="st">{value ? 'ON' : 'OFF'}</span> : <span className="st choice">‹ {meta.show?.(value)} ›</span>}
+    </div>
+  )
+}
+
+const Pager = ({ page }: { page: number }) => (
   <div className="pager">
-    {page === 1 ? 'Page 1 of 2 · turn the knob → for options' : 'Page 2 of 2 · turn the knob ← for status'}
+    Page {page} of {SETTINGS_PAGES.length} · {SETTINGS_PAGES[page - 1].title} ·{' '}
+    {page === 1 ? 'turn the knob → for options' : 'turn the knob ← →'}
   </div>
 )
 
-const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, autoRun }: Pick<NativeUiProps, 'ui' | 'stats' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'autoRun'>) => {
+const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
   const focus = ui.focus
   const page = settingsPage(ui)
+
+  if (page === 2 || page === 3) {
+    const keys = SETTINGS_PAGES[page - 1].items.map(id => id.slice(4) as SettingKey)
+    return (
+      <div className="content">
+        <div className="card opts">
+          <h3>{SETTINGS_PAGES[page - 1].title}</h3>
+          {keys.map(k => (
+            <OptionRow key={k} k={k} settings={settings} focus={focus} />
+          ))}
+        </div>
+        {page === 3 && <ReloadNote pending={reloadPending} />}
+        <Pager page={page} />
+      </div>
+    )
+  }
+
+  if (page === 4) {
+    return (
+      <div className="content">
+        <div className="card opts">
+          <h3>Maintenance</h3>
+          <div className="maint">
+            <PowerButton action="reload" holding={holding} focus={focus} />
+          </div>
+        </div>
+        {reloadPending && <ReloadNote pending />}
+        <div className="power">
+          <PowerButton action="restart" holding={holding} focus={focus} />
+          <PowerButton action="shutdown" holding={holding} focus={focus} />
+        </div>
+        <Pager page={4} />
+      </div>
+    )
+  }
+
+  const f = settings.units === 'f'
+  const conv = (c: number) => (f ? toFahrenheit(c) : c)
+  const unit = f ? '°F' : '°C'
   const t = stats?.cpuTempC ?? null
   const tempTone = t === null ? 'off' : t >= THROTTLE_C ? 'bad' : t >= WARM_C ? 'warn' : 'ok'
   const tempTag = t === null ? '--' : t >= THROTTLE_C ? 'HOT' : t >= WARM_C ? 'WARM' : 'NORMAL'
@@ -186,26 +264,7 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, autoRun
           ? ['SOFTWARE', 'bad'] // streaming but nothing holds /dev/video10
           : ['Idle', 'off']
   const mem = stats?.memUsedMb != null && stats.memTotalMb != null ? `${(stats.memUsedMb / 1024).toFixed(1)} / ${(stats.memTotalMb / 1024).toFixed(1)} GB` : '--'
-
-  if (page === 2) {
-    return (
-      <div className="content">
-        <div className="card opts">
-          <h3>Options</h3>
-          <div className={`optrow f${focusClass(focus, 'autoRun')}`}>
-            <span className="box">{autoRun ? '✓' : ''}</span>
-            <span className="lbl">Automatically run CarPlay when the car starts</span>
-            <span className="st">{autoRun ? 'ON' : 'OFF'}</span>
-          </div>
-        </div>
-        <div className="power">
-          <PowerButton action="restart" label="Restart" holding={holding} focus={focus} />
-          <PowerButton action="shutdown" label="Shut down" holding={holding} focus={focus} />
-        </div>
-        <Pager page={2} />
-      </div>
-    )
-  }
+  const nvme = stats?.nvmeTempC ?? null
 
   return (
     <div className="content">
@@ -213,8 +272,8 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, autoRun
         <div className="card cm4">
           <h3>Computer (CM4)</h3>
           <div className="big">
-            <span className="n">{fmt(t)}</span>
-            <span className="u">°C</span>
+            <span className="n">{fmt(t === null ? null : conv(t))}</span>
+            <span className="u">{unit}</span>
             <span className="tag" style={{ color: `var(--${tempTone === 'off' ? 'dim' : tempTone})` }}>
               {tempTag}
             </span>
@@ -224,11 +283,11 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, autoRun
             <span className="tick" style={{ left: `${THROTTLE_C}%` }} />
           </div>
           <div className="scale">
-            <span>0</span>
-            <span>throttles at {THROTTLE_C}</span>
-            <span>100</span>
+            <span>{Math.round(conv(0))}</span>
+            <span>throttles at {Math.round(conv(THROTTLE_C))}</span>
+            <span>{Math.round(conv(100))}</span>
           </div>
-          <Row k="NVMe drive" v={fmt(stats?.nvmeTempC ?? null, ' °C')} />
+          <Row k="NVMe drive" v={fmt(nvme === null ? null : conv(nvme), ` ${unit}`)} />
           <Row k="CPU load" v={fmt(stats?.cpuLoadPct ?? null, ' %')} />
           <Row k="Memory" v={mem} />
           <Row k="Power supply" v={supply[0]} tone={supply[1] as 'ok'} />
@@ -253,6 +312,15 @@ const Settings = ({ ui, stats, holding, lastKey, streaming, streamLabel, autoRun
     </div>
   )
 }
+
+const ReloadNote = ({ pending }: { pending: boolean }) =>
+  pending ? (
+    <div className="hint note">
+      <b>Changes waiting.</b> Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 4).
+    </div>
+  ) : (
+    <div className="note dim">Hand drive, frame rate and Wi-Fi band apply after Reload CarPlay (page 4).</div>
+  )
 
 const Switcher = ({ focus }: { focus: FocusId }) => (
   <>
@@ -301,8 +369,8 @@ const PowerScreen = ({ power }: { power: PowerNotice }) => {
 }
 
 export const NativeUi = (props: NativeUiProps) => {
-  const { ui, streaming, phone, autoRun, dongle, linkStatus, stats, holding, power, lastKey, streamLabel } = props
-  const clock = useClock()
+  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, holding, power, lastKey, streamLabel } = props
+  const clock = useClock(settings.clock)
   const pagesUp = !(ui.panel === 'carplay' && streaming) // the switcher alone dims the video instead
   const title = ui.panel === 'settings' ? 'Settings' : 'CarPlay'
 
@@ -329,7 +397,7 @@ export const NativeUi = (props: NativeUiProps) => {
             </div>
             <Rail panel={ui.panel} focus={ui.focus} />
             {ui.panel === 'settings' ? (
-              <Settings ui={ui} stats={stats} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} autoRun={autoRun} />
+              <Settings ui={ui} stats={stats} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
             ) : (
               <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
             )}

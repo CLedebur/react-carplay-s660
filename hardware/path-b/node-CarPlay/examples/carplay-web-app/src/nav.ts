@@ -1,21 +1,29 @@
 import { Control } from './controls'
+import { SettingKey } from './settings'
 
 // Navigation of the native head-unit UI. Pure, so the knob behaviour is unit-tested without React.
 // Vehicle Dynamics is deliberately not a Panel yet: it joins when the OBD-II work lands.
 export type Panel = 'carplay' | 'settings'
 export type PowerAction = 'restart' | 'shutdown'
+// Buttons that need the knob held down, so a stray press cannot do them.
+export type HoldAction = PowerAction | 'reload'
 
-// What the knob can land on. rail:* is the left rail, sw:* the hold-Mode switcher.
+// What the knob can land on. rail:* is the left rail, sw:* the hold-Mode switcher, opt:* a setting.
 export type FocusId =
   | 'rail:carplay'
   | 'rail:settings'
   | 'sw:carplay'
   | 'sw:settings'
-  | 'autoRun'
-  | PowerAction
+  | `opt:${SettingKey}`
+  | HoldAction
 
-// Settings page 2 (options and power): the knob reaches it by turning past the rail.
-const PAGE_2: FocusId[] = ['autoRun', 'restart', 'shutdown']
+// Settings pages. Page 1 is status only and has nothing to focus; the page follows the knob.
+export const SETTINGS_PAGES: { title: string; items: FocusId[] }[] = [
+  { title: 'Status', items: [] },
+  { title: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock'] },
+  { title: 'CarPlay', items: ['opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
+  { title: 'Maintenance & power', items: ['reload', 'restart', 'shutdown'] },
+]
 
 export interface UiState {
   panel: Panel
@@ -38,16 +46,18 @@ export const closeSwitcher = (ui: UiState): UiState => ({ ...ui, switcher: false
 export const isCarplayView = (ui: UiState, streaming: boolean): boolean =>
   ui.panel === 'carplay' && streaming && !ui.switcher
 
-// Knob order, rail first, then the panel's own controls.
+// Knob order, rail first, then each Settings page's controls in page order.
 export const focusRing = (ui: UiState): FocusId[] => {
   if (ui.switcher) return ['sw:carplay', 'sw:settings']
   const rail: FocusId[] = ['rail:carplay', 'rail:settings']
-  return ui.panel === 'settings' ? [...rail, ...PAGE_2] : rail
+  return ui.panel === 'settings' ? [...rail, ...SETTINGS_PAGES.flatMap(p => p.items)] : rail
 }
 
-// Settings page 1 is purely informational and has nothing to focus, so the page follows the knob:
-// focus on a page 2 control shows page 2, focus back on the rail shows page 1.
-export const settingsPage = (ui: UiState): 1 | 2 => (PAGE_2.includes(ui.focus) ? 2 : 1)
+// 1-based page of the control the knob is on; the rail shows page 1.
+export const settingsPage = (ui: UiState): number => {
+  const i = SETTINGS_PAGES.findIndex(p => p.items.includes(ui.focus))
+  return i < 0 ? 1 : i + 1
+}
 
 const step = (ui: UiState, dir: 1 | -1): FocusId => {
   const ring = focusRing(ui)
@@ -58,9 +68,9 @@ const step = (ui: UiState, dir: 1 | -1): FocusId => {
 export interface NativeResult {
   ui: UiState
   // The knob was pressed on a hold-to-confirm button: the caller times the hold.
-  hold?: PowerAction
-  // The knob was pressed on a checkbox: the caller flips that setting.
-  toggle?: 'autoRun'
+  hold?: HoldAction
+  // The knob was pressed on a setting: the caller steps it to its next value.
+  cycle?: SettingKey
   // The user asked for CarPlay (rail, switcher or Back), which also overrides "don't auto-run".
   opensCarplay?: boolean
 }
@@ -77,9 +87,10 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
       if (ui.switcher) return { ui: closeSwitcher(ui) }
       return { ui: ui.panel === 'carplay' ? ui : openPanel('carplay'), opensCarplay: true }
     case 'knobPush': {
-      if (ui.focus === 'restart' || ui.focus === 'shutdown') return { ui, hold: ui.focus }
-      if (ui.focus === 'autoRun') return { ui, toggle: 'autoRun' }
-      const settings = ui.focus.endsWith('settings')
+      const f = ui.focus
+      if (f === 'reload' || f === 'restart' || f === 'shutdown') return { ui, hold: f }
+      if (f.startsWith('opt:')) return { ui, cycle: f.slice(4) as SettingKey }
+      const settings = f.endsWith('settings')
       return { ui: openPanel(settings ? 'settings' : 'carplay'), opensCarplay: !settings }
     }
     default:

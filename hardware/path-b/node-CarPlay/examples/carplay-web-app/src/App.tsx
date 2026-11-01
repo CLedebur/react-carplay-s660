@@ -20,6 +20,7 @@ import { useControls } from './useControls'
 import { carplayCommandsFor, ControlHandler } from './controls'
 import { NativeUi } from './NativeUi'
 import { useHeadUnit } from './useHeadUnit'
+import { Settings, StartSettings, reloadPending } from './settings'
 import { useSettings } from './useSettings'
 import { useSystemStats } from './useSystemStats'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
@@ -42,13 +43,19 @@ const height = 480
 const videoChannel = new MessageChannel()
 const micChannel = new MessageChannel()
 
-const config: Partial<DongleConfig> = {
+// What the dongle starts with. fps, hand drive, Wi-Fi band and night mode come from the user's
+// settings (settings.ts); the defaults are the S660's: 30 fps (60 was heavy on top of software
+// decode, 30 halves it again, plenty for a dash) and right-hand drive, so iOS puts the CarPlay
+// sidebar on the right.
+const buildConfig = (s: Settings): Partial<DongleConfig> => ({
   width,
   height,
-  fps: 30, // 60 was heavy on top of software decode; 30 halves it again, plenty for a dash
+  fps: s.fps,
   mediaDelay: 300,
-  hand: HandDriveType.RHD, // S660 is right-hand drive: iOS puts the CarPlay sidebar on the right
-}
+  hand: s.handDrive === 'rhd' ? HandDriveType.RHD : HandDriveType.LHD,
+  wifiType: s.wifiBand,
+  nightMode: s.nightMode,
+})
 
 const RETRY_DELAY_MS = 30000
 
@@ -290,6 +297,12 @@ function App() {
   // show, and exactly what would have said "the phone never joined the dongle's Wi-Fi". On an
   // unchanged poll we now leave the status (and the already-started, idempotent worker) alone;
   // the worker's own link-status / plugged / unplugged / failure events drive the line from here.
+  const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings()
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  // The settings CarPlay was last started with: what is on the dongle now, not what is saved.
+  const [started, setStarted] = useState<StartSettings | null>(null)
+
   const devicePresentRef = useRef<boolean | null>(null)
   const checkDevice = useCallback(
     async () => {
@@ -299,7 +312,9 @@ function App() {
       if (present) {
         setDeviceFound(true)
         clearStatus()
-        carplayWorker.postMessage({ type: 'start', payload: { config } })
+        const s = settingsRef.current
+        setStarted({ handDrive: s.handDrive, fps: s.fps, wifiBand: s.wifiBand })
+        carplayWorker.postMessage({ type: 'start', payload: { config: buildConfig(s) } })
       } else {
         carplayWorker.postMessage({ type: 'stop' })
         setDeviceFound(false)
@@ -316,6 +331,7 @@ function App() {
   // on a short, predictable cadence so a real disconnect is never worse-case-bound by that OS
   // event's own latency.
   useEffect(() => {
+    if (!settingsLoaded) return // start the dongle with the saved settings, not the defaults
     navigator.usb.onconnect = async () => {
       checkDevice()
     }
@@ -327,18 +343,21 @@ function App() {
     checkDevice()
     const pollId = setInterval(checkDevice, POLL_INTERVAL_MS)
     return () => clearInterval(pollId)
-  }, [carplayWorker, checkDevice])
+  }, [carplayWorker, checkDevice, settingsLoaded])
 
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
 
   // Physical controls (OPERA MITM). The native head-unit UI (nav.ts) gets first call at every
   // control; what it does not use is forwarded to CarPlay, and only while CarPlay is streaming.
-  const { settings, update: updateSettings } = useSettings()
-  const headUnit = useHeadUnit({
-    plugged: isPlugged,
-    autoRun: settings.autoRunCarplay,
-    setAutoRun: value => updateSettings({ autoRunCarplay: value }),
-  })
+  const reloadCarplay = useCallback(() => window.location.reload(), []) // same recovery as a failed start
+  const headUnit = useHeadUnit({ plugged: isPlugged, settings, update: updateSettings, reloadCarplay })
+
+  // Night mode also changes while CarPlay runs, so it is sent as a command, not only at start.
+  useEffect(() => {
+    if (!isPlugged) return
+    const command = settings.nightMode ? 'enableNightMode' : 'disableNightMode'
+    carplayWorker.postMessage({ type: 'key', payload: { command } })
+  }, [carplayWorker, isPlugged, settings.nightMode])
   const onHeadUnitControl = headUnit.onControl
   const onControl: ControlHandler = useCallback(
     event => {
@@ -369,14 +388,15 @@ function App() {
         ui={headUnit.ui}
         streaming={headUnit.carplayShown}
         phone={isPlugged}
-        autoRun={settings.autoRunCarplay}
+        settings={settings}
+        reloadPending={reloadPending(settings, started)}
         dongle={deviceFound === null ? null : !!deviceFound}
         linkStatus={status?.text ?? null}
         stats={stats}
         holding={headUnit.holding}
         power={headUnit.power}
         lastKey={headUnit.lastKey}
-        streamLabel={`${width}×${height} ${config.fps}`}
+        streamLabel={`${width}×${height} ${started?.fps ?? settings.fps}`}
       />
       <div
         id="videoContainer"

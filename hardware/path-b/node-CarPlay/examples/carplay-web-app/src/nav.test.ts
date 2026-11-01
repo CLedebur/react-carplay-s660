@@ -20,38 +20,51 @@ test('the switcher takes the controls back from CarPlay', () => {
   expect(isCarplayView(openPanel('settings'), true)).toBe(false)
 })
 
-test('knob walks the rail, then the page 2 controls, and wraps', () => {
-  expect(focusRing(openPanel('settings'))).toEqual([
+test('knob walks the rail, then every Settings page in order, and wraps', () => {
+  const ring = focusRing(openPanel('settings'))
+  expect(ring).toEqual([
     'rail:carplay',
     'rail:settings',
-    'autoRun',
+    'opt:autoRunCarplay',
+    'opt:units',
+    'opt:clock',
+    'opt:handDrive',
+    'opt:fps',
+    'opt:wifiBand',
+    'opt:nightMode',
+    'reload',
     'restart',
     'shutdown',
   ])
   let ui = openPanel('settings') // focus starts on its own rail item
-  const seen = []
-  for (let i = 0; i < 5; i++) {
-    ui = nativeKey(ui, 'knobCw').ui
-    seen.push(ui.focus)
-  }
-  expect(seen).toEqual(['autoRun', 'restart', 'shutdown', 'rail:carplay', 'rail:settings'])
-  expect(nativeKey(ui, 'knobCcw').ui.focus).toBe('rail:carplay')
+  for (let i = 0; i < ring.length - 2; i++) ui = nativeKey(ui, 'knobCw').ui
+  expect(ui.focus).toBe('shutdown')
+  expect(nativeKey(ui, 'knobCw').ui.focus).toBe('rail:carplay') // wraps
+  expect(nativeKey(openPanel('settings'), 'knobCcw').ui.focus).toBe('rail:carplay')
 })
 
 test('Settings page 1 is status only; the page follows the knob', () => {
-  const ui = openPanel('settings')
-  expect(settingsPage(ui)).toBe(1)
-  const next = nativeKey(ui, 'knobCw').ui
-  expect(settingsPage(next)).toBe(2)
-  expect(settingsPage(nativeKey(next, 'knobCcw').ui)).toBe(1)
+  let ui = openPanel('settings')
+  const pages = [settingsPage(ui)]
+  for (let i = 0; i < 10; i++) {
+    ui = nativeKey(ui, 'knobCw').ui
+    pages.push(settingsPage(ui))
+  }
+  expect(pages).toEqual([1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4])
+  expect(settingsPage(nativeKey(openPanel('settings'), 'knobCcw').ui)).toBe(1)
 })
 
-test('push on the checkbox toggles it and stays put', () => {
-  const ui = { ...openPanel('settings'), focus: 'autoRun' as const }
-  expect(nativeKey(ui, 'knobPush')).toEqual({ ui, toggle: 'autoRun' })
+test('push on a setting asks the caller to step it, and stays put', () => {
+  const ui = { ...openPanel('settings'), focus: 'opt:fps' as const }
+  expect(nativeKey(ui, 'knobPush')).toEqual({ ui, cycle: 'fps' })
 })
 
-test('asking for CarPlay (rail, switcher, Back) is flagged; Settings and the checkbox are not', () => {
+test('Reload CarPlay needs a hold like Restart', () => {
+  const ui = { ...openPanel('settings'), focus: 'reload' as const }
+  expect(nativeKey(ui, 'knobPush')).toEqual({ ui, hold: 'reload' })
+})
+
+test('asking for CarPlay (rail, switcher, Back) is flagged; Settings and options are not', () => {
   const rail = { ...openPanel('settings'), focus: 'rail:carplay' as const }
   expect(nativeKey(rail, 'knobPush').opensCarplay).toBe(true)
   expect(nativeKey(openPanel('settings'), 'back').opensCarplay).toBe(true)
