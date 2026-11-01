@@ -6,6 +6,8 @@
 //   POST /api/settings         {"units":"f",...} merged into the saved file -- needs the x-s660-ui header
 //   GET  /api/network          which link is up (Wi-Fi, Bluetooth tethering), addresses, internet reachability
 //   POST /api/network/connect  {"link":"bluetooth"}  bring up the phone tethering profile -- needs the x-s660-ui header
+//   GET  /api/webadmin         whether the web interface is on, its addresses and (when on) the login PIN
+//   POST /api/webadmin         {"toggle":true} or {"enabled":bool} -- needs the x-s660-ui header
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
 //
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
@@ -14,6 +16,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { execFile } = require('child_process')
+const { createWebAdmin } = require('./web-admin')
 
 const MITM_INPUT_NAME = 'S660 CarPlay OPERA MITM' // hardware/opera-mitm/firmware USB product string
 const VIDEO_DECODER = '/dev/video10' // bcm2835-codec-decode: held by Chromium's GPU process while it HW-decodes
@@ -287,6 +290,9 @@ const writeSettings = patch => {
   return next
 }
 
+// The built-in web interface (web-admin.js): off until the unit's own screen turns it on.
+const webAdmin = createWebAdmin({ stats, network, readSettings, writeSettings, SETTINGS })
+
 // Returns true when it handled the request.
 const handle = (req, res) => {
   const [url, query = ''] = (req.url || '').split('?')
@@ -350,6 +356,29 @@ const handle = (req, res) => {
       () => sendJson(res, 200, { ok: true }),
       err => sendJson(res, 500, { error: String(err.message || err) }),
     )
+    return true
+  }
+
+  if (url === '/api/webadmin' && req.method === 'GET') {
+    sendJson(res, 200, webAdmin.status())
+    return true
+  }
+
+  if (url === '/api/webadmin' && req.method === 'POST') {
+    if (req.headers['x-s660-ui'] !== '1') {
+      sendJson(res, 403, { error: 'missing x-s660-ui header' })
+      return true
+    }
+    readBody(req)
+      .then(body => {
+        const { toggle, enabled } = JSON.parse(body || '{}')
+        if (toggle) webAdmin.toggle()
+        else if (enabled === true) webAdmin.enable()
+        else if (enabled === false) webAdmin.disable()
+        else return sendJson(res, 400, { error: 'send {"toggle":true} or {"enabled":bool}' })
+        sendJson(res, 200, webAdmin.status())
+      })
+      .catch(err => sendJson(res, 400, { error: String(err.message || err) }))
     return true
   }
 

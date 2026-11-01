@@ -358,6 +358,7 @@ mkdir -p "${KIOSK_DIR}"
 install -m 775 "${PB}/run-chromium-kiosk.sh" "${KIOSK_DIR}/run-chromium-kiosk.sh"
 install -m 664 "${PB}/serve-build.js" "${KIOSK_DIR}/serve-build.js"
 install -m 664 "${PB}/s660-api.js" "${KIOSK_DIR}/s660-api.js"   # /api/stats + /api/power (serve-build.js requires it)
+install -m 664 "${PB}/web-admin.js" "${KIOSK_DIR}/web-admin.js"   # the optional web interface (s660-api.js requires it)
 
 # The unit. No PAMName=login: cage talks to seatd directly, RuntimeDirectory= provides
 # XDG_RUNTIME_DIR, and skipping the logind session saves user@1000 + a session bus at boot

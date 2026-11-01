@@ -28,6 +28,7 @@ test('knob walks the rail, then every Settings page in order, and wraps', () => 
     'opt:autoRunCarplay',
     'opt:units',
     'opt:clock',
+    'webAdmin',
     'opt:handDrive',
     'opt:fps',
     'opt:wifiBand',
@@ -47,11 +48,11 @@ test('knob walks the rail, then every Settings page in order, and wraps', () => 
 test('Settings page 1 is status only; the page follows the knob', () => {
   let ui = openPanel('settings')
   const pages = [settingsPage(ui)]
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 12; i++) {
     ui = nativeKey(ui, 'knobCw').ui
     pages.push(settingsPage(ui))
   }
-  expect(pages).toEqual([1, 2, 2, 2, 3, 3, 3, 3, 4, 5, 5, 5])
+  expect(pages).toEqual([1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 5, 5, 5])
   expect(settingsPage(nativeKey(openPanel('settings'), 'knobCcw').ui)).toBe(1)
 })
 
@@ -63,6 +64,11 @@ test('push on a setting asks the caller to step it, and stays put', () => {
 test('the Network page button asks the caller to bring the phone link up', () => {
   const ui = { ...openPanel('settings'), focus: 'netConnect' as const }
   expect(nativeKey(ui, 'knobPush')).toEqual({ ui, connect: 'bluetooth' })
+})
+
+test('the web interface row asks the caller to switch it, with no hold', () => {
+  const ui = { ...openPanel('settings'), focus: 'webAdmin' as const }
+  expect(nativeKey(ui, 'knobPush')).toEqual({ ui, toggleWeb: true })
 })
 
 test('Reload CarPlay needs a hold like Restart', () => {

@@ -43,13 +43,14 @@ export interface HeadUnitOptions {
   update: (patch: Partial<Settings>) => void
   reloadCarplay: () => void
   onNetworkChanged: () => void // a connect attempt finished: refresh the network page
+  toggleWebAdmin: () => void
 }
 
 // The native UI's state and its share of the physical controls. `onControl` takes every control
 // event and returns the one CarPlay should receive, or null when the native UI used it.
 // `carplayShown` is whether CarPlay's video is what is on the glass: the phone is connected and
 // either the setting says to run it automatically or the user has asked for it this connection.
-export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetworkChanged }: HeadUnitOptions) => {
+export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetworkChanged, toggleWebAdmin }: HeadUnitOptions) => {
   const [ui, setUiState] = useState<UiState>(initialUi)
   const uiRef = useRef(ui)
   const setUi = useCallback((next: UiState) => {
@@ -79,6 +80,8 @@ export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetwor
   netBusyRef.current = netBusy
   const networkChangedRef = useRef(onNetworkChanged)
   networkChangedRef.current = onNetworkChanged
+  const toggleWebRef = useRef(toggleWebAdmin)
+  toggleWebRef.current = toggleWebAdmin
 
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const modeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -166,6 +169,7 @@ export const useHeadUnit = ({ plugged, settings, update, reloadCarplay, onNetwor
       if (result.ui !== uiRef.current) setUi(result.ui)
       if (result.opensCarplay) setAsked(true)
       if (result.cycle) updateRef.current({ [result.cycle]: nextValue(settingsRef.current, result.cycle) })
+      if (result.toggleWeb) toggleWebRef.current()
       if (result.connect && netBusyRef.current?.state !== 'connecting') {
         setNetBusy({ state: 'connecting' })
         requestBluetoothConnect().then(

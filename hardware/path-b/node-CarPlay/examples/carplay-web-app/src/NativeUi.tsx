@@ -4,6 +4,7 @@ import { FocusId, HoldAction, Panel, settingsPage, SETTINGS_PAGES, UiState } fro
 import { SettingKey, Settings as SettingsValues, toFahrenheit } from './settings'
 import { NetBusy, PowerNotice } from './useHeadUnit'
 import { NetworkInfo } from './useNetwork'
+import { WebAdminState } from './useWebAdmin'
 import { SystemStats } from './useSystemStats'
 
 const STUCK_AFTER_MS = 20000 // dongle found but no phone for this long: show the Bluetooth hint
@@ -20,6 +21,7 @@ export interface NativeUiProps {
   linkStatus: string | null // the app's status line, e.g. "Scanning for phone…"
   stats: SystemStats | null
   network: NetworkInfo | null
+  web: WebAdminState | null
   netBusy: NetBusy | null
   holding: HoldAction | null
   power: PowerNotice | null
@@ -238,12 +240,28 @@ const NetworkPage = ({ network, netBusy, focus }: Pick<NativeUiProps, 'network' 
   )
 }
 
-const Settings = ({ ui, stats, network, netBusy, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'network' | 'netBusy' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
+const WebRow = ({ web, focus }: { web: WebAdminState | null; focus: FocusId }) => (
+  <div className={`optrow web f${focusClass(focus, 'webAdmin')}`}>
+    <span className="box">{web?.enabled ? '✓' : ''}</span>
+    <span className="lbl">
+      Web interface (phone browser)
+      {web?.enabled && (
+        <small>
+          {web.urls.length ? web.urls.join('  ') : 'no network address yet'} · PIN {web.pin}
+        </small>
+      )}
+      {web === null && <small>not available</small>}
+    </span>
+    <span className="st">{web?.enabled ? 'ON' : 'OFF'}</span>
+  </div>
+)
+
+const Settings = ({ ui, stats, network, web, netBusy, holding, lastKey, streaming, streamLabel, settings, reloadPending }: Pick<NativeUiProps, 'ui' | 'stats' | 'network' | 'web' | 'netBusy' | 'holding' | 'lastKey' | 'streaming' | 'streamLabel' | 'settings' | 'reloadPending'>) => {
   const focus = ui.focus
   const page = settingsPage(ui)
 
   if (page === 2 || page === 3) {
-    const keys = SETTINGS_PAGES[page - 1].items.map(id => id.slice(4) as SettingKey)
+    const keys = SETTINGS_PAGES[page - 1].items.filter(id => id.startsWith('opt:')).map(id => id.slice(4) as SettingKey)
     return (
       <div className="content">
         <div className="card opts">
@@ -251,6 +269,7 @@ const Settings = ({ ui, stats, network, netBusy, holding, lastKey, streaming, st
           {keys.map(k => (
             <OptionRow key={k} k={k} settings={settings} focus={focus} />
           ))}
+          {page === 2 && <WebRow web={web} focus={focus} />}
         </div>
         {page === 3 && <ReloadNote pending={reloadPending} />}
         <Pager page={page} />
@@ -402,7 +421,7 @@ const PowerScreen = ({ power }: { power: PowerNotice }) => {
 }
 
 export const NativeUi = (props: NativeUiProps) => {
-  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, network, netBusy, holding, power, lastKey, streamLabel } = props
+  const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, network, web, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
   const pagesUp = !(ui.panel === 'carplay' && streaming) // the switcher alone dims the video instead
   const title = ui.panel === 'settings' ? 'Settings' : 'CarPlay'
@@ -430,7 +449,7 @@ export const NativeUi = (props: NativeUiProps) => {
             </div>
             <Rail panel={ui.panel} focus={ui.focus} />
             {ui.panel === 'settings' ? (
-              <Settings ui={ui} stats={stats} network={network} netBusy={netBusy} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
+              <Settings ui={ui} stats={stats} network={network} web={web} netBusy={netBusy} holding={holding} lastKey={lastKey} streaming={streaming} streamLabel={streamLabel} settings={settings} reloadPending={reloadPending} />
             ) : (
               <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
             )}

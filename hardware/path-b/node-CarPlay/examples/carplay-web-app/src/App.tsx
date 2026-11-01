@@ -24,6 +24,7 @@ import { Settings, StartSettings, reloadPending } from './settings'
 import { settingsPage } from './nav'
 import { useNetwork } from './useNetwork'
 import { useSettings } from './useSettings'
+import { useWebAdmin } from './useWebAdmin'
 import { useSystemStats } from './useSystemStats'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
 
@@ -352,6 +353,7 @@ function App() {
   // Physical controls (OPERA MITM). The native head-unit UI (nav.ts) gets first call at every
   // control; what it does not use is forwarded to CarPlay, and only while CarPlay is streaming.
   const reloadCarplay = useCallback(() => window.location.reload(), []) // same recovery as a failed start
+  const toggleWebRef = useRef<() => void>(() => {})
   const refreshNetworkRef = useRef<() => void>(() => {})
   const headUnit = useHeadUnit({
     plugged: isPlugged,
@@ -359,6 +361,7 @@ function App() {
     update: updateSettings,
     reloadCarplay,
     onNetworkChanged: () => refreshNetworkRef.current(),
+    toggleWebAdmin: () => toggleWebRef.current(),
   })
 
   // Night mode also changes while CarPlay runs, so it is sent as a command, not only at start.
@@ -387,6 +390,9 @@ function App() {
   const networkPageOpen = settingsOpen && settingsPage(headUnit.ui) === 4
   const { network, refresh: refreshNetwork } = useNetwork(networkPageOpen ? 3000 : null)
   refreshNetworkRef.current = refreshNetwork
+  const optionsPageOpen = settingsOpen && settingsPage(headUnit.ui) === 2
+  const { web, toggle: toggleWeb } = useWebAdmin(optionsPageOpen ? 3000 : null)
+  toggleWebRef.current = toggleWeb
 
   const isLoading = !isPlugged
 
@@ -406,6 +412,7 @@ function App() {
         linkStatus={status?.text ?? null}
         stats={stats}
         network={network}
+        web={web}
         netBusy={headUnit.netBusy}
         holding={headUnit.holding}
         power={headUnit.power}

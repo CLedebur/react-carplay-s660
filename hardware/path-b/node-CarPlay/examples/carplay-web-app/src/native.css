@@ -131,3 +131,6 @@
 .nui .netline { font-size: 26px; font-weight: 800; margin: 4px 0 6px; }
 .nui .btn.net { margin-top: 10px; height: 62px; }
 .nui .btn.net.busy { border-style: dashed; }
+
+/* settings page 2: web interface row */
+.nui .optrow.web .lbl small { display: block; font-size: 17px; font-weight: 700; margin-top: 2px; }
