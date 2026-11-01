@@ -57,6 +57,7 @@ echo ">>> PHASE 0: boot-time trims"
 PB="$(cd "$(dirname "$0")" && pwd)/path-b"
 PERSIST="$(cd "$(dirname "$0")" && pwd)/persist"
 PDB="$(cd "$(dirname "$0")" && pwd)/pdb"
+CAN="$(cd "$(dirname "$0")" && pwd)/can"
 
 # cloud-init: first-boot tool. Even when "disabled" its generator + units load every boot,
 # so purge it outright. (netplan.io must STAY — RPi's network-manager depends on it.)
@@ -406,6 +407,21 @@ if ! /usr/local/bin/avrdude -c '?type' 2>&1 | grep -q linuxgpio; then
   cmake --build ~/src/avrdude/build -j4
   sudo cmake --install ~/src/avrdude/build
 fi
+
+
+# ============================================================================
+# PHASE 4c — CAN bus listen-only: can0 from the CANable (hardware/can/, BUILD_NOTES §34)
+# ============================================================================
+# The adapter must run the patched silent firmware (hardware/can/canable2-fw/): the udev rule
+# matches only its "s660" USB product string, and s660-can-check asks the adapter for its
+# version and for M1 (silent) before slcand brings up can0 at 500 kbit/s.
+echo ">>> PHASE 4c: CAN listen-only (can0)"
+sudo apt-get install -y can-utils
+sudo install -m 644 "${CAN}/90-s660-canable.rules" /etc/udev/rules.d/90-s660-canable.rules
+sudo install -m 755 "${CAN}/s660-can-check" /usr/local/sbin/s660-can-check
+sudo install -m 644 "${CAN}/s660-can.service" /etc/systemd/system/s660-can.service
+sudo systemctl daemon-reload
+sudo udevadm control --reload-rules
 
 
 # ============================================================================

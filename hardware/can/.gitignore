@@ -1,0 +1,2 @@
+# Bus captures stay local (also kept on the Pi under /persist/can/). Too big for git.
+captures/

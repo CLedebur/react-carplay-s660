@@ -2468,18 +2468,48 @@ as normal.
 - Overlay FS is on (§29). Anything installed with `apt` (`can-utils`) is gone at the next
   power-off unless the overlay is turned off first.
 
-**Bring-up (s660 firmware)**
+**Bring-up is automatic (2026-11-01, `hardware/can/`, provision.sh PHASE 4c).**
+- `90-s660-canable.rules` matches only a CANable whose USB product string contains `s660`, makes
+  `/dev/s660-can`, and starts `s660-can.service`. A stock-firmware stick gets neither.
+- `s660-can.service` runs `s660-can-check` first: it asks the adapter for `V` and `m`, and refuses
+  unless the version contains `s660` and the mode is `M1`. Then `slcand -F -o -c -s6` makes `can0`,
+  and `ip link set can0 up`. Unplugging the adapter stops the service (`BindsTo=`).
+- Bit rate: `S660_CAN_SPEED` in the unit (6 = 500k). Change it with a drop-in, not by editing.
+- `can-utils` was installed with the overlay off (`apt-get -s` first: 1 new package, 0 upgrades),
+  and the overlay was turned back on.
 
-```bash
-sudo slcand -o -s6 /dev/serial/by-id/usb-*CANable2*-if00 can0   # -s6 = 500 kbit/s
-sudo ip link set can0 up
-candump -cae can0
-```
+Read the bus with `candump -cae can0` or `cansniffer -c can0`. No traffic: check the wiring against
+the table first. With the silent firmware, a wrong bit rate only shows nothing on our side. Honda may
+put a gateway between the OBD-II port and the internal buses, but ACTY typeR saw all the IDs in
+`references/S660-CAN-bus.md` at the port.
 
-No traffic: check the wiring against the table first, then try `-s5` (250k), then `-s4` (125k).
-With the silent firmware a wrong bit rate only shows nothing on our side. Honda may put a
-gateway between the OBD-II port and the car's internal buses, so the port may show only some of
-the traffic. ACTY typeR saw all the IDs in `references/S660-CAN-bus.md` there.
+**First result at the OBD-II port (2026-11-01, overlay on).** `can0` up 5.2 s after kernel start
+(boot 5.216 s, the kiosk still started at 4.4 s). About 1,300 frames/s at **500 kbit/s**, 0 RX
+errors, **0 TX**. So the S660's OBD-II CAN runs at 500k, and the adapter stays silent on it. The
+frame contents are checked below.
+
+**First capture (2026-11-01, parked, ignition on, engine off).** 321,129 frames in 3 min 36 s
+(`2026-11-01-first.log` + `.markers`, kept out of git: on the Pi under `/persist/can/`), with a 7-step script: idle,
+headlights, left and right indicator, clutch + reverse, brake + handbrake, wipers. **The car
+sends exactly the 41 IDs** in `references/S660-CAN-bus.md`. Reverse, headlights, handbrake,
+indicators, brake and wipers all match it. Two differences: the **clutch is 0x13C byte 6 bit 2**,
+not bit 5, and 0x1A6 byte 4 is not the inverse of byte 3. The headlight value stayed at 2 because the switch
+was left on AUTO, so it follows the lamps, not the switch. Odometer (44,677 km), outside
+temperature and fuel level matched the dash exactly. The per-step table is in the reference's
+"Checked on our car" section.
+
+**Drive capture (2026-11-01, 13 min 28 s, 1,168,457 frames, nothing lost).** Run as a transient
+unit (`systemd-run --unit=s660-can-drive … candump -L can0`), started only once the engine was
+running, so it kept recording after the Mac lost the Pi. Gotcha: the log has a 51.7 s "gap",
+which is the clock stepping at the first NTP sync (the clock resumes from `/persist` at boot,
+§31). Frames were not lost. A future drive logger must use monotonic time or wait for the sync.
+Results (details in the reference): the **wheel order is FL, FR, RL, RR** for 0x1D0 and 0x255
+(the author's 2023 "correction" is wrong for these); **0x091 bytes 0–1 are the yaw rate** (new);
+**longitudinal G is 0.00169 m/s² per count**; **gear is not on the bus**, so calculate it from
+RPM ÷ speed (a parked, lever-by-lever bit-level test confirmed it: only reverse appears, and there is no
+neutral bit either); 0x309 is the speedometer value, +4.95% over the wheel speeds. Another gotcha: Claude
+runs on the Mac, so it can only reach the Pi while the Pi is on the home Wi-Fi. A
+Bluetooth-tethered Pi (172.20.10.x) is behind the phone and unreachable from the Mac.
 
 ## 35. 2026-10-24 — Buddy Board rev B (`s660-pdb-mitm`): bench test
 
