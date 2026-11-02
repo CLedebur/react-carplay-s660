@@ -197,6 +197,7 @@ const PowerButton = ({ action, holding, focus }: { action: HoldAction; holding: 
 )
 
 const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: SettingsValues[K]) => string } } = {
+  carplayEnabled: { label: 'CarPlay (off: the phone cannot connect)', check: true },
   autoRunCarplay: { label: 'Automatically run CarPlay when the car starts', check: true },
   units: { label: 'Temperature units', show: v => (v === 'c' ? '°C' : '°F') },
   clock: { label: 'Clock', show: v => (v === '24h' ? '24-hour' : '12-hour') },
@@ -558,6 +559,10 @@ export const NativeUi = (props: NativeUiProps) => {
   const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, vehicle, network, web, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
   const popGear = useGearPopup(vehicle, settings.gearPopup)
+  // A tab with more rows than fit scrolls to keep the knob's row in view.
+  useEffect(() => {
+    document.querySelector('.nui .content.tabbed .f.focused')?.scrollIntoView({ block: 'nearest' })
+  }, [ui.focus])
   // Outside air (0x21E), beside the clock; hidden when the car is not sending it.
   const outC = vehicle?.live ? vehicle.outsideC : null
   const outside = outC === null ? null : `${Math.round(settings.units === 'f' ? toFahrenheit(outC) : outC)}°${settings.units === 'f' ? 'F' : 'C'}`
@@ -587,7 +592,7 @@ export const NativeUi = (props: NativeUiProps) => {
                     {settings.driveLog !== 'off' && (
                       <span className={`pill ${stats?.driveLog?.recording ? (stats.driveLog.engine ? 'warn' : 'ok') : 'off'}`}>
                         <i />
-                        {stats?.driveLog?.engine ? 'Rec + OBD' : 'Rec'}
+                        Rec
                       </span>
                     )}
                     <span className={`pill ${stats?.mitmLinked ? 'ok' : 'off'}`}>

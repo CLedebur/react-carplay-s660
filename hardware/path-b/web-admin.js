@@ -20,6 +20,7 @@ const MAX_LOCKOUTS = 3 // then the server turns itself off and must be re-enable
 const COOKIE = 's660s'
 
 const LABELS = {
+  carplayEnabled: 'CarPlay (off: the phone cannot connect)',
   autoRunCarplay: 'Automatically run CarPlay when the car starts',
   units: 'Temperature units',
   clock: 'Clock',

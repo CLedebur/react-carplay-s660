@@ -39,7 +39,7 @@ export interface Tab<T extends TabId> {
 export const SETTINGS_TABS: Tab<SettingsTab>[] = [
   { id: 'status', label: 'Status', items: [] },
   { id: 'options', label: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:gearPopup', 'opt:driveLog', 'webAdmin'] },
-  { id: 'carplay', label: 'CarPlay', items: ['opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
+  { id: 'carplay', label: 'CarPlay', items: ['opt:carplayEnabled', 'opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
   { id: 'network', label: 'Network', items: ['netConnect'] },
   { id: 'display', label: 'Display', items: ['aspect', 'aspectReset', 'opt:carplayShape', 'opt:carplayWidth'] },
   { id: 'power', label: 'Power', items: ['reload', 'restart', 'shutdown'] },
@@ -70,6 +70,16 @@ const firstTabs = { settings: SETTINGS_TABS[0].id, vehicle: VEHICLE_TABS[0].id }
 export const initialUi: UiState = { panel: 'carplay', switcher: false, focus: 'rail:carplay', tab: firstTabs, pattern: false, fine: false }
 
 // Opening a panel that has tabs puts the knob on its first tab; CarPlay has none, so it stays on the rail.
+// ?view=vehicle.battery opens that panel on that tab: for screenshots of a page without the knob.
+export const uiFromQuery = (search: string): UiState => {
+  const [panel, tab] = (new URLSearchParams(search).get('view') || '').split('.')
+  if (panel !== 'vehicle' && panel !== 'settings') return initialUi
+  const ui = openPanel(panel)
+  const t = tabsOf(panel).find(x => x.id === tab)
+  if (!t) return ui
+  return { ...ui, focus: `tab:${t.id}`, tab: panel === 'vehicle' ? { ...ui.tab, vehicle: t.id as VehicleTab } : { ...ui.tab, settings: t.id as SettingsTab } }
+}
+
 export const openPanel = (panel: Panel): UiState => {
   const tabs = tabsOf(panel)
   return { ...initialUi, panel, focus: tabs.length ? `tab:${tabs[0].id}` : `rail:${panel}` }

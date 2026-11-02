@@ -70,6 +70,8 @@ const buildConfig = (s: Settings): Partial<DongleConfig> => ({
 
 const RETRY_DELAY_MS = 30000
 
+const SCREENSHOT_VIEW = new URLSearchParams(window.location.search).has('view')
+
 // How often to re-check for the dongle via navigator.usb.getDevices() (cheap, no device I/O).
 // Backstops navigator.usb.ondisconnect, which was measured taking 15-30s to fire after a
 // physical unplug on this hardware/browser combo.
@@ -314,22 +316,27 @@ function App() {
   // The settings CarPlay was last started with: what is on the dongle now, not what is saved.
   const [started, setStarted] = useState<StartSettings | null>(null)
 
-  const devicePresentRef = useRef<boolean | null>(null)
+  // Settings > CarPlay > CarPlay off: the dongle is found but never started, so the phone has nothing to
+  // join (testing with the phone nearby). Switching it reloads the page, as Reload CarPlay does.
+  const devicePresentRef = useRef<string | null>(null)
   const checkDevice = useCallback(
     async () => {
-      const present = !!(await findDevice())
-      if (present === devicePresentRef.current) return // no change -- don't touch the status
-      devicePresentRef.current = present
-      if (present) {
-        setDeviceFound(true)
+      const found = !!(await findDevice())
+      // A ?view= page is a second copy for a screenshot (nav.ts uiFromQuery): it must never take the dongle
+      // from the kiosk (2026-11-02: one did, and the dongle reset under the running CarPlay).
+      const run = found && settingsRef.current.carplayEnabled && !SCREENSHOT_VIEW
+      const state = `${found}/${run}`
+      if (state === devicePresentRef.current) return // no change -- don't touch the status
+      devicePresentRef.current = state
+      setDeviceFound(found)
+      if (run) {
         clearStatus()
         const s = settingsRef.current
         setStarted({ handDrive: s.handDrive, fps: s.fps, wifiBand: s.wifiBand, carplayWidth: s.carplayWidth })
         carplayWorker.postMessage({ type: 'start', payload: { config: buildConfig(s) } })
       } else {
         carplayWorker.postMessage({ type: 'stop' })
-        setDeviceFound(false)
-        setStatus('Dongle not connected', 'warn')
+        setStatus(found ? 'CarPlay is switched off (Settings › CarPlay)' : 'Dongle not connected', 'warn')
       }
     },
     [carplayWorker, setStatus, clearStatus],
@@ -355,6 +362,13 @@ function App() {
     const pollId = setInterval(checkDevice, POLL_INTERVAL_MS)
     return () => clearInterval(pollId)
   }, [carplayWorker, checkDevice, settingsLoaded])
+
+  const carplayEnabledAtLoad = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!settingsLoaded) return
+    if (carplayEnabledAtLoad.current === null) carplayEnabledAtLoad.current = settings.carplayEnabled
+    else if (settings.carplayEnabled !== carplayEnabledAtLoad.current) window.location.reload()
+  }, [settings.carplayEnabled, settingsLoaded])
 
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
 

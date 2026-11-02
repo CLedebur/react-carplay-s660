@@ -1,6 +1,7 @@
 // The user's settings. The kiosk server (hardware/path-b/s660-api.js) keeps them on /persist and
 // holds the same list of allowed values: keep the two in step.
 export interface Settings {
+  carplayEnabled: boolean // off = the dongle is never started, so the phone cannot connect (testing in the garage)
   autoRunCarplay: boolean // show CarPlay full screen as soon as the phone connects
   units: 'c' | 'f' // temperatures
   clock: '24h' | '12h'
@@ -20,6 +21,7 @@ export type SettingKey = keyof Settings
 export type CycleKey = Exclude<SettingKey, 'glassAspect'>
 
 export const defaultSettings: Settings = {
+  carplayEnabled: true,
   autoRunCarplay: true,
   units: 'c',
   clock: '24h',
@@ -36,6 +38,7 @@ export const defaultSettings: Settings = {
 
 // The values a key steps through, in order, when the knob is pressed on its row.
 const CYCLES: { [K in CycleKey]: readonly Settings[K][] } = {
+  carplayEnabled: [true, false],
   autoRunCarplay: [true, false],
   units: ['c', 'f'],
   clock: ['24h', '12h'],

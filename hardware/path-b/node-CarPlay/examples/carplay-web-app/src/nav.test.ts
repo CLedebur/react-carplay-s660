@@ -1,4 +1,5 @@
 import {
+  uiFromQuery,
   closeSwitcher,
   focusRing,
   initialUi,
@@ -169,4 +170,12 @@ test('Display: push opens the test pattern; there the knob steps the ratio, push
   expect(left.ui.focus).toBe('aspect')
   expect(left.opensCarplay).toBeUndefined()
   expect(nativeKey(inside('display', 'aspectReset'), 'knobPush').resetAspect).toBe(true)
+})
+
+test('?view= opens a panel on a tab (screenshots); anything else is the normal start', () => {
+  const ui = uiFromQuery('?view=vehicle.battery')
+  expect([ui.panel, ui.tab.vehicle, ui.focus]).toEqual(['vehicle', 'battery', 'tab:battery'])
+  expect(uiFromQuery('?view=settings').focus).toBe('tab:status')
+  expect(uiFromQuery('')).toBe(initialUi)
+  expect(uiFromQuery('?view=vehicle.nope').focus).toBe('tab:drive')
 })

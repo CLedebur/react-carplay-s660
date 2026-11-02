@@ -130,12 +130,6 @@ const Engine = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
         <Big value={d.boostBar === null ? '--' : (d.boostBar > 0 ? '+' : '') + d.boostBar.toFixed(2)} unit="bar" size="mid" />
         <Bar value={d.boostBar} min={BOOST_MIN} max={BOOST_MAX} from={0} ticks={[{ at: 0 }]} />
       </Card>
-      <Card title="Range (as on the dash)" className="span2">
-        <div className="vpair">
-          <Big value={num(d.rangeKm)} unit="km" size="mid" />
-          <span className="note dim">{d.rangeKmPerL === null ? 'From the cluster, with engine data on' : `at ${d.rangeKmPerL.toFixed(1)} km/L`}</span>
-        </div>
-      </Card>
     </div>
   )
 }
@@ -344,16 +338,16 @@ const Body = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
 }
 
 // Battery voltage from the OBD poll (PID 42). The trend is the last 15 minutes, newest on the right.
-const V_MIN = 11
-const V_MAX = 15
+const V_MIN = 11.5
+const V_MAX = 14.5
 const TREND_S = 15 * 60
 
 const Trend = ({ points }: { points: [number, number][] }) => {
   const x = (ago: number) => 600 - (Math.min(ago, TREND_S) / TREND_S) * 600
-  const y = (v: number) => 200 - clamp01((v - V_MIN) / (V_MAX - V_MIN)) * 200
-  const guides = [12, 12.4, 13.2, 14]
+  const y = (v: number) => 112 - clamp01((v - V_MIN) / (V_MAX - V_MIN)) * 104
+  const guides = [12, 13, 14]
   return (
-    <svg className="btrend" viewBox="0 0 640 220">
+    <svg className="btrend" viewBox="0 0 640 118">
       {guides.map(g => (
         <g key={g}>
           <line x1={0} x2={600} y1={y(g)} y2={y(g)} className="guide" />

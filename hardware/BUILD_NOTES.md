@@ -3001,3 +3001,14 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   CarPlay's top-right corner in a yellow box with a black figure. A gear counts once it has held 400 ms; a further
   change replaces it and restarts the time; after 3 s with no gear (a stop) pulling away shows 1 again
   (`gearPopup.ts`, tested). While it is on, `/api/vehicle` is polled every 200 ms over CarPlay too.
+- **Later the same day:** the pill reads just **Rec** (amber still means requests are being sent); the Engine tab's range
+  card was dropped (the dash shows it); the Battery trend is shorter so its card fits the screen (scale 11.5–14.5 V,
+  guides at 12, 13, 14 V). **Settings > CarPlay > CarPlay** (on / off): off = the dongle is found but never started, so
+  the phone has nothing to join (testing in the garage without unplugging it). Changing it on the unit reloads the
+  page; a change made through the API or web interface applies at the next kiosk start. Tabs with controls scroll to
+  keep the knob's row in view.
+- **`?view=PANEL.TAB`** (e.g. `http://localhost:3000/?view=vehicle.battery`) opens a page on that tab, for headless
+  screenshots on the Pi: `chromium --headless=new --user-data-dir=/tmp/hl --hide-scrollbars --window-size=720,480
+  --virtual-time-budget=8000 --screenshot=/tmp/x.png "http://localhost:3000/?view=vehicle.battery"`. **Such a page
+  never starts the dongle.** Before that rule, the first headless screenshot did: CarPlay's start resets the dongle,
+  and it dropped off USB under the running kiosk for 3 s (the kiosk recovered by itself).

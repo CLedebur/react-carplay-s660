@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Control, ControlEvent } from './controls'
 import {
   HoldAction,
-  initialUi,
+  uiFromQuery,
   isCarplayView,
   nativeKey,
   openPanel,
@@ -53,7 +53,7 @@ export interface HeadUnitOptions {
 // `carplayShown` is whether CarPlay's video is what is on the glass: the phone is connected and
 // either the setting says to run it automatically or the user has asked for it this connection.
 export const useHeadUnit = ({ plugged, settings, update, preview, reloadCarplay, onNetworkChanged, toggleWebAdmin }: HeadUnitOptions) => {
-  const [ui, setUiState] = useState<UiState>(initialUi)
+  const [ui, setUiState] = useState<UiState>(() => uiFromQuery(window.location.search))
   const uiRef = useRef(ui)
   const setUi = useCallback((next: UiState) => {
     uiRef.current = next

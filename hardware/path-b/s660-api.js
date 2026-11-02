@@ -306,6 +306,7 @@ const SETTINGS_FILE =
   (fs.existsSync('/persist/ui') ? '/persist/ui/settings.json' : path.join(os.homedir(), '.s660-ui-settings.json'))
 // Each setting's default and its allowed values (keep in step with carplay-web-app/src/settings.ts).
 const SETTINGS = {
+  carplayEnabled: { default: true, allowed: [true, false] },
   autoRunCarplay: { default: true, allowed: [true, false] },
   units: { default: 'c', allowed: ['c', 'f'] },
   clock: { default: '24h', allowed: ['24h', '12h'] },
