@@ -7,7 +7,9 @@
 #   sudo s660-diag session-stop       # stop slcand, adapter C+M1 (verified), start s660-can
 #   s660-diag sweep 10 0000 FFFF --skip-f1   # stage 6: which 0x22 identifiers module 0x10 answers
 #       [--min-mv 12100] [--max-minutes 45]  # pause on a low battery / after a while (resumable)
-#   s660-diag poll 5 04 05 0C ...      # stage 5: OBD 01 PIDs in turn, 5 requests per second, until stopped
+#   s660-diag poll 5 04 05 0C s03 60:702A ...  # stage 5: requests in turn, 5 per second, until stopped:
+#                                      #   0C = OBD 01 PID 0C, s03 = OBD service 03 (no PID),
+#                                      #   60:702A = UDS 0x22 DID 702A on module 0x60
 #
 # Safety (DIAG-PLAN "Safety rules"): only the read-only services in ALLOWED can be sent, at most
 # one request per MIN_GAP seconds, and only inside a session (the adapter is silent otherwise).
@@ -248,22 +250,37 @@ def sweep(addr, start, end, skip_f1, min_mv=None, max_minutes=None):
     print(f"done {start:04X}-{end:04X} on 0x{addr:02X}: {counts}")
 
 
-def poll(rate, pids):
-    """Stage 5: ask the engine computer for each OBD 01 PID in turn, `rate` requests per second,
-    until stopped. Every request and reply goes to LOG, beside the listen-only recording."""
+def poll_item(token):
+    """'0C' -> OBD 01 PID 0C; 's03' -> OBD service 03; '60:702A' -> UDS 0x22 DID 702A on module 0x60.
+    Every one is checked against the whitelist before the poll starts."""
+    if token.startswith("s"):
+        item = ("obd", 0x18DB33F1 | EFF, 0x18DAF110 | EFF, [int(token[1:], 16)])
+    elif ":" in token:
+        addr, did = (int(x, 16) for x in token.split(":"))
+        item = ("uds", 0x18DA00F1 | addr << 8 | EFF, 0x18DAF100 | addr | EFF, [0x22, did >> 8, did & 0xFF])
+    else:
+        item = ("obd", 0x18DB33F1 | EFF, 0x18DAF110 | EFF, [0x01, int(token, 16)])
+    check_request(item[0], item[3])
+    return item
+
+
+def poll(rate, tokens):
+    """Stage 5: send each request in turn, `rate` per second, until stopped. Every request and reply
+    goes to LOG, beside the listen-only recording."""
     if not 0 < rate <= 1 / MIN_GAP:
         raise ValueError(f"rate must be 0-{1 / MIN_GAP:.0f} per second")
+    items = [poll_item(tok) for tok in tokens]
     while True:
-        for pid in pids:
+        for item in items:
             t = time.time()
-            request("obd", 0x18DB33F1 | EFF, 0x18DAF110 | EFF, [0x01, pid])
+            request(*item)
             time.sleep(max(0.0, 1 / rate - (time.time() - t)))
 
 
 def main(argv):
     if not argv:
         sys.exit("usage: s660-diag session-start | obd [--29] SVC [PID] | uds ADDR 22 DID"
-                 " | sweep ADDR START END [--skip-f1] [--min-mv MV] [--max-minutes N] | poll RATE PID... | session-stop")
+                 " | sweep ADDR START END [--skip-f1] [--min-mv MV] [--max-minutes N] | poll RATE ITEM... | session-stop")
     cmd, args = argv[0], argv[1:]
     if cmd == "session-start":
         session_start()
@@ -284,7 +301,7 @@ def main(argv):
         sweep(int(args[0], 16), int(args[1], 16), int(args[2], 16), "--skip-f1" in args,
               opt("--min-mv"), opt("--max-minutes"))
     elif cmd == "poll":
-        poll(float(args[0]), [int(x, 16) for x in args[1:]])
+        poll(float(args[0]), args[1:])
     else:
         sys.exit(f"unknown command '{cmd}'")
 

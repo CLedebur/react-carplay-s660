@@ -116,7 +116,10 @@ const Engine = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
         <Bar value={cool} min={40} max={120} tone={coolTone} ticks={[{ at: COOLANT_WARN_C }]} />
       </Card>
       <Card title="Fuel">
-        <Big value={num(fuel)} unit="%" tone={fuelTone} size="mid" />
+        <div className="vpair">
+          <Big value={num(fuel)} unit="%" tone={fuelTone} size="mid" />
+          {d.fuelL !== null && <Big value={d.fuelL.toFixed(1)} unit="L" size="mid" />}
+        </div>
         <Bar value={fuel} tone={fuelTone} ticks={[{ at: LOW_FUEL_PCT }]} />
       </Card>
       <Card title="Intake air">
@@ -127,9 +130,66 @@ const Engine = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
         <Big value={d.boostBar === null ? '--' : (d.boostBar > 0 ? '+' : '') + d.boostBar.toFixed(2)} unit="bar" size="mid" />
         <Bar value={d.boostBar} min={BOOST_MIN} max={BOOST_MAX} from={0} ticks={[{ at: 0 }]} />
       </Card>
+      <Card title="Range (as on the dash)" className="span2">
+        <div className="vpair">
+          <Big value={num(d.rangeKm)} unit="km" size="mid" />
+          <span className="note dim">{d.rangeKmPerL === null ? 'From the cluster, with engine data on' : `at ${d.rangeKmPerL.toFixed(1)} km/L`}</span>
+        </div>
+      </Card>
     </div>
   )
 }
+
+// Engine computer data (OBD poll) and the broadcast torque / blow-off. Needs "Listen + engine data".
+const Tuning = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
+  const f = units === 'f'
+  const cat = d.catalystC === null ? null : f ? toFahrenheit(d.catalystC) : d.catalystC
+  const afr = (l: number | null) => (l === null ? '--' : l >= 1.99 ? 'CUT' : (l * 14.7).toFixed(1))
+  const trim = (v: number | null) => (v === null ? '--' : (v > 0 ? '+' : '') + v.toFixed(1))
+  return (
+    <div className="vgrid tuning">
+      <Card title="Ignition timing">
+        <Big value={num(d.timingDeg, 1)} unit="° BTDC" size="mid" />
+        <Bar value={d.timingDeg} min={-15} max={45} from={0} ticks={[{ at: 0 }]} />
+      </Card>
+      <Card title="Air-fuel ratio (actual · target)">
+        <div className="vpair">
+          <Big value={afr(d.lambda)} size="mid" tone={d.lambda !== null && d.lambda < 0.8 ? 'warn' : ''} />
+          <Big value={afr(d.lambdaCmd)} size="mid" />
+        </div>
+        <div className="note dim">14.7 = stoichiometric · CUT = no fuel (coasting)</div>
+      </Card>
+      <Card className="lines">
+        <Line label="Short trim" value={trim(d.stftPct)} unit="%" bar={<Bar value={d.stftPct} min={-25} max={25} from={0} ticks={[{ at: 0 }]} />} />
+        <Line label="Long trim" value={trim(d.ltftPct)} unit="%" bar={<Bar value={d.ltftPct} min={-25} max={25} from={0} ticks={[{ at: 0 }]} />} />
+      </Card>
+      <Card className="lines">
+        <Line label="Load" value={num(d.loadPct)} unit="%" bar={<Bar value={d.loadPct} />} />
+        <Line label="Abs. load" value={num(d.absLoadPct)} unit="%" bar={<Bar value={d.absLoadPct} max={200} />} />
+        <Line label="Throttle" value={num(d.throttlePlatePct)} unit="%" bar={<Bar value={d.throttlePlatePct} />} />
+      </Card>
+      <Card title="Catalyst">
+        <Big value={num(cat)} unit={f ? '°F' : '°C'} size="mid" />
+        <Bar value={d.catalystC} max={900} />
+      </Card>
+      <Card title="Torque (raw: est. · requested)">
+        <div className="vpair">
+          <Big value={num(d.torqueEst)} size="mid" />
+          <Big value={num(d.torqueReq)} size="mid" />
+        </div>
+        <Chip label="Blow-off valve" state={d.blowOff === null ? '--' : d.blowOff ? 'OPEN' : 'CLOSED'} on={!!d.blowOff} wide />
+      </Card>
+      {d.live && !d.engineData && <NeedsEngineData what="Timing, air-fuel, trims, load and catalyst" />}
+    </div>
+  )
+}
+
+const NeedsEngineData = ({ what }: { what: string }) => (
+  <div className="vnone">
+    <b>Needs engine data</b>
+    <span>{what} come from requests to the engine computer. Set Settings › Options › Drive recording to “Listen + engine data”.</span>
+  </div>
+)
 
 const GPlot = ({ lat, long }: { lat: number | null; long: number | null }) => {
   const trail = useRef<{ x: number; y: number }[]>([])
@@ -182,6 +242,7 @@ const Dynamics = ({ d }: { d: VehicleData }) => {
   const lat = d.latG
   const long = d.longG
   return (
+    <div className="vstack">
     <div className="vgrid dyn">
       <Card title="Forces (g)">
         <GPlot lat={lat} long={long} />
@@ -215,6 +276,30 @@ const Dynamics = ({ d }: { d: VehicleData }) => {
         </div>
       </Card>
     </div>
+    <Stability d={d} />
+    </div>
+  )
+}
+
+// Stability and chassis systems, from the broadcast (references/S660-CAN-bus.md 0x1A4, 0x1A6, 0x1AB, 0x1B0).
+const acting = (v: boolean | null | undefined) => (v === null || v === undefined ? '--' : v ? 'ACTING' : 'IDLE')
+const Stability = ({ d }: { d: VehicleData }) => {
+  const vsa = d.vsa
+  return (
+    <div className="vchips stab">
+      <Chip
+        label="Stability (VSA)"
+        state={!vsa ? '--' : vsa.unavailable ? 'UNAVAILABLE' : vsa.active ? 'ACTING' : vsa.lamp ? 'LAMP ON' : 'READY'}
+        on={!!vsa?.active}
+        warn={!!vsa && (vsa.unavailable || vsa.lamp)}
+      />
+      <Chip label="ABS" state={acting(vsa?.abs)} on={!!vsa?.abs} />
+      <Chip label="Agile handling" state={acting(vsa?.agile)} on={!!vsa?.agile} />
+      <Chip label="VSA OFF button" state={d.vsaOffButton === null ? '--' : d.vsaOffButton ? 'HELD' : '–'} on={!!d.vsaOffButton} />
+      <Chip label="Hill start hold" state={d.brakeHold === null ? '--' : d.brakeHold ? 'HOLDING' : '–'} on={!!d.brakeHold} />
+      <Chip label="Brake system" state={d.brakeError === null ? '--' : d.brakeError ? 'ERROR' : 'OK'} warn={!!d.brakeError} />
+      <Chip label="Power steering" state={d.epsDisabled === null ? '--' : d.epsDisabled ? 'DISABLED' : 'OK'} warn={!!d.epsDisabled} />
+    </div>
   )
 }
 
@@ -235,7 +320,6 @@ const yn = (v: boolean | null, yes: string, no: string) => (v === null ? '--' : 
 const Body = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
   const f = units === 'f'
   const out = d.outsideC === null ? '--' : `${(f ? toFahrenheit(d.outsideC) : d.outsideC).toFixed(0)} ${f ? '°F' : '°C'}`
-  const vsa = d.vsa
   return (
     <div className="vchips">
       <Chip label="Headlights" state={d.headlights === null ? '--' : HEADLIGHTS[d.headlights]} on={!!d.headlights} />
@@ -251,12 +335,6 @@ const Body = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
       <Chip label="Reverse" state={yn(d.reverse, 'ON', 'OFF')} on={!!d.reverse} />
       <Chip label="Clutch" state={yn(d.clutchUp, 'UP', 'PRESSED')} on={d.clutchUp === false} />
       <Chip label="Brake pedal" state={yn(d.brakePedal, 'PRESSED', 'UP')} on={!!d.brakePedal} />
-      <Chip
-        label="Stability (VSA)"
-        state={!vsa ? '--' : vsa.unavailable ? 'UNAVAILABLE' : vsa.active ? 'ACTING' : vsa.lamp ? 'LAMP ON' : 'READY'}
-        on={!!vsa?.active}
-        warn={!!vsa && (vsa.unavailable || vsa.lamp)}
-      />
       <Chip label="Driver belt" state={yn(d.belts?.driver ?? null, 'BUCKLED', 'UNBUCKLED')} warn={d.belts?.driver === false} />
       <Chip label="Passenger belt" state={yn(d.belts?.passenger ?? null, 'BUCKLED', 'UNBUCKLED')} warn={false} />
       <Chip label="Outside" state={out} />
@@ -326,25 +404,37 @@ const Battery = ({ d }: { d: VehicleData }) => {
   )
 }
 
-// The warning bits the car broadcasts (0x324). The names are the reference sheet's guesses: with the
-// ignition on and the engine stopped, ENGINE and STEERING read ON, as the dash's own lamps do then.
-const lamp = (v: boolean | undefined) => (v === undefined ? '--' : v ? 'ON' : 'OFF')
+// Fault codes from the engine computer (OBD 03 stored, 07 pending, 01 for the lamp), asked every few seconds
+// by the drive recorder, and the warning lamps the car broadcasts (0x324, 0x294).
+const lamp = (v: boolean | null | undefined) => (v === null || v === undefined ? '--' : v ? 'ON' : 'OFF')
+const codeList = (c: string[] | null) => (c === null ? '--' : c.length ? c.join('  ') : 'NONE')
 
 const Diag = ({ d }: { d: VehicleData }) => {
-  const a = d.alerts
-  const on = a ? ([a.engine && 'ENGINE', a.oil && 'OIL', a.eps && 'STEERING'].filter(Boolean) as string[]) : null
+  const l = d.lamps
+  const anyCodes = !!(d.dtcStored?.length || d.dtcPending?.length)
   return (
     <div className="vdiag">
-      <Card title="Car's own warnings">
-        <Big value={on === null ? '--' : on.length ? on.join(' ') : 'NONE'} tone={on?.length ? 'bad' : on ? 'ok' : ''} size="mid" />
+      <Card title="Fault codes (engine computer)">
+        <div className="dtc">
+          <span className="k">Check-engine lamp</span>
+          <span className={`v ${d.mil?.on ? 'bad' : d.mil ? 'ok' : ''}`}>{d.mil === null ? '--' : d.mil.on ? `ON · ${d.mil.count} code${d.mil.count === 1 ? '' : 's'}` : 'OFF'}</span>
+          <span className="k">Stored</span>
+          <span className={`v ${d.dtcStored?.length ? 'bad' : d.dtcStored ? 'ok' : ''}`}>{codeList(d.dtcStored)}</span>
+          <span className="k">Pending</span>
+          <span className={`v ${d.dtcPending?.length ? 'warn' : d.dtcPending ? 'ok' : ''}`}>{codeList(d.dtcPending)}</span>
+        </div>
+        {anyCodes && <div className="note dim">Look the codes up before clearing anything: this unit only reads, it never clears codes.</div>}
+        {!d.engineData && <div className="note dim">Needs Settings › Options › Drive recording on “Listen + engine data”.</div>}
       </Card>
       <div className="vchips">
-        <Chip label="Engine warning" state={lamp(a?.engine)} warn={!!a?.engine} />
-        <Chip label="Oil warning" state={lamp(a?.oil)} warn={!!a?.oil} />
-        <Chip label="Steering (EPS)" state={lamp(a?.eps)} warn={!!a?.eps} />
+        <Chip label="Check engine" state={lamp(l?.engine)} warn={!!l?.engine} />
+        <Chip label="Oil / charge 1" state={lamp(l?.lampA)} warn={!!l?.lampA} />
+        <Chip label="Oil / charge 2" state={lamp(l?.lampB)} warn={!!l?.lampB} />
+        <Chip label="Steering (EPS)" state={lamp(l?.eps)} warn={!!l?.eps} />
+        <Chip label="Coolant temp" state={lamp(d.coolantLamp)} warn={!!d.coolantLamp} />
       </div>
       <div className="note dim">
-        Warning lamps as the car broadcasts them. ENGINE and STEERING are normally ON with the engine stopped.
+        Warning lamps as the car broadcasts them. With the engine stopped, the first four are ON: that is the dash's own bulb check.
       </div>
     </div>
   )
@@ -354,9 +444,10 @@ export const VehiclePage = ({ tab, data, settings, demo }: { tab: VehicleTab; da
   const live = !!data?.live
   const d = live ? data! : emptyVehicle
   return (
-    <div className={`content tabbed vehicle${live ? '' : ' nodata'}`}>
+    <div key={tab} className={`content tabbed vehicle${live ? '' : ' nodata'}`}>
       {tab === 'drive' && <Drive d={d} />}
       {tab === 'engine' && <Engine d={d} units={settings.units} />}
+      {tab === 'tuning' && <Tuning d={d} units={settings.units} />}
       {tab === 'dynamics' && <Dynamics d={d} />}
       {tab === 'body' && <Body d={d} units={settings.units} />}
       {tab === 'battery' && <Battery d={d} />}

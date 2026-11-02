@@ -320,10 +320,10 @@ none before each leg. Ranges: load 0–100 %, coolant 45–95 °C, STFT −10 to
 
 | Data bytes | Before | After | Meaning |
 |---|---|---|---|
-| 7–8, 9–10 | 141, 141 | 152, 152 | **km/L × 10 used for the range** |
-| 11–12 | 135 | 141 | Another km/L × 10 (the previous value of the above?) |
-| 13–14 | 233 | 225 | **Fuel left, L × 10** (−0.8 L for 16 km of mostly dual carriageway) |
-| 15–16 | 329 | 343 | **Range, km = fuel × km/L**: 22.5 × 15.2 = 342; 23.3 × 14.1 = 329 |
+| 6–7, 8–9 | 141, 141 | 152, 152 | **km/L × 10 used for the range** |
+| 10–11 | 135 | 141 | Another km/L × 10 (the previous value of the above?) |
+| 12–13 | 233 | 225 | **Fuel left, L × 10** (−0.8 L for 16 km of mostly dual carriageway) |
+| 14–15 | 329 | 343 | **Range, km = fuel × km/L**: 22.5 × 15.2 = 342; 23.3 × 14.1 = 329 |
 
 0x7022 bytes 6–8 followed the odometer (44,697 → 44,713). **Trip A / B are not in any readable identifier**
 (trip B +15.6 km changed nothing that matches; maybe the locked 0x7090). 0x7028 data bytes 15 and 17

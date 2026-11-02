@@ -3,7 +3,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert')
-const { decode, parseLine, estimateGear, createVehicle } = require('./s660-can')
+const { decode, parseLine, estimateGear, createVehicle, engineData, dtcList } = require('./s660-can')
 
 const NOW = 100000
 const frames = (...lines) =>
@@ -94,4 +94,32 @@ test('candump starts on demand and stops when idle', () => {
   assert.strictEqual(spawned, 1) // one candump, not one per request
   v.stop()
   assert.strictEqual(killed, 1)
+})
+
+test('engine data from the recorder status: PIDs, fault codes and the cluster, only while fresh', () => {
+  const now = 1000
+  const st = {
+    engine: true,
+    obd: {
+      '01 0e': { hex: '41 0e 98', t: 999 }, // (152 / 2) - 64 = 12 degrees
+      '01 34': { hex: '41 34 80 00 80 00', t: 999 }, // lambda 1.0
+      '01 01': { hex: '41 01 82 07 e1 00', t: 999 }, // MIL on, 2 codes
+      '01 06': { hex: '41 06 80', t: 980 }, // 20 s old: stale
+      '03': { hex: '43 02 03 01 c1 23', t: 990 },
+      '07': { hex: '47 00', t: 990 },
+      // the cluster read of 2026-11-02, before the errand: 14.1 km/L, 23.3 L, 329 km
+      '22 70 2a': { hex: '62 70 2a ff c0 00 00 00 00 00 8d 00 8d 00 87 00 e9 01 49 00', t: 995 },
+    },
+  }
+  const e = engineData(st, now)
+  assert.strictEqual(e.engineData, true)
+  assert.strictEqual(e.timingDeg, 12)
+  assert.strictEqual(e.lambda, 1)
+  assert.deepStrictEqual(e.mil, { on: true, count: 2 })
+  assert.strictEqual(e.stftPct, null)
+  assert.deepStrictEqual(e.dtcStored, ['P0301', 'U0123'])
+  assert.deepStrictEqual(e.dtcPending, [])
+  assert.deepStrictEqual([e.rangeKm, e.fuelL, e.rangeKmPerL], [329, 23.3, 14.1])
+  assert.strictEqual(engineData({ ...st, engine: false }, now).timingDeg, null)
+  assert.deepStrictEqual(dtcList([0x43, 0x01, 0x04, 0x20]), ['P0420'])
 })

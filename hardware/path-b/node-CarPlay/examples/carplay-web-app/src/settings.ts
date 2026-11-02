@@ -12,6 +12,7 @@ export interface Settings {
   carplayShape: 'fill' | 'exact' // fill = the picture stretched over the whole frame; exact = true shape, black bar on the left
   glassAspect: number // visible glass width / height, x1000 (1875 = 1.875:1); the native UI is drawn to it
   driveLog: 'off' | 'listen' | 'engine' // drive recorder (hardware/can/s660-drive-log): listen never transmits
+  gearPopup: 0 | 1 | 2 | 3 | 4 | 5 // seconds the gear shows over CarPlay after a shift; 0 = off
 }
 
 export type SettingKey = keyof Settings
@@ -30,6 +31,7 @@ export const defaultSettings: Settings = {
   carplayShape: 'fill',
   glassAspect: 1875, // 135 x 72 mm, measured (BUILD_NOTES 22.8)
   driveLog: 'off',
+  gearPopup: 2,
 }
 
 // The values a key steps through, in order, when the knob is pressed on its row.
@@ -44,6 +46,7 @@ const CYCLES: { [K in CycleKey]: readonly Settings[K][] } = {
   carplayShape: ['fill', 'exact'],
   carplayWidth: [848, 896],
   driveLog: ['off', 'listen', 'engine'],
+  gearPopup: [0, 1, 2, 3, 4, 5],
 }
 
 export const nextValue = <K extends CycleKey>(settings: Settings, key: K): Settings[K] => {

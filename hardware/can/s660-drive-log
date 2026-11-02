@@ -24,11 +24,12 @@ CAP_BYTES = 20 * 1024 ** 3
 QUIET_S = 10                            # bus silent this long = ignition off: the recording ends
 TICK_S = 1
 # Load, coolant, trims, MAP, rpm, speed, timing, intake, throttle, wide-band O2, catalyst, absolute
-# load, commanded lambda, and the module voltage (42) four times, for the Vehicle panel's battery
-# monitor: 18 requests at 5 per second, so the voltage about every 0.9 s and the rest every 3.6 s.
-PIDS = "42 04 05 06 42 07 0B 0C 0D 42 0E 0F 11 34 42 3C 43 44".split()
+# load, commanded lambda; the module voltage (42) four times, for the battery monitor; the
+# check-engine status (01), the stored and pending fault codes (s03, s07) and the cluster's range,
+# fuel and km/L (60:702A). 22 requests at 5 per second: the voltage about every 1.1 s, the rest 4.4 s.
+PIDS = "42 04 05 06 42 07 0B 0C 0D 42 0E 0F 11 34 42 3C 43 44 01 s03 s07 60:702A".split()
 BATTERY_SAMPLES = 900                  # about 15 minutes of voltage readings for the panel's trend
-REPLY = re.compile(r"-> 01 ([0-9a-f]{2})\s+\S+ <- 41 ([0-9a-f]{2}) ([0-9a-f ]+)$")
+REPLY = re.compile(r"-> ([0-9a-f ]+?)\s{3}\S+ <- ([0-9a-f ]+)$")    # s660-diag's line for each request
 POLL_RATE = "5"
 
 
@@ -108,15 +109,19 @@ class Recorder:
         print(f"recording {self.base} ({mode}{', sending requests' if self.engine else ''}) {self.note}", flush=True)
 
     def read_poll(self, proc):
-        """Keep the latest reply to each PID (s660-diag prints one line per request)."""
+        """Keep the latest positive reply to each request, keyed by the request ("01 42", "03",
+        "22 70 2a"). Positive = the service + 0x40, echoing the PID or DID."""
         for line in proc.stdout:
             m = REPLY.search(line.strip())
-            if not m or m.group(1) != m.group(2):
+            if not m:
                 continue
-            now, data = time.time(), m.group(3).split()
-            self.obd[m.group(1).upper()] = {"hex": " ".join(data), "t": now}
-            if m.group(1) == "42" and len(data) >= 2:
-                self.battery.append((round(now, 1), int(data[0], 16) << 8 | int(data[1], 16)))
+            req, rep = m.group(1).split(), m.group(2).split()
+            if int(rep[0], 16) != int(req[0], 16) + 0x40 or rep[1:len(req)] != req[1:]:
+                continue
+            now = time.time()
+            self.obd[" ".join(req)] = {"hex": " ".join(rep), "t": now}
+            if req == ["01", "42"] and len(rep) >= 4:
+                self.battery.append((round(now, 1), int(rep[2], 16) << 8 | int(rep[3], 16)))
 
     def dump_start(self):
         self.dump = subprocess.Popen(["candump", "-L", IFACE], stdout=open(self.base + ".log", "ab"),

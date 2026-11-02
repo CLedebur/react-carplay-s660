@@ -5,6 +5,7 @@ import { CycleKey, logicalWidth, OUTPUT_HEIGHT, OUTPUT_WIDTH, Settings as Settin
 import { VehicleData } from './vehicle'
 import { VehiclePage } from './VehicleTabs'
 import { vehicleDemo } from './useVehicle'
+import { initialGearPopup, stepGearPopup } from './gearPopup'
 import { NetBusy, PowerNotice } from './useHeadUnit'
 import { NetworkInfo } from './useNetwork'
 import { WebAdminState } from './useWebAdmin'
@@ -205,6 +206,7 @@ const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: S
   nightMode: { label: 'CarPlay night mode', check: true },
   carplayWidth: { label: 'CarPlay width (after Reload)', show: v => `${v} px${v === 896 ? ' · true shape' : ''}` },
   carplayShape: { label: 'CarPlay picture', show: v => (v === 'fill' ? 'Fill screen' : 'True shape') },
+  gearPopup: { label: 'Gear pop-up over CarPlay', show: v => (v === 0 ? 'Off' : `${v} s`) },
   driveLog: { label: 'Drive recording', show: v => (v === 'off' ? 'Off' : v === 'listen' ? 'Listen only' : 'Listen + engine data') },
 }
 
@@ -539,9 +541,23 @@ const PowerScreen = ({ power, glassAspect }: { power: PowerNotice; glassAspect: 
 
 const TITLES = { carplay: 'CarPlay', vehicle: 'Vehicle', settings: 'Settings' }
 
+// The gear after a shift, over CarPlay's top-right corner, for settings.gearPopup seconds (gearPopup.ts).
+const useGearPopup = (vehicle: VehicleData | null, seconds: number) => {
+  const [state, setState] = useState(initialGearPopup)
+  const gear = vehicle?.live ? vehicle.gear : null
+  useEffect(() => setState(s => stepGearPopup(s, gear, Date.now(), seconds * 1000)), [gear, vehicle, seconds])
+  useEffect(() => {
+    if (state.shown === null) return
+    const id = setTimeout(() => setState(s => stepGearPopup(s, gear, Date.now(), seconds * 1000)), Math.max(0, state.until - Date.now()))
+    return () => clearTimeout(id)
+  }, [state, gear, seconds])
+  return state.shown
+}
+
 export const NativeUi = (props: NativeUiProps) => {
   const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, vehicle, network, web, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
+  const popGear = useGearPopup(vehicle, settings.gearPopup)
   // Outside air (0x21E), beside the clock; hidden when the car is not sending it.
   const outC = vehicle?.live ? vehicle.outsideC : null
   const outside = outC === null ? null : `${Math.round(settings.units === 'f' ? toFahrenheit(outC) : outC)}°${settings.units === 'f' ? 'F' : 'C'}`
@@ -551,7 +567,7 @@ export const NativeUi = (props: NativeUiProps) => {
   return (
     <div className="nui-root">
       {pagesUp && (
-        <div className="nui-page">
+        <div className={`nui-page${ui.focus === 'pane' ? ' paning' : ''}`}>
           <div className="nui">
             <Fit glassAspect={g}>
               {ui.pattern ? (
@@ -594,6 +610,13 @@ export const NativeUi = (props: NativeUiProps) => {
               )}
             </Fit>
           </div>
+        </div>
+      )}
+      {popGear !== null && ui.panel === 'carplay' && streaming && !ui.switcher && (
+        <div className="nui">
+          <Fit glassAspect={g}>
+            <div className="gearpop">{popGear}</div>
+          </Fit>
         </div>
       )}
       {ui.switcher && <Switcher focus={ui.focus} glassAspect={g} />}

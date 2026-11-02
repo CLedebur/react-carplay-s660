@@ -15,14 +15,16 @@ const STALE_MS = 1000 // a value older than this is null ("--"), never a stale n
 const RESPAWN_MS = 2000 // at most one candump start per this long (no can0 = it exits at once)
 
 // Only the IDs the panel needs, so candump hands Node a fraction of the ~1,450 frames/s.
-const IDS = [0x091, 0x13c, 0x156, 0x158, 0x17c, 0x18b, 0x1a4, 0x1a6, 0x1d0, 0x1dc, 0x1ea, 0x21e, 0x294, 0x305, 0x309, 0x324]
+const IDS = [0x091, 0x13c, 0x156, 0x158, 0x17c, 0x18b, 0x1a4, 0x1a6, 0x1ab, 0x1b0, 0x1d0, 0x1dc, 0x1ea, 0x21e, 0x294, 0x305, 0x309, 0x324]
 
 // Measured rpm per km/h (0x1DC / 0x158) with the clutch up, 2026-11-01 drive. 5th was seen only briefly.
 const GEAR_RATIOS = [158.5, 99, 68, 51, 40, 30.5]
 const GEAR_TOLERANCE = 0.06
 const G = 9.81
 const LONG_G_PER_COUNT = 0.00169 / G // 0x1EA bytes 2-3, measured
-const LAT_G_PER_COUNT = 0.00169 / G // 0x1EA bytes 0-1: same sensor, scale assumed (reference: "unconfirmed")
+// 0x1EA bytes 0-1: about 0.012 m/s² per count from speed x yaw rate in steady turns on 2026-11-02 (0.008-0.025
+// between turns: camber, the sensor's dead band). Provisional; the old guess (0.00169, as longitudinal) read ~7x low.
+const LAT_G_PER_COUNT = 0.012 / G
 const YAW_DEG_PER_COUNT = 0.0037 // 0x091 bytes 0-1, measured against the wheel speeds (±5 %)
 const MMHG_TO_BAR = 0.00133322
 // Driver's brake pressure, 0x1A4 bytes 0-1: the sheet's points (raw -> MPa). Zero up to 106: at rest our car
@@ -90,8 +92,14 @@ const decode = (frames, now, atmMmHg = null) => {
     outsideC: pick(0x21e, d => d[3] - 40),
     fuelPct: pick(0x1a6, d => Math.max(0, Math.min(100, d[3] - 5))), // raw 5 = empty, 105 = full
     odometerKm: pick(0x294, d => (d[3] << 16) | (d[4] << 8) | d[5]),
-    // The sheet's guesses ("Engine alert?", "OIL alert?", "EPS alert?"); never seen set on our car.
-    alerts: pick(0x324, d => ({ engine: bit(d[6], 1), oil: bit(d[6], 0), eps: bit(d[7], 7) })),
+    // Warning lamps as broadcast (references/S660-CAN-bus.md 0x324, checked 2026-11-02). All are lit with the
+    // engine stopped (the dash's bulb check) and clear at engine start. lampA / lampB are oil pressure and
+    // charging, in an order not yet known; the sheet's "oil" bit (byte 6 bit 0) was never set, so it is not used.
+    lamps: pick(0x324, d => ({ engine: bit(d[6], 1), lampA: bit(d[6], 2), lampB: bit(d[6], 3), eps: bit(d[7], 7) })),
+    coolantLamp: pick(0x294, d => bit(d[0], 1)), // "Coolant temperature warning lamp?" in the sheet
+    blowOff: pick(0x324, d => bit(d[6], 7)),
+    torqueEst: pick(0x13c, d => s16(be16(d, 0))), // raw, unit unknown; -1 for 2-3 s after lifting off
+    torqueReq: pick(0x13c, d => s16(be16(d, 2))),
     steeringDeg: pick(0x156, d => s16(be16(d, 0)) / 10),
     yawDegPerS: pick(0x091, d => (be16(d, 0) - 0x8000) * YAW_DEG_PER_COUNT),
     latG: pick(0x1ea, d => s16(be16(d, 0)) * LAT_G_PER_COUNT),
@@ -109,7 +117,64 @@ const decode = (frames, now, atmMmHg = null) => {
     indicators: pick(0x294, d => ({ left: bit(d[0], 5), right: bit(d[0], 6) })),
     wipers: pick(0x294, d => (d[0] >> 3) & 3),
     belts: pick(0x305, d => ({ driver: bit(d[1], 5), passenger: bit(d[1], 3) })), // sheet only, unchecked
-    vsa: pick(0x1a4, d => ({ lamp: bit(d[3], 5), unavailable: bit(d[3], 4), active: bit(d[2], 0) })),
+    vsa: pick(0x1a4, d => ({
+      lamp: bit(d[3], 5),
+      unavailable: bit(d[3], 4),
+      active: bit(d[2], 0), // VSA braking (AHA or TCS)
+      abs: bit(d[2], 1), // ABS-style intervention (inferred in the sheet)
+      agile: bit(d[4], 7), // torque-vectoring-style braking, pedal released (Agile Handling Assist)
+    })),
+    vsaOffButton: pick(0x1a6, d => bit(d[0], 5)), // only while the VSA OFF button is held
+    brakeHold: pick(0x1b0, d => bit(d[0], 0)), // hill start / brake hold (not verified)
+    brakeError: pick(0x1b0, d => bit(d[1], 3) || bit(d[1], 1)),
+    epsDisabled: pick(0x1ab, d => bit(d[2], 6)),
+  }
+}
+
+// Engine data from the drive recorder's OBD poll (hardware/can/s660-drive-log, its status file), only
+// while Drive recording is on "Listen + engine data". Keys are the requests as s660-diag prints them.
+const OBD_FRESH_S = 10
+const SLOW_FRESH_S = 30 // fault codes and the cluster, asked once a cycle
+const u16 = (b, i) => b[i] * 256 + b[i + 1]
+
+// OBD fault codes from a 43/47 reply: [43, count, A, B, A, B...] -> ['P0301', ...]
+const dtcList = b =>
+  Array.from({ length: Math.floor((b.length - 2) / 2) }, (_, i) => [b[2 + i * 2], b[3 + i * 2]])
+    .filter(([a, c]) => a || c)
+    .map(([a, c]) => 'PCBU'[a >> 6] + ((a >> 4) & 3) + (a & 15).toString(16).toUpperCase() + c.toString(16).toUpperCase().padStart(2, '0'))
+
+const engineData = (st, now) => {
+  const obd = st && st.engine ? st.obd || {} : {}
+  const get = (key, age = OBD_FRESH_S) => {
+    const o = obd[key]
+    return o && now - o.t <= age ? o.hex.split(' ').map(h => parseInt(h, 16)) : null
+  }
+  const pid = (p, fn) => {
+    const b = get(`01 ${p}`)
+    return b ? fn(b.slice(2)) : null
+  }
+  const codes = svc => {
+    const b = get(svc, SLOW_FRESH_S)
+    return b ? dtcList(b) : null
+  }
+  const cl = get('22 70 2a', SLOW_FRESH_S) // cluster 0x60 DID 0x702A: data starts at byte 3
+  return {
+    engineData: !!(st && st.engine),
+    mil: pid('01', b => ({ on: (b[0] & 0x80) !== 0, count: b[0] & 0x7f })),
+    dtcStored: codes('03'),
+    dtcPending: codes('07'),
+    timingDeg: pid('0e', b => b[0] / 2 - 64),
+    lambda: pid('34', b => (u16(b, 0) * 2) / 65536),
+    lambdaCmd: pid('44', b => (u16(b, 0) * 2) / 65536),
+    stftPct: pid('06', b => ((b[0] - 128) * 100) / 128),
+    ltftPct: pid('07', b => ((b[0] - 128) * 100) / 128),
+    loadPct: pid('04', b => (b[0] * 100) / 255),
+    absLoadPct: pid('43', b => (u16(b, 0) * 100) / 255),
+    throttlePlatePct: pid('11', b => (b[0] * 100) / 255),
+    catalystC: pid('3c', b => u16(b, 0) / 10 - 40),
+    rangeKm: cl && cl.length >= 19 ? u16(cl, 17) : null,
+    fuelL: cl && cl.length >= 17 ? u16(cl, 15) / 10 : null,
+    rangeKmPerL: cl && cl.length >= 11 ? u16(cl, 9) / 10 : null,
   }
 }
 
@@ -183,4 +248,4 @@ const createVehicle = ({ iface = IFACE, spawnFn = spawn, clock = Date.now } = {}
   return { snapshot, stop, running: () => child !== null }
 }
 
-module.exports = { createVehicle, decode, parseLine, estimateGear, IDS }
+module.exports = { createVehicle, decode, parseLine, estimateGear, engineData, dtcList, IDS }

@@ -16,6 +16,7 @@ import { requestPower } from './useSystemStats'
 
 export const MODE_HOLD_MS = 600 // hold Mode this long to open the panel switcher
 export const POWER_HOLD_MS = 1500 // hold the knob this long on Restart / Shut down
+const SCROLL_STEP_PX = 120 // one knob click inside a read-only tab
 
 const CONTROL_LABEL: Record<Control, string> = {
   knobCw: 'Knob →',
@@ -183,6 +184,8 @@ export const useHeadUnit = ({ plugged, settings, update, preview, reloadCarplay,
         previewRef.current({ glassAspect: next })
       }
       if (result.resetAspect) updateRef.current({ glassAspect: defaultSettings.glassAspect })
+      // The page of a read-only tab scrolls; the one on screen is the only .content.tabbed.
+      if (result.scroll) document.querySelector('.nui .content.tabbed')?.scrollBy({ top: result.scroll * SCROLL_STEP_PX, behavior: 'smooth' })
       if (result.cycle) updateRef.current({ [result.cycle]: nextValue(settingsRef.current, result.cycle) })
       if (result.toggleWeb) toggleWebRef.current()
       if (result.connect && netBusyRef.current?.state !== 'connecting') {

@@ -21,8 +21,11 @@ const { createWebAdmin } = require('./web-admin')
 
 // The CAN service is optional: without s660-can.js the panel just shows "no data", the kiosk keeps running.
 let vehicle = null
+let engineData = () => ({ engineData: false })
 try {
-  vehicle = require('./s660-can').createVehicle()
+  const can = require('./s660-can')
+  vehicle = can.createVehicle()
+  engineData = can.engineData
 } catch (err) {
   console.error(`s660-api: no CAN service (${err.message})`)
 }
@@ -316,6 +319,7 @@ const SETTINGS = {
   glassAspect: { default: 1875, min: 1500, max: 2400 },
   // The drive recorder (hardware/can/s660-drive-log) reads this from the same file every 2 s.
   driveLog: { default: 'off', allowed: ['off', 'listen', 'engine'] },
+  gearPopup: { default: 2, allowed: [0, 1, 2, 3, 4, 5] }, // seconds; 0 = off
 }
 
 const isAllowed = (spec, v) =>
@@ -368,7 +372,7 @@ const handle = (req, res) => {
   }
 
   if (url === '/api/vehicle' && req.method === 'GET') {
-    sendJson(res, 200, { ...(vehicle ? vehicle.snapshot() : { live: false }), ...battery() })
+    sendJson(res, 200, { ...(vehicle ? vehicle.snapshot() : { live: false }), ...engineData(driveLogState(), Date.now() / 1000), ...battery() })
     return true
   }
 

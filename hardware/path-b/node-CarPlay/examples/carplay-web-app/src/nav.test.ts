@@ -32,7 +32,7 @@ test('opening a panel puts the knob on its tab bar; the knob walks only the tabs
   expect(openPanel('carplay').focus).toBe('rail:carplay')
   const ring = focusRing(openPanel('settings'))
   expect(ring).toEqual(['tab:status', 'tab:options', 'tab:carplay', 'tab:network', 'tab:display', 'tab:power'])
-  expect(focusRing(openPanel('vehicle'))).toEqual(['tab:drive', 'tab:engine', 'tab:dynamics', 'tab:body', 'tab:battery', 'tab:diag'])
+  expect(focusRing(openPanel('vehicle'))).toEqual(['tab:drive', 'tab:engine', 'tab:tuning', 'tab:dynamics', 'tab:body', 'tab:battery', 'tab:diag'])
   expect(focusRing(openPanel('carplay'))).toEqual(['rail:carplay', 'rail:vehicle', 'rail:settings'])
   let ui = openPanel('settings')
   for (let i = 0; i < ring.length - 1; i++) ui = nativeKey(ui, 'knobCw').ui
@@ -70,8 +70,8 @@ test('push on a tab enters it, a loop of its own controls; Back steps out onto t
   expect(ui.focus).toBe('tab:options')
   ui = nativeKey(ui, 'knobPush').ui
   expect(ui.focus).toBe('opt:autoRunCarplay')
-  expect(focusRing(ui)).toEqual(['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:driveLog', 'webAdmin'])
-  for (let i = 0; i < 5; i++) ui = nativeKey(ui, 'knobCw').ui
+  expect(focusRing(ui)).toEqual(['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:gearPopup', 'opt:driveLog', 'webAdmin'])
+  for (let i = 0; i < 6; i++) ui = nativeKey(ui, 'knobCw').ui
   expect(ui.focus).toBe('opt:autoRunCarplay') // wraps inside the tab
   ui = nativeKey(ui, 'back').ui
   expect(ui.focus).toBe('tab:options')
@@ -81,11 +81,18 @@ test('push on a tab enters it, a loop of its own controls; Back steps out onto t
   expect(nativeKey(ui, 'back').opensCarplay).toBe(true) // and the next Back leaves
 })
 
-test('read-only tabs have nothing to enter', () => {
-  const ui = { ...openPanel('vehicle'), focus: 'tab:drive' as const }
-  expect(nativeKey(ui, 'knobPush').ui).toBe(ui)
-  const status = { ...openPanel('settings'), focus: 'tab:status' as const }
-  expect(nativeKey(status, 'knobPush').ui).toBe(status)
+test('push on a read-only tab lets the knob scroll it; Back returns to the tab bar', () => {
+  const ui = { ...openPanel('vehicle'), focus: 'tab:engine' as const, tab: { ...openPanel('vehicle').tab, vehicle: 'engine' as const } }
+  const pane = nativeKey(ui, 'knobPush').ui
+  expect(pane.focus).toBe('pane')
+  expect(focusRing(pane)).toEqual(['pane'])
+  expect(nativeKey(pane, 'knobCw')).toEqual({ ui: pane, scroll: 1 })
+  expect(nativeKey(pane, 'knobCcw')).toEqual({ ui: pane, scroll: -1 })
+  expect(nativeKey(pane, 'knobPush').ui).toBe(pane)
+  expect(nativeKey(pane, 'back').ui.focus).toBe('tab:engine')
+  const status = nativeKey({ ...openPanel('settings'), focus: 'tab:status' }, 'knobPush').ui
+  expect(status.focus).toBe('pane')
+  expect(nativeKey(status, 'back').ui.focus).toBe('tab:status')
 })
 
 test('push on a setting asks the caller to step it, and stays put', () => {

@@ -8,7 +8,7 @@ export type PowerAction = 'restart' | 'shutdown'
 export type HoldAction = PowerAction | 'reload'
 
 export type SettingsTab = 'status' | 'options' | 'carplay' | 'network' | 'display' | 'power'
-export type VehicleTab = 'drive' | 'engine' | 'dynamics' | 'body' | 'battery' | 'diag'
+export type VehicleTab = 'drive' | 'engine' | 'tuning' | 'dynamics' | 'body' | 'battery' | 'diag'
 export type TabId = SettingsTab | VehicleTab
 
 // What the knob can land on. rail:* is the left rail, sw:* the hold-Mode switcher, tab:* a tab in the
@@ -26,18 +26,19 @@ export type FocusId =
   | 'webAdmin'
   | 'aspect'
   | 'aspectReset'
+  | 'pane' // inside a read-only tab: the knob scrolls its page
   | HoldAction
 
 export interface Tab<T extends TabId> {
   id: T
   label: string
-  items: FocusId[] // what the knob can reach once it is pushed into the tab; empty = read-only
+  items: FocusId[] // what the knob can reach once it is pushed into the tab; empty = read-only (the knob scrolls it)
 }
 
 // The first tab of each list is the one shown when the panel opens.
 export const SETTINGS_TABS: Tab<SettingsTab>[] = [
   { id: 'status', label: 'Status', items: [] },
-  { id: 'options', label: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:driveLog', 'webAdmin'] },
+  { id: 'options', label: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:gearPopup', 'opt:driveLog', 'webAdmin'] },
   { id: 'carplay', label: 'CarPlay', items: ['opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
   { id: 'network', label: 'Network', items: ['netConnect'] },
   { id: 'display', label: 'Display', items: ['aspect', 'aspectReset', 'opt:carplayShape', 'opt:carplayWidth'] },
@@ -46,6 +47,7 @@ export const SETTINGS_TABS: Tab<SettingsTab>[] = [
 export const VEHICLE_TABS: Tab<VehicleTab>[] = [
   { id: 'drive', label: 'Drive', items: [] },
   { id: 'engine', label: 'Engine', items: [] },
+  { id: 'tuning', label: 'Tuning', items: [] },
   { id: 'dynamics', label: 'Dynamics', items: [] },
   { id: 'body', label: 'Body', items: [] },
   { id: 'battery', label: 'Battery', items: [] },
@@ -92,6 +94,7 @@ export const inTab = (ui: UiState): boolean => !!currentTab(ui)?.items.includes(
 // controls loops over just those. Back climbs one level.
 export const focusRing = (ui: UiState): FocusId[] => {
   if (ui.switcher) return ['sw:carplay', 'sw:vehicle', 'sw:settings']
+  if (ui.focus === 'pane') return ['pane']
   if (inTab(ui)) return currentTab(ui)!.items
   if (ui.focus.startsWith('tab:')) return tabsOf(ui.panel).map((t): FocusId => `tab:${t.id}`)
   return ['rail:carplay', 'rail:vehicle', 'rail:settings']
@@ -125,6 +128,8 @@ export interface NativeResult {
   resetAspect?: boolean
   // The user asked for CarPlay (rail, switcher or Back), which also overrides "don't auto-run".
   opensCarplay?: boolean
+  // Inside a read-only tab the knob turned: the caller scrolls the page one step down (1) or up (-1).
+  scroll?: 1 | -1
 }
 
 // A press (not a release, not a repeat) of a control other than Mode, while a native view is up.
@@ -140,6 +145,18 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
         return { ui: { ...ui, fine: !ui.fine } }
       case 'back':
         return { ui: { ...ui, pattern: false, fine: false } }
+      default:
+        return { ui }
+    }
+  }
+  if (ui.focus === 'pane' && !ui.switcher) {
+    switch (control) {
+      case 'knobCw':
+        return { ui, scroll: 1 }
+      case 'knobCcw':
+        return { ui, scroll: -1 }
+      case 'back':
+        return { ui: { ...ui, focus: `tab:${currentTab(ui)!.id}` } } // back onto the tab bar
       default:
         return { ui }
     }
@@ -164,7 +181,7 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
       if (f.startsWith('opt:')) return { ui, cycle: f.slice(4) as CycleKey }
       if (f.startsWith('tab:')) {
         const items = currentTab(ui)?.items ?? []
-        return { ui: items.length ? { ...ui, focus: items[0] } : ui } // read-only tabs have nothing to enter
+        return { ui: { ...ui, focus: items.length ? items[0] : 'pane' } } // a read-only tab: the knob scrolls it
       }
       const panel = f.split(':')[1] as Panel
       return { ui: openPanel(panel), opensCarplay: panel === 'carplay' }

@@ -2974,3 +2974,30 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   NOT CHARGING, above = OVERCHARGING; stopped ≥ 12.6 full, ≥ 12.4 good, ≥ 12.1 low, else very low) and the trend.
   **It needs Drive recording on "Listen + engine data"**; otherwise the tab says so. First reading on the car: 12.75 V,
   ignition on, engine off, battery tender connected.
+
+## 41. 2026-11-02 — Everything the bus and the engine poll give, on the Vehicle panel; gear pop-up; knob scrolling
+
+- **Vehicle tabs:** Drive, Engine, **Tuning** (new), Dynamics, Body, Battery, Diag. **Push on any read-only tab** (all
+  of Vehicle, and Settings > Status) **lets the knob scroll it** (120 px a click, a yellow bar on the left and a yellow
+  scrollbar while it does); **Back** returns to the tab bar. Each tab opens at the top. Logic and tests: `nav.ts`.
+- **Diag:** the engine computer's **fault codes**, stored (OBD 03) and pending (07), and the **check-engine lamp** with
+  its code count (PID 01), asked in every poll cycle (about every 4.4 s). This unit never clears codes. Below them the
+  broadcast warning lamps, **corrected** (references 0x324): check engine, two oil / charge lamps (which is which is
+  unknown), EPS, and the 0x294 coolant-temperature lamp. The sheet's "oil" bit, never seen set, is gone.
+- **Engine:** fuel in litres and the **range as on the dash**, with the km/L it is worked out with (cluster 0x60 DID
+  0x702A, data bytes 6–7 km/L × 10, 12–13 fuel L × 10, 14–15 range km).
+- **Tuning** (engine poll): ignition timing, air-fuel ratio actual and target (λ × 14.7; "CUT" at λ 2.0, the fuel
+  cut), short and long fuel trims, calculated and absolute load, throttle plate, catalyst temperature. From the
+  broadcast: torque estimated / requested (raw, unit unknown) and the blow-off valve.
+- **Dynamics:** a row of stability chips: VSA, ABS, Agile Handling Assist, VSA OFF button, hill start hold, brake
+  system, power steering (0x1A4, 0x1A6, 0x1AB, 0x1B0; mostly unverified on our car). With the engine stopped the
+  "brake system" and "power steering" bits read set (ERROR / DISABLED); to be checked with the engine running.
+- **Lateral G** scale corrected to 0.012 m/s² per count (provisional, DIAG-PLAN errand); it read about 7 × low.
+- **The engine data** (`s660-can.js` `engineData`, tested) is decoded from the recorder's status file and merged into
+  `/api/vehicle`; all of it needs Drive recording on "Listen + engine data", and the tabs say so when it is off. The
+  poll is now 22 requests at 5 per second (`s660-diag poll` takes `s03` for a whole OBD service and `60:702A` for a
+  UDS read).
+- **Gear pop-up** (Settings > Options, **Off / 1–5 s**, default 2): after a shift, the estimated gear shows over
+  CarPlay's top-right corner in a yellow box with a black figure. A gear counts once it has held 400 ms; a further
+  change replaces it and restarts the time; after 3 s with no gear (a stop) pulling away shows 1 again
+  (`gearPopup.ts`, tested). While it is on, `/api/vehicle` is polled every 200 ms over CarPlay too.
