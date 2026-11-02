@@ -8,7 +8,7 @@ export type PowerAction = 'restart' | 'shutdown'
 export type HoldAction = PowerAction | 'reload'
 
 export type SettingsTab = 'status' | 'options' | 'carplay' | 'network' | 'display' | 'power'
-export type VehicleTab = 'drive' | 'engine' | 'dynamics' | 'body' | 'diag'
+export type VehicleTab = 'drive' | 'engine' | 'dynamics' | 'body' | 'battery' | 'diag'
 export type TabId = SettingsTab | VehicleTab
 
 // What the knob can land on. rail:* is the left rail, sw:* the hold-Mode switcher, tab:* a tab in the
@@ -48,6 +48,7 @@ export const VEHICLE_TABS: Tab<VehicleTab>[] = [
   { id: 'engine', label: 'Engine', items: [] },
   { id: 'dynamics', label: 'Dynamics', items: [] },
   { id: 'body', label: 'Body', items: [] },
+  { id: 'battery', label: 'Battery', items: [] },
   { id: 'diag', label: 'Diag', items: [] },
 ]
 

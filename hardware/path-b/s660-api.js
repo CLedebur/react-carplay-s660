@@ -154,6 +154,23 @@ const driveLogState = () => {
   }
 }
 
+// The battery for the Vehicle panel. No CAN message carries it, so it comes from the drive recorder's
+// OBD poll (PID 42, module voltage), which runs only with Drive recording on "Listen + engine data".
+const BATTERY_FRESH_S = 5
+const BATTERY_TREND_S = 15 * 60
+const battery = () => {
+  const d = driveLogState()
+  const now = Date.now() / 1000
+  const samples = (d?.battery || []).filter(([t]) => now - t <= BATTERY_TREND_S)
+  const last = samples[samples.length - 1]
+  const step = Math.max(1, Math.ceil(samples.length / 180)) // at most 180 points for the trend
+  return {
+    engineData: !!d?.engine,
+    batteryV: last && now - last[0] <= BATTERY_FRESH_S ? last[1] / 1000 : null,
+    batteryTrend: samples.filter((_, i) => i % step === 0 || i === samples.length - 1).map(([t, mv]) => [Math.round(now - t), mv / 1000]),
+  }
+}
+
 const stats = async full => ({
   cpuTempC: cpuTempC(),
   nvmeTempC: nvmeTempC(),
@@ -351,7 +368,7 @@ const handle = (req, res) => {
   }
 
   if (url === '/api/vehicle' && req.method === 'GET') {
-    sendJson(res, 200, vehicle ? vehicle.snapshot() : { live: false })
+    sendJson(res, 200, { ...(vehicle ? vehicle.snapshot() : { live: false }), ...battery() })
     return true
   }
 

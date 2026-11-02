@@ -2966,3 +2966,11 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
 - **On screen:** a **Rec** pill in the title strip whenever the setting is on: dim while waiting for the car, green
   while recording, **amber "Rec + OBD" while requests are being sent**. Settings > Status has a "Drive rec" row with the
   size of the current recording. The state comes from `/run/s660-drive-log.json` through `GET /api/stats` (`driveLog`).
+- **Battery monitor (Vehicle > Battery, 2026-11-02).** No CAN message carries the battery voltage, so it comes from the
+  recorder's OBD poll: PID 42 (module voltage) is asked 4 times in every 18 requests, about every 0.9 s. The recorder
+  publishes the latest reply to each PID and the last 900 voltages in its status file; `GET /api/vehicle` adds
+  `batteryV` (null if older than 5 s), `batteryTrend` (the last 15 min, at most 180 points) and `engineData`. The tab
+  shows the voltage, a verdict (`batteryState` in `vehicle.ts`, tested: engine running 13.2–15 V = charging, below =
+  NOT CHARGING, above = OVERCHARGING; stopped ≥ 12.6 full, ≥ 12.4 good, ≥ 12.1 low, else very low) and the trend.
+  **It needs Drive recording on "Listen + engine data"**; otherwise the tab says so. First reading on the car: 12.75 V,
+  ignition on, engine off, battery tender connected.

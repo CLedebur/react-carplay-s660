@@ -36,6 +36,11 @@ export interface VehicleData {
   wipers: 0 | 1 | 2 | 3 | null // off, intermittent, low, high
   belts: { driver: boolean; passenger: boolean } | null // true = buckled
   vsa: { lamp: boolean; unavailable: boolean; active: boolean } | null
+  // battery: not broadcast, so it comes from the drive recorder's OBD poll (PID 42), only while
+  // Drive recording is on "Listen + engine data" (engineData true)
+  engineData: boolean
+  batteryV: number | null
+  batteryTrend: [number, number][] | null // [seconds ago, volts], oldest first, the last 15 minutes
 }
 
 export const HEADLIGHTS = ['OFF', 'PARKING', 'LOW BEAM', 'HIGH BEAM'] as const
@@ -48,6 +53,24 @@ export const emptyVehicle: VehicleData = {
   steeringDeg: null, yawDegPerS: null, latG: null, longG: null, wheelKmh: null,
   clutchUp: null, brakePedal: null, handbrake: null, reverse: null, headlights: null,
   indicators: null, wipers: null, belts: null, vsa: null,
+  engineData: false, batteryV: null, batteryTrend: null,
+}
+
+// What the voltage says, for a 12 V lead-acid battery. With the engine running the alternator should
+// hold 13.2-15 V; stopped (ignition on, so under a light load) about 12.4 V or more is healthy.
+export type BatteryTone = 'ok' | 'warn' | 'bad'
+export const RUNNING_RPM = 400
+export const batteryState = (v: number | null, rpm: number | null): { label: string; tone: BatteryTone } | null => {
+  if (v === null) return null
+  if (rpm !== null && rpm > RUNNING_RPM) {
+    if (v > 15) return { label: 'OVERCHARGING', tone: 'bad' }
+    if (v >= 13.2) return { label: 'CHARGING', tone: 'ok' }
+    return { label: 'NOT CHARGING', tone: 'bad' }
+  }
+  if (v >= 12.6) return { label: 'FULL', tone: 'ok' }
+  if (v >= 12.4) return { label: 'GOOD', tone: 'ok' }
+  if (v >= 12.1) return { label: 'LOW', tone: 'warn' }
+  return { label: 'VERY LOW', tone: 'bad' }
 }
 
 // The G-plot dot: where the car is being pushed, as seen from above (left turn = left, accelerating = up).
@@ -93,5 +116,8 @@ export const demoVehicle = (t: number): VehicleData => {
     wipers: (Math.floor(t / 14) % 4) as 0 | 1 | 2 | 3,
     belts: { driver: true, passenger: Math.floor(t / 20) % 2 === 0 },
     vsa: { lamp: false, unavailable: false, active: false },
+    engineData: true,
+    batteryV: 14.1 + 0.15 * Math.sin(t / 5),
+    batteryTrend: Array.from({ length: 90 }, (_, i) => [900 - i * 10, 14.1 + 0.15 * Math.sin((t - 900 + i * 10) / 5)] as [number, number]),
   }
 }

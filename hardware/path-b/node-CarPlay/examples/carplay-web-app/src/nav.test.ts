@@ -32,7 +32,7 @@ test('opening a panel puts the knob on its tab bar; the knob walks only the tabs
   expect(openPanel('carplay').focus).toBe('rail:carplay')
   const ring = focusRing(openPanel('settings'))
   expect(ring).toEqual(['tab:status', 'tab:options', 'tab:carplay', 'tab:network', 'tab:display', 'tab:power'])
-  expect(focusRing(openPanel('vehicle'))).toEqual(['tab:drive', 'tab:engine', 'tab:dynamics', 'tab:body', 'tab:diag'])
+  expect(focusRing(openPanel('vehicle'))).toEqual(['tab:drive', 'tab:engine', 'tab:dynamics', 'tab:body', 'tab:battery', 'tab:diag'])
   expect(focusRing(openPanel('carplay'))).toEqual(['rail:carplay', 'rail:vehicle', 'rail:settings'])
   let ui = openPanel('settings')
   for (let i = 0; i < ring.length - 1; i++) ui = nativeKey(ui, 'knobCw').ui

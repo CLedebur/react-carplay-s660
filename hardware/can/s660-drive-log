@@ -11,7 +11,7 @@
 # (ignition off), so every ignition-on is one file, however many stops a trip has. The setting is
 # re-read every 2 s, so a change applies at once (a new file in the new mode). The newest recordings
 # are kept up to CAP_BYTES; the oldest go first. The state is in /run/s660-drive-log.json for the UI.
-import glob, json, os, signal, socket, struct, subprocess, sys, time
+import collections, glob, json, os, re, signal, socket, struct, subprocess, sys, threading, time
 
 SETTINGS = os.environ.get("S660_SETTINGS_FILE", "/persist/ui/settings.json")
 DIR = os.environ.get("S660_DRIVE_DIR", "/persist/can/drives")
@@ -22,10 +22,13 @@ SESSION = os.environ.get("S660_DIAG_SESSION", "/run/s660-diag-session")
 OWN = SESSION + ".drive-log"            # our session, as opposed to a manual s660-diag one
 CAP_BYTES = 20 * 1024 ** 3
 QUIET_S = 10                            # bus silent this long = ignition off: the recording ends
-TICK_S = 2
-# Load, coolant, trims, MAP, rpm, speed, timing, intake, throttle, wide-band O2, catalyst, voltage,
-# absolute load, commanded lambda. 15 PIDs at 5 requests per second: each one about every 3 s.
-PIDS = "04 05 06 07 0B 0C 0D 0E 0F 11 34 3C 42 43 44".split()
+TICK_S = 1
+# Load, coolant, trims, MAP, rpm, speed, timing, intake, throttle, wide-band O2, catalyst, absolute
+# load, commanded lambda, and the module voltage (42) four times, for the Vehicle panel's battery
+# monitor: 18 requests at 5 per second, so the voltage about every 0.9 s and the rest every 3.6 s.
+PIDS = "42 04 05 06 42 07 0B 0C 0D 42 0E 0F 11 34 42 3C 43 44".split()
+BATTERY_SAMPLES = 900                  # about 15 minutes of voltage readings for the panel's trend
+REPLY = re.compile(r"-> 01 ([0-9a-f]{2})\s+\S+ <- 41 ([0-9a-f]{2}) ([0-9a-f ]+)$")
 POLL_RATE = "5"
 
 
@@ -77,6 +80,8 @@ class Recorder:
         self.engine = False               # requests are being sent right now
         self.note = ""
         self.dump = self.poll = None
+        self.obd = {}                     # PID -> {"hex": reply data, "t": when}, the latest of each
+        self.battery = collections.deque(maxlen=BATTERY_SAMPLES)   # (t, mV)
 
     def start(self, mode):
         os.makedirs(DIR, exist_ok=True)
@@ -84,6 +89,7 @@ class Recorder:
         # The clock is only right once the Pi has been online; the boot tag keeps names apart.
         self.base = os.path.join(DIR, f"{time.strftime('%Y-%m-%d-%H%M%S')}-{boot_tag()}-{mode}")
         self.mode, self.since, self.note = mode, time.time(), ""
+        self.obd, self.battery = {}, collections.deque(maxlen=BATTERY_SAMPLES)
         if mode == "engine":
             if os.path.exists(SESSION) and not os.path.exists(OWN):
                 self.note = "engine data paused: a manual diagnostic session is open"
@@ -97,8 +103,20 @@ class Recorder:
             env = dict(os.environ, S660_DIAG_LOG=self.base + ".jsonl")
             for svc in ("03", "07"):          # stored and pending fault codes, once per drive
                 subprocess.run([DIAG, "obd", "--29", svc], env=env, stdout=subprocess.DEVNULL)
-            self.poll = subprocess.Popen([DIAG, "poll", POLL_RATE] + PIDS, env=env, stdout=subprocess.DEVNULL)
+            self.poll = subprocess.Popen([DIAG, "poll", POLL_RATE] + PIDS, env=env, stdout=subprocess.PIPE, text=True)
+            threading.Thread(target=self.read_poll, args=(self.poll,), daemon=True).start()
         print(f"recording {self.base} ({mode}{', sending requests' if self.engine else ''}) {self.note}", flush=True)
+
+    def read_poll(self, proc):
+        """Keep the latest reply to each PID (s660-diag prints one line per request)."""
+        for line in proc.stdout:
+            m = REPLY.search(line.strip())
+            if not m or m.group(1) != m.group(2):
+                continue
+            now, data = time.time(), m.group(3).split()
+            self.obd[m.group(1).upper()] = {"hex": " ".join(data), "t": now}
+            if m.group(1) == "42" and len(data) >= 2:
+                self.battery.append((round(now, 1), int(data[0], 16) << 8 | int(data[1], 16)))
 
     def dump_start(self):
         self.dump = subprocess.Popen(["candump", "-L", IFACE], stdout=open(self.base + ".log", "ab"),
@@ -130,7 +148,8 @@ class Recorder:
         size = sum(os.path.getsize(f) for f in glob.glob(self.base + ".*")) if self.mode else 0
         st = {"setting": setting, "recording": self.mode is not None, "engine": self.engine,
               "bus": heard, "since": self.since if self.mode else None, "bytes": size,
-              "file": os.path.basename(self.base) if self.mode else None, "note": self.note}
+              "file": os.path.basename(self.base) if self.mode else None, "note": self.note,
+              "obd": dict(self.obd) if self.engine else {}, "battery": list(self.battery) if self.engine else []}
         tmp = STATUS + ".tmp"
         with open(tmp, "w") as f:
             json.dump(st, f)

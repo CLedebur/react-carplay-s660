@@ -1,6 +1,6 @@
 import { ReactNode, useRef } from 'react'
 import { Settings, toFahrenheit } from './settings'
-import { emptyVehicle, gDot, HEADLIGHTS, VehicleData, WIPERS } from './vehicle'
+import { batteryState, emptyVehicle, gDot, HEADLIGHTS, RUNNING_RPM, VehicleData, WIPERS } from './vehicle'
 import { VehicleTab } from './nav'
 
 // The Vehicle panel's tabs. Read-only: the knob only moves between tabs. Values are null until the
@@ -265,6 +265,67 @@ const Body = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
   )
 }
 
+// Battery voltage from the OBD poll (PID 42). The trend is the last 15 minutes, newest on the right.
+const V_MIN = 11
+const V_MAX = 15
+const TREND_S = 15 * 60
+
+const Trend = ({ points }: { points: [number, number][] }) => {
+  const x = (ago: number) => 600 - (Math.min(ago, TREND_S) / TREND_S) * 600
+  const y = (v: number) => 200 - clamp01((v - V_MIN) / (V_MAX - V_MIN)) * 200
+  const guides = [12, 12.4, 13.2, 14]
+  return (
+    <svg className="btrend" viewBox="0 0 640 220">
+      {guides.map(g => (
+        <g key={g}>
+          <line x1={0} x2={600} y1={y(g)} y2={y(g)} className="guide" />
+          <text x={606} y={y(g) + 6}>{g.toFixed(1)}</text>
+        </g>
+      ))}
+      <polyline points={points.map(([ago, v]) => `${x(ago)},${y(v)}`).join(' ')} className="line" />
+    </svg>
+  )
+}
+
+const Battery = ({ d }: { d: VehicleData }) => {
+  const v = d.batteryV
+  const st = batteryState(v, d.rpm)
+  const running = d.rpm !== null && d.rpm > RUNNING_RPM
+  const pts = d.batteryTrend ?? []
+  const vs = pts.map(p => p[1])
+  const lo = vs.length ? Math.min(...vs) : null
+  const hi = vs.length ? Math.max(...vs) : null
+  return (
+    <div className="vgrid batt">
+      <Card title="Battery">
+        <Big value={v === null ? '--' : v.toFixed(2)} unit="V" tone={st?.tone ?? ''} size="huge" />
+        <Bar value={v} min={V_MIN} max={V_MAX} tone={st?.tone ?? ''} ticks={[{ at: 12, label: '12' }, { at: 12.4 }, { at: 13.2 }, { at: 14, label: '14' }]} />
+      </Card>
+      <Card title={running ? 'Charging system (engine running)' : 'State of charge (engine stopped)'}>
+        <Big value={st ? st.label : '--'} tone={st?.tone ?? ''} size="mid" />
+        <div className="note dim">
+          {running ? 'Expect 13.2–15 V while the engine runs.' : 'With the ignition on, 12.4 V or more is healthy.'}
+        </div>
+      </Card>
+      <Card title="Last 15 minutes" className="span2">
+        {pts.length > 1 ? <Trend points={pts} /> : <div className="note dim">Builds up while engine data is being read.</div>}
+        <div className="vline one">
+          <span className="k">Lowest · highest</span>
+          <span className="val">
+            {lo === null ? '--' : `${lo.toFixed(2)} · ${hi!.toFixed(2)}`} <small>V</small>
+          </span>
+        </div>
+      </Card>
+      {d.live && !d.engineData && (
+        <div className="vnone">
+          <b>Battery needs engine data</b>
+          <span>No CAN message carries the voltage. Set Settings › Options › Drive recording to “Listen + engine data”.</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // The warning bits the car broadcasts (0x324). The names are the reference sheet's guesses: with the
 // ignition on and the engine stopped, ENGINE and STEERING read ON, as the dash's own lamps do then.
 const lamp = (v: boolean | undefined) => (v === undefined ? '--' : v ? 'ON' : 'OFF')
@@ -298,6 +359,7 @@ export const VehiclePage = ({ tab, data, settings, demo }: { tab: VehicleTab; da
       {tab === 'engine' && <Engine d={d} units={settings.units} />}
       {tab === 'dynamics' && <Dynamics d={d} />}
       {tab === 'body' && <Body d={d} units={settings.units} />}
+      {tab === 'battery' && <Battery d={d} />}
       {tab === 'diag' && <Diag d={d} />}
       {!live && (
         <div className="vnone">
