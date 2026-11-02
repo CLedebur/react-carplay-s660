@@ -32,8 +32,13 @@ const LABELS = {
   carplayWidth: 'CarPlay width (needs Restart CarPlay)',
   driveLog: 'Drive recording',
   gearPopup: 'Gear pop-up over CarPlay (seconds, 0 = off)',
+  accent: 'Highlight colour',
 }
-const VALUE_LABELS = { true: 'On', false: 'Off', c: '°C', f: '°F', rhd: 'Right', lhd: 'Left', '5ghz': '5 GHz', '2.4ghz': '2.4 GHz', '24h': '24-hour', '12h': '12-hour', fill: 'Fill screen', exact: 'True shape (bar on the left)', off: 'Off', listen: 'Listen only', engine: 'Listen + engine data (sends requests)' }
+const VALUE_LABELS = { true: 'On', false: 'Off', c: '°C', f: '°F', rhd: 'Right', lhd: 'Left', '5ghz': '5 GHz', '2.4ghz': '2.4 GHz', '24h': '24-hour', '12h': '12-hour', fill: 'Fill screen', exact: 'True shape (bar on the left)', off: 'Off', listen: 'Listen only', engine: 'Listen + engine data (sends requests)',
+  admiralGray: 'Admiral Gray Metallic', carnivalYellow2: 'Carnival Yellow 2', flameRed: 'Flame Red', starWhite: 'Premium Star White Pearl',
+  mysticNight: 'Premium Mystic Night Pearl', beachBlue: 'Premium Beach Blue Pearl', velvetMaroon: 'Velvet Maroon Metallic',
+  hidaIvory: 'Hida Maria Ivory Pearl', nightHawkBlack: 'Night Hawk Black Pearl', britishGreen: 'British Green Pearl',
+  frenchBlue: 'French Blue Pearl', alabasterSilver: 'Alabaster Silver Metallic', activeGreen: 'Active Green Pearl', sonicGray: 'Sonic Gray Pearl' }
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 

@@ -1,5 +1,6 @@
 import { Control } from './controls'
 import { CycleKey } from './settings'
+import { ACCENT_IDS, AccentId } from './accent'
 
 // Navigation of the native head-unit UI. Pure, so the knob behaviour is unit-tested without React.
 export type Panel = 'carplay' | 'vehicle' | 'settings'
@@ -27,6 +28,7 @@ export type FocusId =
   | 'aspect'
   | 'aspectReset'
   | 'pane' // inside a read-only tab: the knob scrolls its page
+  | `acc:${AccentId}` // a colour in the highlight-colour picker (Display tab)
   | HoldAction
 
 export interface Tab<T extends TabId> {
@@ -41,7 +43,7 @@ export const SETTINGS_TABS: Tab<SettingsTab>[] = [
   { id: 'options', label: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:gearPopup', 'opt:driveLog', 'webAdmin'] },
   { id: 'carplay', label: 'CarPlay', items: ['opt:carplayEnabled', 'opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
   { id: 'network', label: 'Network', items: ['netConnect'] },
-  { id: 'display', label: 'Display', items: ['aspect', 'aspectReset', 'opt:carplayShape', 'opt:carplayWidth'] },
+  { id: 'display', label: 'Display', items: ['opt:accent', 'aspect', 'aspectReset', 'opt:carplayShape', 'opt:carplayWidth'] },
   { id: 'power', label: 'Power', items: ['reload', 'restart', 'shutdown'] },
 ]
 export const VEHICLE_TABS: Tab<VehicleTab>[] = [
@@ -72,12 +74,13 @@ export const initialUi: UiState = { panel: 'carplay', switcher: false, focus: 'r
 // Opening a panel that has tabs puts the knob on its first tab; CarPlay has none, so it stays on the rail.
 // ?view=vehicle.battery opens that panel on that tab: for screenshots of a page without the knob.
 export const uiFromQuery = (search: string): UiState => {
-  const [panel, tab] = (new URLSearchParams(search).get('view') || '').split('.')
+  const [panel, tab, extra] = (new URLSearchParams(search).get('view') || '').split('.')
   if (panel !== 'vehicle' && panel !== 'settings') return initialUi
   const ui = openPanel(panel)
   const t = tabsOf(panel).find(x => x.id === tab)
   if (!t) return ui
-  return { ...ui, focus: `tab:${t.id}`, tab: panel === 'vehicle' ? { ...ui.tab, vehicle: t.id as VehicleTab } : { ...ui.tab, settings: t.id as SettingsTab } }
+  const focus: FocusId = t.id === 'display' && extra === 'picker' ? 'acc:carnivalYellow2' : `tab:${t.id}` // ?view=settings.display.picker
+  return { ...ui, focus, tab: panel === 'vehicle' ? { ...ui.tab, vehicle: t.id as VehicleTab } : { ...ui.tab, settings: t.id as SettingsTab } }
 }
 
 export const openPanel = (panel: Panel): UiState => {
@@ -105,6 +108,7 @@ export const inTab = (ui: UiState): boolean => !!currentTab(ui)?.items.includes(
 export const focusRing = (ui: UiState): FocusId[] => {
   if (ui.switcher) return ['sw:carplay', 'sw:vehicle', 'sw:settings']
   if (ui.focus === 'pane') return ['pane']
+  if (ui.focus.startsWith('acc:')) return ACCENT_IDS.map((id): FocusId => `acc:${id}`)
   if (inTab(ui)) return currentTab(ui)!.items
   if (ui.focus.startsWith('tab:')) return tabsOf(ui.panel).map((t): FocusId => `tab:${t.id}`)
   return ['rail:carplay', 'rail:vehicle', 'rail:settings']
@@ -136,6 +140,8 @@ export interface NativeResult {
   aspect?: 1 | -1
   // The knob was pressed on "reset the ratio".
   resetAspect?: boolean
+  // A colour was picked in the highlight-colour picker: the caller saves it.
+  accent?: AccentId
   // The user asked for CarPlay (rail, switcher or Back), which also overrides "don't auto-run".
   opensCarplay?: boolean
   // Inside a read-only tab the knob turned: the caller scrolls the page one step down (1) or up (-1).
@@ -144,7 +150,8 @@ export interface NativeResult {
 
 // A press (not a release, not a repeat) of a control other than Mode, while a native view is up.
 // Mode is timed by the caller because a tap and a hold differ.
-export const nativeKey = (ui: UiState, control: Control): NativeResult => {
+// `accent` is the saved highlight colour: the picker opens on it.
+export const nativeKey = (ui: UiState, control: Control, accent: AccentId = 'carnivalYellow2'): NativeResult => {
   if (ui.pattern) {
     switch (control) {
       case 'knobCw':
@@ -155,6 +162,21 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
         return { ui: { ...ui, fine: !ui.fine } }
       case 'back':
         return { ui: { ...ui, pattern: false, fine: false } }
+      default:
+        return { ui }
+    }
+  }
+  // The highlight-colour picker: the knob walks the 14 paints, push picks one, Back keeps the old one.
+  if (ui.focus.startsWith('acc:') && !ui.switcher) {
+    switch (control) {
+      case 'knobCw':
+        return { ui: step(ui, 1) }
+      case 'knobCcw':
+        return { ui: step(ui, -1) }
+      case 'knobPush':
+        return { ui: { ...ui, focus: 'opt:accent' }, accent: ui.focus.slice(4) as AccentId }
+      case 'back':
+        return { ui: { ...ui, focus: 'opt:accent' } }
       default:
         return { ui }
     }
@@ -188,6 +210,7 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
       if (f === 'webAdmin') return { ui, toggleWeb: true }
       if (f === 'aspect') return { ui: { ...ui, pattern: true, fine: false } }
       if (f === 'aspectReset') return { ui, resetAspect: true }
+      if (f === 'opt:accent') return { ui: { ...ui, focus: `acc:${accent}` } } // opens the picker
       if (f.startsWith('opt:')) return { ui, cycle: f.slice(4) as CycleKey }
       if (f.startsWith('tab:')) {
         const items = currentTab(ui)?.items ?? []

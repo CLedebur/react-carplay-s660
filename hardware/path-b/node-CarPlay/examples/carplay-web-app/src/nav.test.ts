@@ -179,3 +179,17 @@ test('?view= opens a panel on a tab (screenshots); anything else is the normal s
   expect(uiFromQuery('')).toBe(initialUi)
   expect(uiFromQuery('?view=vehicle.nope').focus).toBe('tab:drive')
 })
+
+test('highlight colour: push opens a picker on the saved colour; the knob walks all 14, push picks, Back keeps', () => {
+  const row = { ...openPanel('settings'), tab: { ...openPanel('settings').tab, settings: 'display' as const }, focus: 'opt:accent' as const }
+  const picker = nativeKey(row, 'knobPush', 'flameRed').ui
+  expect(picker.focus).toBe('acc:flameRed')
+  expect(focusRing(picker)).toHaveLength(14)
+  const next = nativeKey(picker, 'knobCw').ui
+  expect(next.focus).toBe('acc:starWhite')
+  expect(nativeKey(next, 'knobPush')).toEqual({ ui: { ...next, focus: 'opt:accent' }, accent: 'starWhite' })
+  const back = nativeKey(next, 'back')
+  expect(back.ui.focus).toBe('opt:accent')
+  expect(back.accent).toBeUndefined()
+  expect(nativeKey(row, 'knobPush').cycle).toBeUndefined() // no longer steps through the list
+})

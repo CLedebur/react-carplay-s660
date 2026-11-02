@@ -1,3 +1,5 @@
+import { ACCENT_IDS, AccentId, DEFAULT_ACCENT } from './accent'
+
 // The user's settings. The kiosk server (hardware/path-b/s660-api.js) keeps them on /persist and
 // holds the same list of allowed values: keep the two in step.
 export interface Settings {
@@ -14,6 +16,7 @@ export interface Settings {
   glassAspect: number // visible glass width / height, x1000 (1875 = 1.875:1); the native UI is drawn to it
   driveLog: 'off' | 'listen' | 'engine' // drive recorder (hardware/can/s660-drive-log): listen never transmits
   gearPopup: 0 | 1 | 2 | 3 | 4 | 5 // seconds the gear shows over CarPlay after a shift; 0 = off
+  accent: AccentId // the highlight colour, one of the S660's paints (accent.ts)
 }
 
 export type SettingKey = keyof Settings
@@ -34,6 +37,7 @@ export const defaultSettings: Settings = {
   glassAspect: 1875, // 135 x 72 mm, measured (BUILD_NOTES 22.8)
   driveLog: 'off',
   gearPopup: 2,
+  accent: DEFAULT_ACCENT,
 }
 
 // The values a key steps through, in order, when the knob is pressed on its row.
@@ -50,6 +54,7 @@ const CYCLES: { [K in CycleKey]: readonly Settings[K][] } = {
   carplayWidth: [848, 896],
   driveLog: ['off', 'listen', 'engine'],
   gearPopup: [0, 1, 2, 3, 4, 5],
+  accent: ACCENT_IDS,
 }
 
 export const nextValue = <K extends CycleKey>(settings: Settings, key: K): Settings[K] => {
