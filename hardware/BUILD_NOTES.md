@@ -3018,3 +3018,16 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   not connect (checked 2026-11-02). **Switching the dongle's hub port off was tried and dropped:** the port really
   loses power (`…/1-1.3-port1/disable`, the dongle's light goes out), but on this car something else shares that port
   through a splitter, and it went off too. Do not reintroduce port switching for this.
+
+## 42. 2026-11-02 — Highlight colour (Settings > Display)
+
+- **Highlight colour** (`accent`): the 14 S660 paint colours from the model/trim chart, in its order; **Carnival
+  Yellow 2 (#FFD400) is the default**. `accent.ts` holds the names and hex values. Each sets three CSS variables on
+  `.nui-root`: `--focus` (the block), `--focus-ink` (black or white, whichever has more contrast) and `--focus-edge`.
+  Paints with contrast below 3 : 1 against the black screen (Night Hawk Black, Mystic Night, Velvet Maroon, British
+  Green, Admiral Gray) get a **white edge** on the focused item, so the knob's position never disappears. The gear
+  pop-up, the scroll bar, the test pattern's frame and the steering mark follow the colour too. Tested in
+  `accent.test.ts`; checked in headless screenshots (black, red, white, mystic night).
+- **Choosing:** push on the row opens a **picker**: every paint, one per row with its swatch, the saved one ticked. The
+  knob walks the list (it scrolls), push picks, Back keeps the old colour (`nav.ts`, tested). Screenshot it with
+  `?view=settings.display.picker`.

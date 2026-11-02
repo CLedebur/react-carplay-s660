@@ -6,6 +6,7 @@ import { VehicleData } from './vehicle'
 import { VehiclePage } from './VehicleTabs'
 import { vehicleDemo } from './useVehicle'
 import { initialGearPopup, stepGearPopup } from './gearPopup'
+import { ACCENTS, accentOf, accentStyle } from './accent'
 import { NetBusy, PowerNotice } from './useHeadUnit'
 import { NetworkInfo } from './useNetwork'
 import { WebAdminState } from './useWebAdmin'
@@ -206,7 +207,8 @@ const PowerButton = ({ action, holding, focus }: { action: HoldAction; holding: 
   </div>
 )
 
-const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: SettingsValues[K]) => string } } = {
+const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: SettingsValues[K]) => string; swatch?: (v: SettingsValues[K]) => string } } = {
+  accent: { label: 'Highlight colour', show: v => accentOf(v).name, swatch: v => accentOf(v).hex },
   carplayEnabled: { label: 'CarPlay (off: the phone cannot connect)', check: true },
   autoRunCarplay: { label: 'Automatically run CarPlay when the car starts', check: true },
   units: { label: 'Temperature units', show: v => (v === 'c' ? '°C' : '°F') },
@@ -228,7 +230,14 @@ const OptionRow = <K extends CycleKey>({ k, settings, focus }: { k: K; settings:
     <div className={`optrow f${focusClass(focus, `opt:${k}`)}`}>
       {meta.check && <span className="box">{value ? '✓' : ''}</span>}
       <span className="lbl">{meta.label}</span>
-      {meta.check ? <span className="st">{value ? 'ON' : 'OFF'}</span> : <span className="st choice">‹ {meta.show?.(value)} ›</span>}
+      {meta.check ? (
+        <span className="st">{value ? 'ON' : 'OFF'}</span>
+      ) : (
+        <span className="st choice">
+          ‹ {meta.swatch && <i className="swatch" style={{ background: meta.swatch(value) }} />}
+          {meta.show?.(value)} ›
+        </span>
+      )}
     </div>
   )
 }
@@ -299,7 +308,7 @@ const Settings = ({ ui, stats, vehicle, network, web, netBusy, holding, lastKey,
 
   if (tab === 'network') return <NetworkPage network={network} netBusy={netBusy} focus={focus} />
 
-  if (tab === 'display') return <DisplayPage focus={focus} settings={settings} />
+  if (tab === 'display') return focus.startsWith('acc:') ? <AccentPicker focus={focus} current={settings.accent} /> : <DisplayPage focus={focus} settings={settings} />
 
   if (tab === 'power') {
     return (
@@ -389,6 +398,23 @@ const Settings = ({ ui, stats, vehicle, network, web, netBusy, holding, lastKey,
 
 const ratio = (g: number) => (g / 1000).toFixed(3)
 
+// Push on Display > Highlight colour: every paint, one per row with its swatch. The knob moves, push picks,
+// Back keeps the saved one. The saved colour is ticked.
+const AccentPicker = ({ focus, current }: { focus: FocusId; current: SettingsValues['accent'] }) => (
+  <div className="content tabbed">
+    <div className="card opts">
+      <h3>Highlight colour · push to pick · BACK keeps {accentOf(current).name}</h3>
+      {ACCENTS.map(a => (
+        <div key={a.id} className={`optrow f accrow${focusClass(focus, `acc:${a.id}`)}`}>
+          <i className="swatch big" style={{ background: a.hex }} />
+          <span className="lbl">{a.name}</span>
+          <span className="st">{a.id === current ? '✓' : ''}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+)
+
 const DisplayPage = ({ focus, settings }: { focus: FocusId; settings: SettingsValues }) => {
   const glassAspect = settings.glassAspect
   return (
@@ -402,6 +428,7 @@ const DisplayPage = ({ focus, settings }: { focus: FocusId; settings: SettingsVa
         The glass is 135×72 mm (1.875 : 1); the panel is fed {OUTPUT_WIDTH}×{OUTPUT_HEIGHT}.
       </div>
     </div>
+    <OptionRow k="accent" settings={settings} focus={focus} />
     <div className={`btn f net compact${focusClass(focus, 'aspect')}`}>
       <span>Adjust with test pattern</span>
     </div>
@@ -580,7 +607,7 @@ export const NativeUi = (props: NativeUiProps) => {
   const g = settings.glassAspect
 
   return (
-    <div className="nui-root">
+    <div className="nui-root" style={accentStyle(settings.accent)}>
       {pagesUp && (
         <div className={`nui-page${ui.focus === 'pane' ? ' paning' : ''}`}>
           <div className="nui">

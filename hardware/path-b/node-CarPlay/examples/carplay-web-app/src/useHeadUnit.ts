@@ -175,7 +175,7 @@ export const useHeadUnit = ({ plugged, settings, update, preview, reloadCarplay,
         return null
       }
       if (repeat) return null
-      const result = nativeKey(uiRef.current, control)
+      const result = nativeKey(uiRef.current, control, settingsRef.current.accent)
       if (result.ui !== uiRef.current) setUi(result.ui)
       if (result.opensCarplay) setAsked(true)
       if (result.aspect) {
@@ -187,6 +187,7 @@ export const useHeadUnit = ({ plugged, settings, update, preview, reloadCarplay,
       // The page of a read-only tab scrolls; the one on screen is the only .content.tabbed.
       if (result.scroll) document.querySelector('.nui .content.tabbed')?.scrollBy({ top: result.scroll * SCROLL_STEP_PX, behavior: 'smooth' })
       if (result.cycle) updateRef.current({ [result.cycle]: nextValue(settingsRef.current, result.cycle) })
+      if (result.accent) updateRef.current({ accent: result.accent })
       if (result.toggleWeb) toggleWebRef.current()
       if (result.connect && netBusyRef.current?.state !== 'connecting') {
         setNetBusy({ state: 'connecting' })

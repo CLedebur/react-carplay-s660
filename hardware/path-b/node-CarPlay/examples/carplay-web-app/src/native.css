@@ -1,11 +1,14 @@
 /* Native head-unit UI. Design rules (the panel is only ~200-250 nits, and there is no touch):
-   pure black ground, white text, ONE focus treatment (solid yellow block, black text), status never
+   pure black ground, white text, ONE focus treatment (a solid block in the highlight colour, Settings > Display: accent.ts sets
+   --focus, --focus-ink for the text on it, and --focus-edge, white for paints too dark to see on black), status never
    by colour alone, nothing thinner than 2px or smaller than 15px. Laid out on 720x480; the glass
    stretches it. Mockup: hardware/path-b/ui-mockup/index.html */
 .nui-root {
   --line: #6e6e6e;
   --dim: #b4b4b4;
   --focus: #ffd400;
+  --focus-ink: #000;
+  --focus-edge: #ffd400;
   --ok: #4dff88;
   --warn: #ff9f1a;
   --bad: #ff5252;
@@ -26,9 +29,9 @@
 .nui .fit { position: absolute; left: 0; top: 0; height: 480px; transform-origin: 0 0; }
 
 /* focus: one treatment everywhere */
-.nui .f.focused { background: var(--focus) !important; color: #000 !important; border-color: var(--focus) !important; }
-.nui .f.focused * { color: #000 !important; }
-.nui .f.focused svg { stroke: #000; }
+.nui .f.focused { background: var(--focus) !important; color: var(--focus-ink) !important; border-color: var(--focus-edge) !important; box-shadow: inset 0 0 0 3px var(--focus-edge); }
+.nui .f.focused * { color: var(--focus-ink) !important; }
+.nui .f.focused svg { stroke: var(--focus-ink); }
 .nui svg.ico { stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 
 /* status strip + rail */
@@ -55,7 +58,7 @@
 .nui .rail .item:last-child { border-bottom: 0; }
 .nui .rail svg { width: 44px; height: 44px; }
 .nui .rail .item.active::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 8px; background: #fff; }
-.nui .rail .item.focused.active::before { background: #000; }
+.nui .rail .item.focused.active::before { background: var(--focus-ink); }
 .nui .rail .item.disabled { color: #777; }
 .nui .rail .item small { font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
 
@@ -64,14 +67,14 @@
 /* Pushed into a read-only tab: the knob scrolls it. A yellow bar on the left says so; the scrollbar shows how far. */
 .nui .content.tabbed::-webkit-scrollbar { width: 6px; }
 .nui .content.tabbed::-webkit-scrollbar-thumb { background: var(--dim); }
-.nui-page.paning .content.tabbed { box-shadow: inset 5px 0 0 var(--focus); }
+.nui-page.paning .content.tabbed { box-shadow: inset 5px 0 0 var(--focus-edge); }
 /* Gear pop-up over CarPlay: the focus yellow, black figure, top right */
 .nui .gearpop {
-  position: absolute; top: 14px; right: 14px; width: 120px; height: 120px; background: var(--focus); color: #000;
+  position: absolute; top: 14px; right: 14px; width: 120px; height: 120px; background: var(--focus); color: var(--focus-ink);
   display: flex; align-items: center; justify-content: center; font-size: 100px; font-weight: 900; line-height: 1;
-  border: 3px solid #000;
+  border: 3px solid var(--focus-ink);
 }
-.nui-page.paning .content.tabbed::-webkit-scrollbar-thumb { background: var(--focus); }
+.nui-page.paning .content.tabbed::-webkit-scrollbar-thumb { background: var(--focus-edge); }
 
 /* tab bar under the strip */
 .nui .tabs { position: absolute; left: 110px; right: 0; top: 48px; height: 44px; border-bottom: 2px solid var(--line); display: flex; overflow: hidden; }
@@ -79,7 +82,7 @@
 .nui .tab:last-child { border-right: 0; }
 .nui .tab.on { color: #fff; }
 .nui .tab.on::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 5px; background: #fff; }
-.nui .tab.focused.on::after { background: #000; }
+.nui .tab.focused.on::after { background: var(--focus-ink); }
 
 /* waiting for the phone */
 .nui .wait h2 { font-size: 36px; line-height: 1.1; margin-bottom: 4px; }
@@ -172,7 +175,7 @@
 .nui .pattern .diag { stroke: var(--warn); stroke-width: 2; }
 .nui .pattern .shape { fill: none; stroke: #fff; stroke-width: 4; }
 .nui .pattern .shape.solid { fill: rgba(255, 255, 255, 0.14); }
-.nui .pattern .frame { fill: none; stroke: var(--focus); stroke-width: 4; }
+.nui .pattern .frame { fill: none; stroke: var(--focus-edge); stroke-width: 4; }
 .nui .pattern-cap { position: absolute; left: 14px; bottom: 14px; width: 340px; background: #000; border: 3px solid #fff; padding: 6px 10px; font-size: 17px; font-weight: 700; line-height: 1.25; }
 .nui .pattern-cap .big { display: block; font-size: 34px; font-weight: 800; margin: 0; }
 .nui .pattern-cap .big .n { font-size: 34px; }
@@ -236,12 +239,16 @@
 .nui .wbox .n { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .nui .swheel { width: 124px; height: 124px; display: block; margin: 6px auto 4px; }
 .nui .swheel * { fill: none; stroke: #fff; stroke-width: 6; stroke-linecap: round; }
-.nui .swheel .top { stroke: var(--focus); }
+.nui .swheel .top { stroke: var(--focus-edge); }
 .nui .vchips { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 10px; height: 100%; }
 .nui .chip { border: 3px solid #fff; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
 .nui .chip .k { font-size: 16px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); font-weight: 700; }
 .nui .chip .s { font-size: 23px; font-weight: 800; line-height: 1.1; }
 .nui .chip.on { background: #fff; color: #000; }
+.nui .swatch.big { width: 40px; height: 30px; margin-right: 14px; flex: 0 0 auto; }
+.nui .accrow { display: flex; align-items: center; }
+.nui .accrow .lbl { flex: 1; }
+.nui .swatch { display: inline-block; width: 18px; height: 18px; border: 2px solid #fff; margin-right: 6px; vertical-align: -2px; }
 .nui .chip.on .k { color: #000; }
 .nui .chip.warn { border-color: var(--warn); color: var(--warn); }
 .nui .chip.on.warn { background: var(--warn); color: #000; }
