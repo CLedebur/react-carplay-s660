@@ -1,0 +1,10 @@
+#!/bin/sh
+# Read the 23 identifiers the instrument cluster (0x60) answers (DIAG-PLAN stage 6 pass C), once,
+# into /persist/can/cluster-LABEL.jsonl. Read before and after changing the dash; compare the two.
+[ -n "$1" ] || { echo "usage: s660-cluster-read LABEL"; exit 2; }
+D=/persist/can/bin/s660-diag
+export S660_DIAG_LOG=/persist/can/cluster-$1.jsonl
+$D session-start || exit 1
+for did in 7000 7010 7012 7020 7021 7022 7028 7029 702A 702B 7060 7061 7068 70A0 70A1 70A4 70A8 70C0 70C1 70FE 70FF E600 E602; do
+  $D uds 60 22 $did
+done
