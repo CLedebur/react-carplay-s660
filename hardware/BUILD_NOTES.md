@@ -3012,3 +3012,9 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   --virtual-time-budget=8000 --screenshot=/tmp/x.png "http://localhost:3000/?view=vehicle.battery"`. **Such a page
   never starts the dongle.** Before that rule, the first headless screenshot did: CarPlay's start resets the dongle,
   and it dropped off USB under the running kiosk for 3 s (the kiosk recovered by itself).
+- **CarPlay off, final form:** the app never starts the dongle and stops looking for it; the CarPlay panel says
+  "CarPlay is off" and the strip shows one "CarPlay off" pill instead of Dongle / Phone. Left unstarted, **the dongle
+  reboots itself about every 12 s** (it falls off USB for ~4 s and comes back); that is harmless, and the phone does
+  not connect (checked 2026-11-02). **Switching the dongle's hub port off was tried and dropped:** the port really
+  loses power (`…/1-1.3-port1/disable`, the dongle's light goes out), but on this car something else shares that port
+  through a splitter, and it went off too. Do not reintroduce port switching for this.

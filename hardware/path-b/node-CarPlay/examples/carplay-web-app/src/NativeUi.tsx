@@ -169,6 +169,16 @@ const Waiting = ({ dongle, linkStatus, phone }: Pick<NativeUiProps, 'dongle' | '
   )
 }
 
+// Settings > CarPlay > CarPlay is off: the dongle is never started, so there is nothing to wait for. Left
+// alone it reboots itself about every 12 s; that is harmless, and the phone does not connect.
+const CarplayOff = () => (
+  <div className="content wait">
+    <h2>CarPlay is off</h2>
+    <p className="sub">The dongle is not started, so your phone cannot connect to it.</p>
+    <div className="hint">Turn it back on in Settings › CarPlay.</div>
+  </div>
+)
+
 const Row = ({ k, v, tone = '' }: { k: string; v: string; tone?: '' | 'ok' | 'warn' | 'bad' | 'off' }) => (
   <div className="row">
     <span className="k">{k}</span>
@@ -581,14 +591,23 @@ export const NativeUi = (props: NativeUiProps) => {
                 <>
                   <div className="strip">
                     <span className="title">{TITLES[ui.panel]}</span>
-                    <span className={`pill ${dongle ? 'ok' : 'off'}`}>
-                      <i />
-                      Dongle
-                    </span>
-                    <span className={`pill ${phone ? 'ok' : 'off'}`}>
-                      <i />
-                      {phone ? <>Phone <b>connected</b></> : 'Phone'}
-                    </span>
+                    {settings.carplayEnabled ? (
+                      <>
+                        <span className={`pill ${dongle ? 'ok' : 'off'}`}>
+                          <i />
+                          Dongle
+                        </span>
+                        <span className={`pill ${phone ? 'ok' : 'off'}`}>
+                          <i />
+                          {phone ? <>Phone <b>connected</b></> : 'Phone'}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="pill off">
+                        <i />
+                        CarPlay off
+                      </span>
+                    )}
                     {settings.driveLog !== 'off' && (
                       <span className={`pill ${stats?.driveLog?.recording ? (stats.driveLog.engine ? 'warn' : 'ok') : 'off'}`}>
                         <i />
@@ -609,7 +628,7 @@ export const NativeUi = (props: NativeUiProps) => {
                   ) : ui.panel === 'vehicle' ? (
                     <VehiclePage tab={ui.tab.vehicle} data={vehicle} settings={settings} demo={vehicleDemo} />
                   ) : (
-                    <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} />
+                    settings.carplayEnabled ? <Waiting dongle={dongle} linkStatus={linkStatus} phone={phone} /> : <CarplayOff />
                   )}
                 </>
               )}

@@ -350,6 +350,7 @@ function App() {
   // event's own latency.
   useEffect(() => {
     if (!settingsLoaded) return // start the dongle with the saved settings, not the defaults
+    if (!settings.carplayEnabled) return // CarPlay off: the dongle is never started, so nothing to look for
     navigator.usb.onconnect = async () => {
       checkDevice()
     }
@@ -361,7 +362,7 @@ function App() {
     checkDevice()
     const pollId = setInterval(checkDevice, POLL_INTERVAL_MS)
     return () => clearInterval(pollId)
-  }, [carplayWorker, checkDevice, settingsLoaded])
+  }, [carplayWorker, checkDevice, settingsLoaded, settings.carplayEnabled])
 
   const carplayEnabledAtLoad = useRef<boolean | null>(null)
   useEffect(() => {
