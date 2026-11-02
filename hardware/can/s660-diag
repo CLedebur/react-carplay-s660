@@ -102,8 +102,10 @@ def session_stop():
     mode = adapter(["C", "M1", "m"])
     if mode != "M1":
         sys.exit(f"adapter replied '{mode}', not M1: unplug it (power-up is silent)")
+    # --no-block: when the drive recorder's own stop calls this, a blocking start would wait for that
+    # stop to finish, which waits for this: a deadlock until systemd's timeouts (seen 2026-11-02).
     # During shutdown systemd refuses the start; the adapter is already verified silent by then.
-    if subprocess.run(["systemctl", "start", "s660-can.service"]).returncode != 0:
+    if subprocess.run(["systemctl", "start", "--no-block", "s660-can.service"]).returncode != 0:
         print("session closed: adapter back in M1 (silent); s660-can.service not restarted (shutting down?)")
         return
     print("session closed: adapter back in M1 (silent), s660-can.service running")
