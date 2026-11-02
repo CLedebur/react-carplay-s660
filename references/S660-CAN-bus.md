@@ -3,8 +3,9 @@
 What is known about the CAN traffic on a Honda S660 (JW5). It was reverse-engineered by the
 Japanese owner **ACTY typeR** in 2022–2023, by listening at the **OBD-II port** with a Raspberry
 Pi Zero, a CAN HAT and `candump`/`cansniffer`. This page restates their findings in English, in
-a form this project can code against. Nothing on this page has been checked on our car yet
-(BUILD_NOTES §34). Treat every row as "reported", not "verified".
+a form this project can code against. Rows marked **✓ our car** were checked on this
+project's S660 on 2026-11-01 (see "Checked on our car" below and BUILD_NOTES §34). Treat every
+other row as "reported", not "verified".
 
 Sources and attribution are at the end. Where the sources disagree, the conflict is called out
 in place. It is not silently resolved.
@@ -13,15 +14,65 @@ in place. It is not silently resolved.
 
 | Use | ID | Where | Meaning |
 |---|---|---|---|
-| Reverse camera trigger | **0x1A6** | byte 2, bit 2 | Reverse light on |
-| Night / day UI dimming | **0x1A6** | byte 0, bits 1–0 | Headlights: 0 off, 1 parking lights, 2 low beam, 3 high beam |
-| Vehicle speed | **0x309** | bytes 0–1 | Speed, 0.01 km/h (meter-smoothed) |
-| Turn signals | **0x294** | byte 0, bit 6 / bit 5 | Right / left indicator |
-| Handbrake | **0x1A6** | byte 0, bit 2 | Handbrake on / brake warning light |
+| Reverse camera trigger | **0x1A6** | byte 2, bit 2 | Reverse light on **✓ our car** |
+| Night / day UI dimming | **0x1A6** | byte 0, bits 1–0 | Headlights: 0 off, 1 parking lights, 2 low beam, 3 high beam **✓ our car** (1, 2, 3 seen) |
+| Vehicle speed | **0x309** | bytes 0–1 | Speed, 0.01 km/h, as the speedometer shows it **✓ our car** (reads 4.95% above the wheel speeds: the meter's built-in over-read). For true speed, average the 0x1D0 wheels. |
+| Gear | — | — | Not on the bus. Calculate it from 0x1DC RPM ÷ 0x158 speed (see "Gear position") |
+| Yaw rate | **0x091** | bytes 0–1 | raw − 32768, ≈0.0037 °/s per count, + = turning right **✓ our car** |
+| Turn signals | **0x294** | byte 0, bit 6 / bit 5 | Right / left indicator **✓ our car** |
+| Handbrake | **0x1A6** | byte 0, bit 2 | Handbrake on / brake warning light **✓ our car** |
 
-The OBD-II port is where the author tapped, and all of the IDs below were seen there. So for
-these signals, the gateway worry in BUILD_NOTES §34 looks unfounded. Our own capture still
-has to confirm it.
+The OBD-II port is where the author tapped, and all of the IDs below were seen there. Our
+capture at the same port saw **exactly the same 41 IDs**, no more and no fewer, at 500 kbit/s.
+
+## Checked on our car (2026-11-01)
+
+Parked, ignition on, engine off. A 3 min 36 s `candump` at the OBD-II port while the steps below
+were done (`2026-11-01-first.log` + `.markers`, with timestamped step markers; kept out of git, on the Pi under `/persist/can/` and locally in `hardware/can/captures/`).
+
+| Step | What changed | Matches the cheat sheet? |
+|---|---|---|
+| Headlights: parking → low → high (pulled twice) | 0x1A6 byte 0 bits 1–0: 0 → 1 → 2 → 3 → 2 → 3 → 2 | Yes. It ended at 2 because the switch was left on AUTO; see note 1. |
+| Left indicator | 0x294 byte 0 bit 5 on for 3.8 s | Yes |
+| Right indicator | 0x294 byte 0 bit 6 on for 5.7 s | Yes. Both bits stay steady while the lamp flashes, so they are the switch state. |
+| Clutch down, reverse, neutral, clutch up | 0x1A6 byte 2 bit 2 on for 8.2 s (reverse); **0x13C byte 6 bit 2** went 0 while the clutch was down | Reverse: yes. **Clutch: the bit differs.** The sheet says byte 6 bit **5**; our car uses bit **2** (same meaning: 1 = pedal up). |
+| Brake pedal, handbrake off, on | 0x1A6 byte 0 bit 2 went 0 for 6.3 s (handbrake off); 0x17C byte 4 bit 0 and byte 6 bit 5 (brake); 0x1A4 bytes 0–1 and 0x1AA bytes 5–6 (pressure, raw 102 at rest, up to 272) | Yes |
+| Wipers intermittent, off | 0x294 byte 0 bits 4–3 = 01 for 1.7 s (and an accidental 10 = low earlier, note 3) | Yes |
+
+Values at rest that agree with the cheat sheet: 0x18B boost 756.6 mmHg absolute (atmospheric,
+engine off), 0x1DC RPM 0, 0x309 speed 0. Checked against the dash, and they match exactly:
+odometer (0x294 bytes 3–5) **44,677 km ✓**, outside temperature (0x21E) **23 °C ✓**, fuel
+(0x1A6 byte 3) **105 = full ✓**. Coolant (0x324) read 46 °C (no dash gauge to compare).
+
+Notes:
+1. After the headlight step, 0x1A6 bits 1–0 stayed at **2** (low beam) to the end of the capture.
+   The switch had been left on **AUTO**, not OFF. So the value follows what the lamps are doing,
+   not the switch position: AUTO with the lamps lit reads the same as low beam. For night dimming
+   that is the signal we want.
+2. **0x1A6 byte 4 is not the inverse of byte 3 on our car.** Byte 3 = 105 (0x69) all along,
+   byte 4 = 0x15–0x17.
+3. During the left-indicator step, 0x294 byte 0 bits 4–3 read 10 for 0.7 s and then 01 for
+   0.1 s, before the indicator came on. The wiper stalk was touched by accident (confirmed), so
+   10 = low is confirmed too.
+4. Brake pressure at rest read raw **102**, close to the "103 = 0 MPa" point in the sheet. So
+   the (raw − 81) / 42 line is off near zero, as the 0x1A4 entry warns.
+
+### Drive (2026-11-01, 13 min 28 s)
+
+Driveway, local roads, roundabouts, a dual carriageway, and slow full-lock circles. 1,168,457
+frames, nothing lost. The capture shows a 51.7 s gap at 19 s, which is the Pi's clock stepping
+at its first NTP sync, not missing frames. Use monotonic time or wait for the sync in any
+logger. Peaks: 128.4 km/h (0x309), 6,626 rpm (0x1DC), boost 1,478 mmHg absolute (0x18B, about
+0.95 bar above atmospheric), steering −483° / +464°, brake raw up to 245.
+
+- **Wheel order is FL, FR, RL, RR** for 0x1D0 and 0x255 (details under "Wheel order").
+- **0x091 bytes 0–1 are the yaw rate**, new; "unknown" in the sheet.
+- **Longitudinal G (0x1EA bytes 2–3): 0.00169 m/s² per count**, measured.
+- **Gear position is not on the bus**, and neither is neutral. A parked lever-by-lever test confirmed it at bit level. It is calculated from RPM ÷ speed (table under "Gear position").
+- 0x17C byte 0 (pedal) and bytes 2–3 (RPM) equal 0x13C byte 4 and 0x1DC (r = 1.00).
+- Speed above 40 km/h: 0x309 = 1.0495 × the 0x1D0 wheel average, and 0x158 = 1.0187 × it (medians).
+- 0x1AB (EPS), 0x21A, 0x221, 0x324 bytes 2–3/5 and 0x38C did not follow any known signal.
+  They stay unknown.
 
 ## Conventions
 
@@ -48,21 +99,27 @@ Scaling and ranges are as the author reported them. `?` marks the author's own u
 |---|---|
 | byte 2 | Cycles through 0x0C, 0x1B, 0x2A, 0x39. Purpose unknown. Bytes 3–7 not used. |
 
-### 0x091 (145) — unknown
+### 0x091 (145) — yaw rate (found on our car; "unknown" in the sheet)
+| Byte/bit | Meaning |
+|---|---|
+| bytes 0–1 | **Yaw rate ✓ our car.** Offset binary: rate = raw − 32768. About **0.0037 °/s per count**, positive = turning **right** (clockwise seen from above). It tracks the yaw rate worked out from the rear wheel speeds with r = −0.98. The scale is ±5%, limited by the assumed rear track (1.275 m). |
+| bytes 2–3 | Unknown |
 
 ### 0x13C (316) — accelerator pedal / torque
+On the drive, bytes 0–1 and bytes 2–3 both tracked the pedal and boost (r = 0.95), range
+−85 to 491, which fits the sheet's torque guess.
 | Byte/bit | Meaning |
 |---|---|
 | bytes 0–1 | Estimated torque?, signed. Follows throttle/accelerator. Goes to −1 for 2–3 s after lifting off. Goes positive when the A/C compressor starts (idle control?). |
 | bytes 2–3 | Requested torque?. Tracks bytes 0–1, the same or slightly earlier. Slower than the pedal. |
 | byte 4 | Accelerator pedal position, unsigned 0–255 |
-| byte 6, bit 5 | Clutch: 1 = pedal up (engaged), 0 = pedal pressed |
+| byte 6, bit **2** | Clutch: 1 = pedal up (engaged), 0 = pedal pressed. **✓ our car, on bit 2.** The sheet says bit 5. |
 | byte 7 | C/S |
 
 ### 0x156 (342) — steering
 | Byte/bit | Meaning |
 |---|---|
-| bytes 0–1 | Steering angle, signed, 0.1° per count (±500 °). Right +, left − |
+| bytes 0–1 | Steering angle, signed, 0.1° per count (±500 °). Right +, left −. **✓ our car:** lock to lock read −483.2° to +464.4°, and the first right turn out of the driveway read +211°. |
 | bytes 2–3 | Steering rate, signed, 1 °/s per count (±3000) |
 | byte 4, bits 2 / 1 / 0 | Steering sensor 1 / 2 / 3 status |
 | byte 5 | C/S |
@@ -125,7 +182,7 @@ Scaling and ranges are as the author reported them. `?` marks the author's own u
 | **byte 0, bits 1–0** | **Headlights: 0 off, 1 parking lights, 2 low beam, 3 high beam** |
 | **byte 2, bit 2** | **Reverse light on** |
 | byte 3 | Fuel level: about 5 (empty) to 105 (full). The low-fuel lamp comes on near 15. Sloshes noticeably while driving. |
-| byte 4 | Bitwise inverse of byte 3 |
+| byte 4 | The sheet says this is the bitwise inverse of byte 3. **Not on our car:** byte 3 = 0x69, byte 4 = 0x15–0x17. |
 | byte 7 | C/S |
 
 ### 0x1AA (426) — VSA / AHA / ABS related?
@@ -186,13 +243,16 @@ big-endian, MSB-first packing. The order is in the wheel-order note below.
 ### 0x1EA (490) — acceleration (G sensor)
 | Byte/bit | Meaning |
 |---|---|
-| bytes 0–1 | Lateral acceleration, signed. Left −, right +. |
-| bytes 2–3 | Longitudinal acceleration, signed. Accelerating +, braking −. |
+| bytes 0–1 | Lateral acceleration, signed. **On our car the raw value is positive while turning left.** The sheet's "left −, right +" probably means the force you feel. The scale is not confirmed (see below). |
+| bytes 2–3 | Longitudinal acceleration, signed. Accelerating +, braking −. **✓ our car: 0.00169 m/s² per count** (1 g ≈ 5,800 counts). |
 | byte 7 | C/S |
 
-The author gives the scale as "0.0015 m/s²" per count with a ±20 range. The units in that
-note are not consistent: ±20 m/s² would need about 0.0006 m/s² per count over a 16-bit range.
-Calibrate the scale against a known stop before trusting it.
+The author gives the scale as "0.0015 m/s²" per count. On the 2026-11-01 drive, a fit of
+bytes 2–3 against the rate of change of the wheel speeds gave **0.00169 m/s² per count**,
+r = 0.97 over 1,171 half-second windows. That is about 13% more than the sheet. A fit of bytes
+0–1 against speed × yaw rate (0x091) was weak (r ≈ 0.5), so the lateral scale is unconfirmed.
+The same sensor most likely uses the same 0.00169 for both axes. The drive's lateral peaks
+(−2910 / +1412 counts) would then be −0.50 g / +0.24 g, which is plausible.
 
 ### 0x1FB (507) — unknown
 Byte 0 holds only the counter and checksum.
@@ -313,10 +373,41 @@ changed. Purpose unknown.
 | Original sheet, 0x1D0 and 0x255 (2022) | front left | front right | rear left | rear right |
 | English sheet copy, all three | front left | front right | rear left | rear right |
 
-The author's last word (2023) is **FL, RL, FR, RR**, and the original sheet's 0x19B row
-already agrees with it. The 2022 labels on 0x1D0/0x255 are older than that correction. The
-English copy changed the 0x19B order during translation. **Use FL, RL, FR, RR.** You can
-confirm it with the car on stands by turning one wheel by hand.
+| **Our car, 2026-11-01 drive (measured)** | **front left** | **front right** | **rear left** | **rear right** |
+
+**Measured on our car: FL, FR, RL, RR for 0x1D0 and 0x255.** That matches the 2022 sheet
+labels and the English copy, not the 2023 correction. Method: at full lock and walking speed,
+the front wheels travel farther than the rears, and the outside farther than the inside. Mean
+speed relative to all four, over 43 s at left lock:
+
+| | Wheel 1 | Wheel 2 | Wheel 3 | Wheel 4 |
+|---|---|---|---|---|
+| 0x1D0, left lock | 0.938 | 1.211 | 0.775 | 1.076 |
+| 0x1D0, right lock (22 s) | 1.209 | 0.940 | 1.080 | 0.771 |
+| Geometry, S660 at full lock (expected) | FL 0.94 | FR 1.19 | RL 0.79 | RR 1.08 |
+
+Front versus rear does not depend on any sign convention: wheels 1 and 2 beat 3 and 4 on the
+same side in every tight turn. Left versus right uses the steering sign (right +, checked
+against the driveway's right turn). The car has staggered tyres (15-inch front, 16-inch rear),
+but on straights above 30 km/h front and rear agree within 0.03%, so the ABS already corrects
+for them. 0x19B (pulse counters) was not tested; its sheet row says FL, RL, FR, RR.
+
+## Gear position: not broadcast, calculate it
+
+No byte or nibble of the 41 IDs follows the selected gear (searched on the 2026-11-01 drive;
+the best candidates only track speed). **A parked bit-level test confirmed it** the same evening:
+ignition on, engine off, the lever moved neutral → each gear 1–6 → neutral, then reverse, about 5 s
+each, with a time marker per stage (`2026-11-01-gears.log`/`.markers`). Every one of the 41 IDs'
+bits was compared before and after each move. **Only reverse produced a signal** (0x1A6 byte 2
+bit 2). No bit followed 1st to 6th, and **no neutral bit** exists either. The other bits that
+changed were sensor noise from the car rocking (0x091), cooling temperatures (0x324), and
+counters. The engine computer may still know neutral (many have a neutral switch), but it does
+not broadcast it here; asking for it would need diagnostic requests. Work it out from RPM ÷ speed with the clutch pedal up
+(0x13C byte 6 bit 2 = 1). Measured ratios, 0x1DC RPM per km/h of 0x158:
+
+| Gear | 1st | 2nd | 3rd | 4th | 5th | 6th |
+|---|---|---|---|---|---|---|
+| rpm per km/h | 158.5 | 99 | 68 | 51 | ≈40 (4 samples only) | 30.5 |
 
 ## Signals the author looked for and did not find
 

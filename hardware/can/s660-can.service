@@ -1,0 +1,15 @@
+[Unit]
+Description=CAN listen-only on the CANable as can0 (S660 silent firmware, BUILD_NOTES §34)
+# Started by 90-s660-canable.rules when the adapter appears; stops when it is unplugged.
+BindsTo=dev-s660\x2dcan.device
+After=dev-s660\x2dcan.device
+
+[Service]
+# slcand -s code: 4 = 125k, 5 = 250k, 6 = 500k. Override with a drop-in; a wrong rate only
+# shows no frames, because the firmware stays silent.
+Environment=S660_CAN_SPEED=6
+ExecStartPre=/usr/local/sbin/s660-can-check /dev/s660-can
+ExecStart=/usr/bin/slcand -F -o -c -s${S660_CAN_SPEED} /dev/s660-can can0
+ExecStartPost=/bin/sh -c 'for i in $(seq 50); do ip link show can0 >/dev/null 2>&1 && exec ip link set can0 up; sleep 0.1; done; exit 1'
+Restart=on-failure
+RestartSec=5
