@@ -145,6 +145,15 @@ const videoDecoderBusy = () => {
   return false
 }
 
+// The drive recorder's own report (s660-drive-log.service); null when it is not running.
+const driveLogState = () => {
+  try {
+    return JSON.parse(readText('/run/s660-drive-log.json'))
+  } catch {
+    return null
+  }
+}
+
 const stats = async full => ({
   cpuTempC: cpuTempC(),
   nvmeTempC: nvmeTempC(),
@@ -156,6 +165,7 @@ const stats = async full => ({
   persistFreeGb: persistFreeGb(),
   mitmLinked: mitmLinked(),
   videoDecoderBusy: full ? videoDecoderBusy() : null,
+  driveLog: driveLogState(),
 })
 
 // ---- network (NetworkManager). Wi-Fi is preferred; the phone's Bluetooth tethering is the fallback.
@@ -287,6 +297,8 @@ const SETTINGS = {
   carplayShape: { default: 'fill', allowed: ['fill', 'exact'] },
   // Visible glass width / height x 1000: a range, not a list (carplay-web-app/src/settings.ts GLASS_ASPECT).
   glassAspect: { default: 1875, min: 1500, max: 2400 },
+  // The drive recorder (hardware/can/s660-drive-log) reads this from the same file every 2 s.
+  driveLog: { default: 'off', allowed: ['off', 'listen', 'engine'] },
 }
 
 const isAllowed = (spec, v) =>

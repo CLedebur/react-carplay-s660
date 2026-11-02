@@ -6,5 +6,5 @@ RequiresMountsFor=/persist
 [Service]
 Type=exec
 ExecStart=/persist/can/bin/s660-passB
-ExecStopPost=/persist/can/bin/s660-diag session-stop
+ExecStopPost=/usr/local/sbin/s660-diag session-stop
 RuntimeMaxSec=55min

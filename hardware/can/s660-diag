@@ -76,6 +76,8 @@ def adapter(cmds):
 
 
 def session_start():
+    if os.path.exists(SESSION):
+        sys.exit(f"a session is already open ({SESSION}): the drive recorder's, or another one")
     subprocess.run(["systemctl", "stop", "s660-can.service"], check=True)
     time.sleep(0.5)
     if adapter(["C", "M0", "m"]) != "M0":
@@ -100,7 +102,10 @@ def session_stop():
     mode = adapter(["C", "M1", "m"])
     if mode != "M1":
         sys.exit(f"adapter replied '{mode}', not M1: unplug it (power-up is silent)")
-    subprocess.run(["systemctl", "start", "s660-can.service"], check=True)
+    # During shutdown systemd refuses the start; the adapter is already verified silent by then.
+    if subprocess.run(["systemctl", "start", "s660-can.service"]).returncode != 0:
+        print("session closed: adapter back in M1 (silent); s660-can.service not restarted (shutting down?)")
+        return
     print("session closed: adapter back in M1 (silent), s660-can.service running")
 
 

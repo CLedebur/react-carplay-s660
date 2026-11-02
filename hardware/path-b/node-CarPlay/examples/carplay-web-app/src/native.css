@@ -41,6 +41,7 @@
 .nui .pill i { width: 12px; height: 12px; border-radius: 50%; background: currentColor; display: inline-block; }
 .nui .pill.ok { color: var(--ok); border-color: var(--ok); }
 .nui .pill.off { color: var(--dim); }
+.nui .pill.warn { color: var(--warn); border-color: var(--warn); }
 .nui .pill.off i { background: transparent; border: 2px solid currentColor; }
 .nui .pill b { color: #fff; font-weight: 700; }
 .nui .clock { font-variant-numeric: tabular-nums; font-size: 24px; margin-left: 6px; }

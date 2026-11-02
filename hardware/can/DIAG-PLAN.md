@@ -309,7 +309,7 @@ On the Pi under `/persist/can/bin/` (repo copies in `hardware/can/`), units in `
 ### Errand, 2026-11-02 — stage 5 drive poll and the cluster before / after
 **Drive poll:** two of three legs recorded (`2026-11-02-1101-drive-poll`, out, up to 139 km/h; `-1115`, a short
 hop). **The third leg, home with the two roundabout loops, was not:** the arming covered one more boot, and the
-errand had three ignition cycles. Fix before the next drive: arm for a time window, not a number of boots.
+errand had three ignition cycles. Fixed by the drive recorder (BUILD_NOTES §40), which records every ignition-on while it is switched on; it replaces the one-off `s660-drive-poll` arming.
 3,559 of 4,446 requests answered (the rest with the engine computer off around ignition cycles). Fault codes
 none before each leg. Ranges: load 0–100 %, coolant 45–95 °C, STFT −10 to +17 %, LTFT +1.6 to +3.1 %,
 **MAP 22–182 kPa (about +0.8 bar boost)**, rpm to 5,181, timing −14 to +44°, intake 25–47 °C, lambda 0.7–2.0

@@ -92,6 +92,15 @@ const fmtUptime = (s: number | null) =>
 
 const focusClass = (focus: FocusId, id: FocusId) => (focus === id ? ' focused' : '')
 
+// The drive recorder, for the Status row. "Sending" whenever the adapter is out of silent mode.
+const recLabel = (setting: SettingsValues['driveLog'], stats: SystemStats | null) => {
+  const d = stats?.driveLog
+  if (setting === 'off') return 'Off'
+  if (!d) return '-- (recorder not running)'
+  if (!d.recording) return '○ Waiting for the car'
+  return `● ${d.engine ? 'Listening + sending' : 'Listening'} · ${(d.bytes / 1e6).toFixed(0)} MB`
+}
+
 const Rail = ({ panel, focus }: { panel: Panel; focus: FocusId }) => (
   <div className="rail">
     <div className={`item f${panel === 'carplay' ? ' active' : ''}${focusClass(focus, 'rail:carplay')}`}>
@@ -196,6 +205,7 @@ const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: S
   nightMode: { label: 'CarPlay night mode', check: true },
   carplayWidth: { label: 'CarPlay width (after Reload)', show: v => `${v} px${v === 896 ? ' · true shape' : ''}` },
   carplayShape: { label: 'CarPlay picture', show: v => (v === 'fill' ? 'Fill screen' : 'True shape') },
+  driveLog: { label: 'Drive recording', show: v => (v === 'off' ? 'Off' : v === 'listen' ? 'Listen only' : 'Listen + engine data') },
 }
 
 const OptionRow = <K extends CycleKey>({ k, settings, focus }: { k: K; settings: SettingsValues; focus: FocusId }) => {
@@ -349,6 +359,7 @@ const Settings = ({ ui, stats, vehicle, network, web, netBusy, holding, lastKey,
           <Row k="Pico link" v={stats ? (stats.mitmLinked ? '● Connected' : '○ Not found') : '--'} tone={stats ? (stats.mitmLinked ? 'ok' : 'bad') : 'off'} />
           <Row k="Last key" v={lastKey ?? '--'} />
           <Row k="CAN bus" v={vehicle === null ? '--' : vehicle.live ? '● Receiving' : '○ No signal'} tone={vehicle?.live ? 'ok' : 'off'} />
+          <Row k="Drive rec" v={recLabel(settings.driveLog, stats)} tone={stats?.driveLog?.recording ? (stats.driveLog.engine ? 'warn' : 'ok') : 'off'} />
         </div>
         <div className="card">
           <h3>CarPlay &amp; storage</h3>
@@ -557,6 +568,12 @@ export const NativeUi = (props: NativeUiProps) => {
                       <i />
                       {phone ? <>Phone <b>connected</b></> : 'Phone'}
                     </span>
+                    {settings.driveLog !== 'off' && (
+                      <span className={`pill ${stats?.driveLog?.recording ? (stats.driveLog.engine ? 'warn' : 'ok') : 'off'}`}>
+                        <i />
+                        {stats?.driveLog?.engine ? 'Rec + OBD' : 'Rec'}
+                      </span>
+                    )}
                     <span className={`pill ${stats?.mitmLinked ? 'ok' : 'off'}`}>
                       <i />
                       Controls

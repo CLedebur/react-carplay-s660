@@ -1,0 +1,171 @@
+#!/usr/bin/python3
+# Drive recorder (BUILD_NOTES §40): records every drive to /persist/can/drives/ while Settings >
+# Options > Drive recording is on. Runs as s660-drive-log.service, from boot to shutdown.
+#
+#   off     nothing is recorded
+#   listen  the bus, as heard (candump -L): nothing is ever sent
+#   engine  the bus, plus read-only OBD requests to the engine computer (s660-diag poll, DIAG-PLAN
+#           stage 5): the adapter leaves silent mode for as long as the recording runs
+#
+# A recording starts when the car's own broadcast is heard and stops 10 s after it goes quiet
+# (ignition off), so every ignition-on is one file, however many stops a trip has. The setting is
+# re-read every 2 s, so a change applies at once (a new file in the new mode). The newest recordings
+# are kept up to CAP_BYTES; the oldest go first. The state is in /run/s660-drive-log.json for the UI.
+import glob, json, os, signal, socket, struct, subprocess, sys, time
+
+SETTINGS = os.environ.get("S660_SETTINGS_FILE", "/persist/ui/settings.json")
+DIR = os.environ.get("S660_DRIVE_DIR", "/persist/can/drives")
+STATUS = os.environ.get("S660_DRIVE_STATUS", "/run/s660-drive-log.json")
+IFACE = os.environ.get("S660_DIAG_IFACE", "can0")
+DIAG = os.environ.get("S660_DIAG", "/usr/local/sbin/s660-diag")
+SESSION = os.environ.get("S660_DIAG_SESSION", "/run/s660-diag-session")
+OWN = SESSION + ".drive-log"            # our session, as opposed to a manual s660-diag one
+CAP_BYTES = 20 * 1024 ** 3
+QUIET_S = 10                            # bus silent this long = ignition off: the recording ends
+TICK_S = 2
+# Load, coolant, trims, MAP, rpm, speed, timing, intake, throttle, wide-band O2, catalyst, voltage,
+# absolute load, commanded lambda. 15 PIDs at 5 requests per second: each one about every 3 s.
+PIDS = "04 05 06 07 0B 0C 0D 0E 0F 11 34 3C 42 43 44".split()
+POLL_RATE = "5"
+
+
+def mode_setting():
+    try:
+        v = json.load(open(SETTINGS)).get("driveLog", "off")
+    except (OSError, ValueError):
+        v = "off"
+    return v if v in ("off", "listen", "engine") else "off"
+
+
+def bus_heard(timeout=1.0):
+    """True if the car broadcast a frame within `timeout`. Only 11-bit frames count: the car's
+    broadcast is all 11-bit, our own OBD requests (which the host sees too) are 29-bit."""
+    try:
+        s = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        s.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FILTER,
+                     struct.pack("=II", 0, socket.CAN_EFF_FLAG | socket.CAN_RTR_FLAG))
+        s.bind((IFACE,))
+        s.settimeout(timeout)
+        s.recv(16)
+        s.close()
+        return True
+    except OSError:                       # no can0 yet, or a timeout
+        return False
+
+
+def boot_tag():
+    try:
+        return open("/proc/sys/kernel/random/boot_id").read()[:4]
+    except OSError:
+        return "0000"
+
+
+def prune():
+    files = sorted(glob.glob(os.path.join(DIR, "*")), key=os.path.getmtime)
+    total = sum(os.path.getsize(f) for f in files)
+    while files and total > CAP_BYTES:
+        f = files.pop(0)
+        total -= os.path.getsize(f)
+        os.remove(f)
+
+
+class Recorder:
+    def __init__(self):
+        self.mode = None                  # the mode of the recording running, or None
+        self.base = None
+        self.since = None
+        self.engine = False               # requests are being sent right now
+        self.note = ""
+        self.dump = self.poll = None
+
+    def start(self, mode):
+        os.makedirs(DIR, exist_ok=True)
+        prune()
+        # The clock is only right once the Pi has been online; the boot tag keeps names apart.
+        self.base = os.path.join(DIR, f"{time.strftime('%Y-%m-%d-%H%M%S')}-{boot_tag()}-{mode}")
+        self.mode, self.since, self.note = mode, time.time(), ""
+        if mode == "engine":
+            if os.path.exists(SESSION) and not os.path.exists(OWN):
+                self.note = "engine data paused: a manual diagnostic session is open"
+            elif subprocess.run([DIAG, "session-start"]).returncode == 0:
+                open(OWN, "w").write(str(os.getpid()))
+                self.engine = True
+            else:
+                self.note = "engine data off: the adapter did not confirm M0"
+        self.dump_start()
+        if self.engine:
+            env = dict(os.environ, S660_DIAG_LOG=self.base + ".jsonl")
+            for svc in ("03", "07"):          # stored and pending fault codes, once per drive
+                subprocess.run([DIAG, "obd", "--29", svc], env=env, stdout=subprocess.DEVNULL)
+            self.poll = subprocess.Popen([DIAG, "poll", POLL_RATE] + PIDS, env=env, stdout=subprocess.DEVNULL)
+        print(f"recording {self.base} ({mode}{', sending requests' if self.engine else ''}) {self.note}", flush=True)
+
+    def dump_start(self):
+        self.dump = subprocess.Popen(["candump", "-L", IFACE], stdout=open(self.base + ".log", "ab"),
+                                     stderr=subprocess.DEVNULL)
+
+    def check(self):
+        # candump exits when can0 is recreated (a session opening or closing): pick the file up again.
+        if self.dump and self.dump.poll() is not None:
+            self.dump_start()
+
+    def stop(self):
+        for p in (self.poll, self.dump):
+            if p and p.poll() is None:
+                p.terminate()
+                try:
+                    p.wait(3)
+                except subprocess.TimeoutExpired:
+                    p.kill()
+        self.poll = self.dump = None
+        if os.path.exists(OWN):
+            # session-stop sets the adapter back to M1 and verifies it before anything else.
+            subprocess.run([DIAG, "session-stop"])
+            os.remove(OWN)
+        if self.mode:
+            print(f"stopped {self.base}", flush=True)
+        self.mode, self.engine = None, False
+
+    def status(self, setting, heard):
+        size = sum(os.path.getsize(f) for f in glob.glob(self.base + ".*")) if self.mode else 0
+        st = {"setting": setting, "recording": self.mode is not None, "engine": self.engine,
+              "bus": heard, "since": self.since if self.mode else None, "bytes": size,
+              "file": os.path.basename(self.base) if self.mode else None, "note": self.note}
+        tmp = STATUS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(st, f)
+        os.replace(tmp, STATUS)
+
+
+def main():
+    rec = Recorder()
+
+    def bye(*_):
+        rec.stop()
+        try:
+            os.remove(STATUS)
+        except OSError:
+            pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, bye)
+    signal.signal(signal.SIGINT, bye)
+    last_heard = 0.0
+    while True:
+        setting = mode_setting()
+        heard = bus_heard()
+        now = time.time()
+        if heard:
+            last_heard = now
+        live = now - last_heard < QUIET_S
+        if rec.mode and (setting != rec.mode or not live):
+            rec.stop()
+        if not rec.mode and setting != "off" and heard:
+            rec.start(setting)
+        rec.check()
+        rec.status(setting, live)
+        time.sleep(TICK_S)
+
+
+if __name__ == "__main__":
+    main()

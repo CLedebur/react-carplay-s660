@@ -29,8 +29,9 @@ const LABELS = {
   nightMode: 'CarPlay night mode',
   carplayShape: 'CarPlay picture',
   carplayWidth: 'CarPlay width (needs Restart CarPlay)',
+  driveLog: 'Drive recording',
 }
-const VALUE_LABELS = { true: 'On', false: 'Off', c: '°C', f: '°F', rhd: 'Right', lhd: 'Left', '5ghz': '5 GHz', '2.4ghz': '2.4 GHz', '24h': '24-hour', '12h': '12-hour', fill: 'Fill screen', exact: 'True shape (bar on the left)' }
+const VALUE_LABELS = { true: 'On', false: 'Off', c: '°C', f: '°F', rhd: 'Right', lhd: 'Left', '5ghz': '5 GHz', '2.4ghz': '2.4 GHz', '24h': '24-hour', '12h': '12-hour', fill: 'Fill screen', exact: 'True shape (bar on the left)', off: 'Off', listen: 'Listen only', engine: 'Listen + engine data (sends requests)' }
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 

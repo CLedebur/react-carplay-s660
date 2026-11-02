@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stage 6 pass B (DIAG-PLAN): the engine computer's full 0x22 range, one piece per run.
 # Each run stops after 45 min or below 12.1 V and the next run resumes from the saved state.
-D=/persist/can/bin/s660-diag
+D=/usr/local/sbin/s660-diag
 L=/persist/can/$(date +%F-%H%M)-diag-passB
 $D session-start || exit 1
 candump -L any > "$L.log" & REC=$!

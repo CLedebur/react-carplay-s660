@@ -423,6 +423,13 @@ sudo install -m 755 "${CAN}/s660-can-check" /usr/local/sbin/s660-can-check
 sudo install -m 644 "${CAN}/s660-can.service" /etc/systemd/system/s660-can.service
 sudo systemctl daemon-reload
 sudo udevadm control --reload-rules
+# Read-only diagnostics (DIAG-PLAN.md) and the drive recorder (BUILD_NOTES §40). The recorder runs from
+# boot but records nothing until Settings > Options > Drive recording is switched on.
+sudo install -m 755 "${CAN}/s660-diag" /usr/local/sbin/s660-diag
+sudo install -m 755 "${CAN}/s660-drive-log" /usr/local/sbin/s660-drive-log
+sudo install -m 644 "${CAN}/s660-drive-log.service" /etc/systemd/system/s660-drive-log.service
+sudo systemctl daemon-reload
+sudo systemctl enable s660-drive-log.service
 
 
 # ============================================================================

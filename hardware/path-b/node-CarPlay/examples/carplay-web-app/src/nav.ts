@@ -37,7 +37,7 @@ export interface Tab<T extends TabId> {
 // The first tab of each list is the one shown when the panel opens.
 export const SETTINGS_TABS: Tab<SettingsTab>[] = [
   { id: 'status', label: 'Status', items: [] },
-  { id: 'options', label: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'webAdmin'] },
+  { id: 'options', label: 'Options', items: ['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:driveLog', 'webAdmin'] },
   { id: 'carplay', label: 'CarPlay', items: ['opt:handDrive', 'opt:fps', 'opt:wifiBand', 'opt:nightMode'] },
   { id: 'network', label: 'Network', items: ['netConnect'] },
   { id: 'display', label: 'Display', items: ['aspect', 'aspectReset', 'opt:carplayShape', 'opt:carplayWidth'] },

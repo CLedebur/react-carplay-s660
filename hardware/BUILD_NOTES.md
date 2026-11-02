@@ -2945,3 +2945,24 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   Height is always 480. Applies after Reload CarPlay. 896 is the setting that made Waze move its speed-limit badge off the frame
   in §22.8; **Retested 2026-11-01 on the glass: Waze no longer misplaces the badge at 896** (a newer Waze than in September), and CarPlay looked sharp and filled the screen. **896 is now the default**; 848 stays in the setting for anyone whose Waze or phone still misbehaves. With 896 and *True shape*, the bar is 6 px, not 42 (with 848 it is 42).
 
+
+## 40. 2026-11-02 — Drive recorder (Settings > Options > Drive recording)
+
+- **The setting** `driveLog`: **Off** (default) / **Listen only** / **Listen + engine data**, on the Options tab and the
+  web interface. Kept in `/persist/ui/settings.json` like the others.
+- **The recorder** is `hardware/can/s660-drive-log`, run from boot by `s660-drive-log.service` (both installed by
+  `provision.sh` PHASE 4c, with `s660-diag`, into `/usr/local/sbin/`). It re-reads the setting every 2 s. A recording
+  **starts when the car's broadcast is heard and stops 10 s after it goes quiet**, so every ignition-on is one recording,
+  however many stops a trip has (the one-boot arming used on 2026-11-02 missed the last leg of a three-stop errand,
+  DIAG-PLAN). Only 11-bit frames count as the car: our own OBD requests are 29-bit and the host sees them too.
+- **Files:** `/persist/can/drives/DATE-TIME-BOOT-MODE.log` (`candump -L can0`, about 220 MB an hour) and, with engine
+  data, `.jsonl` (every request and reply). The names carry 4 characters of the boot id, because the clock is only right
+  once the Pi has been online. The newest are kept up to **20 GB**; the oldest are deleted first.
+- **Listen only never transmits.** **Listen + engine data** opens an `s660-diag` session (adapter `M0`, verified), reads
+  the stored and pending fault codes once, then polls 15 read-only OBD PIDs at 5 requests per second (DIAG-PLAN
+  stage 5). When the recording ends, the setting changes, or the service stops for any reason (`ExecStopPost`),
+  `session-stop` sets the adapter back to `M1` and verifies it. `s660-diag session-start` now refuses while another
+  session is open, and the recorder records listen-only if a manual session already holds the adapter.
+- **On screen:** a **Rec** pill in the title strip whenever the setting is on: dim while waiting for the car, green
+  while recording, **amber "Rec + OBD" while requests are being sent**. Settings > Status has a "Drive rec" row with the
+  size of the current recording. The state comes from `/run/s660-drive-log.json` through `GET /api/stats` (`driveLog`).

@@ -11,6 +11,7 @@ export interface Settings {
   carplayWidth: 848 | 896 // width the dongle renders at (height is always 480); 896 is the glass's own shape
   carplayShape: 'fill' | 'exact' // fill = the picture stretched over the whole frame; exact = true shape, black bar on the left
   glassAspect: number // visible glass width / height, x1000 (1875 = 1.875:1); the native UI is drawn to it
+  driveLog: 'off' | 'listen' | 'engine' // drive recorder (hardware/can/s660-drive-log): listen never transmits
 }
 
 export type SettingKey = keyof Settings
@@ -28,6 +29,7 @@ export const defaultSettings: Settings = {
   carplayWidth: 896, // the glass's own shape. 848 is for a Waze that moves its badge off the frame (2026-09; fine again 2026-11, BUILD_NOTES 39.3)
   carplayShape: 'fill',
   glassAspect: 1875, // 135 x 72 mm, measured (BUILD_NOTES 22.8)
+  driveLog: 'off',
 }
 
 // The values a key steps through, in order, when the knob is pressed on its row.
@@ -41,6 +43,7 @@ const CYCLES: { [K in CycleKey]: readonly Settings[K][] } = {
   nightMode: [false, true],
   carplayShape: ['fill', 'exact'],
   carplayWidth: [848, 896],
+  driveLog: ['off', 'listen', 'engine'],
 }
 
 export const nextValue = <K extends CycleKey>(settings: Settings, key: K): Settings[K] => {
