@@ -2873,3 +2873,148 @@ PINs; guessing odds stay about 1.5e-5 per enable); `GET /api/webadmin` returns t
 unit's own origin (the CarPlay app renders no phone-supplied HTML); no Host-header allowlist on port 8080.
 **Decided, not a gap:** `s660` has `NOPASSWD: ALL`. That is intentional: there is little sensitive on the unit
 and logins are SSH key only. Anything that runs code as `s660` is root by design; do not flag it again.
+
+## 39. 2026-11-01 — Vehicle panel, Settings tab bar, and the aspect-ratio tool (UI only)
+
+### 39.1 Navigation and the Vehicle panel
+- The rail now has **CarPlay, Vehicle, Settings**. Vehicle and Settings each have a **tab bar** under the title strip
+  (Vehicle: Drive, Engine, Dynamics, Body, Diag; Settings: Status, Options, CarPlay, Network, Display, Power).
+  **The knob works one level at a time** (changed 2026-11-02; before, it ran from the rail straight on through the
+  tabs, so reaching Vehicle's tabs meant turning past Settings): on the rail it walks only the three panels; **push**
+  opens one and moves onto its tab bar, where it walks only the tabs (wrapping) and the page follows; **push** on a tab
+  with controls enters a short loop of its own items. **Back** climbs one level: out of a tab onto the tab bar, off
+  the tab bar onto the rail, and from the rail to CarPlay. The Vehicle tabs are read-only.
+- **Engine** shows coolant, fuel, intake air and boost (2 x 2). The car's warning bits (0x324) are on **Diag** (the summary line that was on Engine, plus a box per lamp), and
+  the **outside temperature** is in the title strip beside the clock on every native page (hidden with no CAN data).
+  Logic and tests: `nav.ts`, `nav.test.ts`.
+- The title strip's bottom line used to run across the rail's top icon; it now starts at the rail's divider.
+- `src/VehicleTabs.tsx` draws the four tabs. Values are `null` until their CAN message has been seen, and then show `--`;
+  with no live data a dialog says so. Open the app with **`?demo=1`** to see the screens move with made-up data.
+- **The contract the CAN service must answer: `GET /api/vehicle`** (localhost only, like the other `/api/*`), JSON,
+  the `VehicleData` interface in `src/vehicle.ts`, **physical units, already decoded**: km/h, rpm, bar (relative to the
+  atmosphere), MPa, °C, g, degrees, `fuelPct` 0-100, booleans. Sign conventions are in that file (steering and yaw +
+  right; `latG` + = pushed left; `longG` + = accelerating). `live:false` (or any field `null`) when the bus is silent.
+  The UI polls it every **200 ms while the Vehicle panel is up**, every 2 s on any other native page (the strip's outside
+  temperature and Settings > Status's "CAN bus" row), and **never while CarPlay is full screen**, so the backend can start
+  and stop its candump on demand.
+
+### 39.4 The CAN service: `hardware/path-b/s660-can.js` (2026-11-01)
+- **Loaded by `s660-api.js`** (a guarded `require`: without the file `/api/vehicle` answers `{"live":false}` and the
+  kiosk keeps running). No npm deps. **Listen-only**: it spawns `candump -L can0` filtered to the 16 IDs the panel
+  needs (`s660-can.service`, §34, brings `can0` up from the adapter's silent firmware), keeps each ID's last frame,
+  and decodes on request. candump starts on the first `/api/vehicle` request and **stops 10 s after the last one**, so
+  with the Vehicle panel and Settings > Status closed it costs nothing. A value older than 1 s is `null`.
+- **Decoding** follows `references/S660-CAN-bus.md`, including the on-car corrections: clutch 0x13C byte 6 bit 2;
+  wheel order FL, FR, RL, RR; yaw 0x091 (raw − 32768) × 0.0037 °/s; G 0.00169 m/s² per count (lateral assumed);
+  gear from 0x1DC rpm ÷ 0x158 speed within 6 % of the measured ratios with the clutch up, `R` from the reverse
+  bit; boost against the manifold pressure last seen with the engine stopped (else 760 mmHg); brake pressure from
+  the sheet's points, zero up to raw 106 (our car rests at 101–105); fuel raw 5–105 → 0–100 %.
+- **Unverified on the car, shown anyway:** seat belts (0x305) and the three warning bits (0x324). With the ignition on
+  and the engine off, the "engine" and "EPS" bits read 1, as the dash's own lamps do then; during the drive they were 0.
+- **Tests:** `node --test hardware/path-b/s660-can.test.js` (real frames from the 2026-11-01 captures). The whole
+  drive capture was also replayed through `createVehicle` at the panel's 200 ms rate: speed 0–128.4 km/h, gears 1–6 in
+  a plausible order, R while reversing out of the garage, odometer ending at the dash's 44,697 km. The G values
+  are often exactly 0.00: 28 % of 0x1EA frames are zero (the sensor's dead band), so a steady cruise reads 0 g.
+- Live check on the Pi (listening while a diagnostic sweep ran): `live:true`, odometer 44,697, no stray candump after `stop()`.
+- **Deployed to the car 2026-11-02** (overlay off): `live:true` within 1.5 s of the first request, candump gone 10 s after
+  the last. The Carlinkit dongle was missing after both software reboots that day (nothing on its hub port,
+  1-1.3.1, until it was plugged back in). **Unconfirmed:** the dongle is also unplugged by hand while the car is parked
+  (so the phone does not connect to it from the office), so this may not be the reboot's doing. Retest with the dongle
+  known to be plugged in before treating it as a fault.
+- Display thresholds in `VehicleTabs.tsx` (coolant amber 105 °C, red 110 °C; low fuel 10 %) are placeholders, not
+  Honda's numbers.
+
+### 39.2 The aspect-ratio tool (Settings > Display)
+- §22.8 squeezed only the CarPlay video. The native UI was laid out 720 wide and so appeared **25 % too wide** on the
+  1.875 : 1 glass. Everything native is now drawn **`glassAspect x 480`** logical pixels wide (900 at 1.875) and squeezed by
+  `scaleX(720 / width)` into the 720 x 480 output (`Fit` in `NativeUi.tsx`), so the panel's stretch gives square pixels back.
+- `glassAspect` is a setting (x 1000, default 1875, range 1500-2400; `settings.ts`, validated in `s660-api.js`; not on the
+  web interface's form). **Display > Adjust with test pattern** shows a full-screen grid: cells are 1/10 of the height
+  (7.2 mm on a 72 mm glass), square, circles, a diagonal cross, and a yellow frame at the edges. Turn the knob until
+  the squares are square and the circles round; push toggles fine (0.005) and coarse (0.020) steps; **Back saves**
+  (the value is only written when the pattern closes). **Reset** returns to 1.875.
+- Once the ratio is known, the measured value goes in as the default. **The CarPlay video is unchanged**: it is still
+  848 x 480 stretched over the frame, so it stays about 6 % wide at 1.875. A "true shape" option (black bars either
+  side, width 720 x 848/480 / aspect = 678 px at 1.875) would remove that at the cost of 6 % of the screen width.
+
+### 39.3 CarPlay picture: true shape and render width (Settings > Display)
+- **CarPlay picture** (`carplayShape`): *Fill screen* (default, as before) or *True shape*: the video is drawn at its real shape on
+  the glass, `720 x (width/480) / glassAspect` px wide (678 px for 848 at 1.875), pushed to the right edge, with the black bar on the left.
+  Applies at once.
+- **CarPlay width** (`carplayWidth`): the width the dongle renders at, **896** (default; 1.867 : 1, the glass's own shape) or **848**.
+  Height is always 480. Applies after Reload CarPlay. 896 is the setting that made Waze move its speed-limit badge off the frame
+  in §22.8; **Retested 2026-11-01 on the glass: Waze no longer misplaces the badge at 896** (a newer Waze than in September), and CarPlay looked sharp and filled the screen. **896 is now the default**; 848 stays in the setting for anyone whose Waze or phone still misbehaves. With 896 and *True shape*, the bar is 6 px, not 42 (with 848 it is 42).
+
+
+## 40. 2026-11-02 — Drive recorder (Settings > Options > Drive recording)
+
+- **The setting** `driveLog`: **Off** (default) / **Listen only** / **Listen + engine data**, on the Options tab and the
+  web interface. Kept in `/persist/ui/settings.json` like the others.
+- **The recorder** is `hardware/can/s660-drive-log`, run from boot by `s660-drive-log.service` (both installed by
+  `provision.sh` PHASE 4c, with `s660-diag`, into `/usr/local/sbin/`). It re-reads the setting every 2 s. A recording
+  **starts when the car's broadcast is heard and stops 10 s after it goes quiet**, so every ignition-on is one recording,
+  however many stops a trip has (the one-boot arming used on 2026-11-02 missed the last leg of a three-stop errand,
+  DIAG-PLAN). Only 11-bit frames count as the car: our own OBD requests are 29-bit and the host sees them too.
+- **Files:** `/persist/can/drives/DATE-TIME-BOOT-MODE.log` (`candump -L can0`, about 220 MB an hour) and, with engine
+  data, `.jsonl` (every request and reply). The names carry 4 characters of the boot id, because the clock is only right
+  once the Pi has been online. The newest are kept up to **20 GB**; the oldest are deleted first.
+- **Listen only never transmits.** **Listen + engine data** opens an `s660-diag` session (adapter `M0`, verified), reads
+  the stored and pending fault codes once, then polls 15 read-only OBD PIDs at 5 requests per second (DIAG-PLAN
+  stage 5). When the recording ends, the setting changes, or the service stops for any reason (`ExecStopPost`),
+  `session-stop` sets the adapter back to `M1` and verifies it. `s660-diag session-start` now refuses while another
+  session is open, and the recorder records listen-only if a manual session already holds the adapter.
+- **On screen:** a **Rec** pill in the title strip whenever the setting is on: dim while waiting for the car, green
+  while recording, **amber "Rec + OBD" while requests are being sent**. Settings > Status has a "Drive rec" row with the
+  size of the current recording. The state comes from `/run/s660-drive-log.json` through `GET /api/stats` (`driveLog`).
+- **Battery monitor (Vehicle > Battery, 2026-11-02).** No CAN message carries the battery voltage, so it comes from the
+  recorder's OBD poll: PID 42 (module voltage) is asked 4 times in every 18 requests, about every 0.9 s. The recorder
+  publishes the latest reply to each PID and the last 900 voltages in its status file; `GET /api/vehicle` adds
+  `batteryV` (null if older than 5 s), `batteryTrend` (the last 15 min, at most 180 points) and `engineData`. The tab
+  shows the voltage, a verdict (`batteryState` in `vehicle.ts`, tested: engine running 13.2–15 V = charging, below =
+  NOT CHARGING, above = OVERCHARGING; stopped ≥ 12.6 full, ≥ 12.4 good, ≥ 12.1 low, else very low) and the trend.
+  **It needs Drive recording on "Listen + engine data"**; otherwise the tab says so. First reading on the car: 12.75 V,
+  ignition on, engine off, battery tender connected.
+
+## 41. 2026-11-02 — Everything the bus and the engine poll give, on the Vehicle panel; gear pop-up; knob scrolling
+
+- **Vehicle tabs:** Drive, Engine, **Tuning** (new), Dynamics, Body, Battery, Diag. **Push on any read-only tab** (all
+  of Vehicle, and Settings > Status) **lets the knob scroll it** (120 px a click, a yellow bar on the left and a yellow
+  scrollbar while it does); **Back** returns to the tab bar. Each tab opens at the top. Logic and tests: `nav.ts`.
+- **Diag:** the engine computer's **fault codes**, stored (OBD 03) and pending (07), and the **check-engine lamp** with
+  its code count (PID 01), asked in every poll cycle (about every 4.4 s). This unit never clears codes. Below them the
+  broadcast warning lamps, **corrected** (references 0x324): check engine, two oil / charge lamps (which is which is
+  unknown), EPS, and the 0x294 coolant-temperature lamp. The sheet's "oil" bit, never seen set, is gone.
+- **Engine:** fuel in litres and the **range as on the dash**, with the km/L it is worked out with (cluster 0x60 DID
+  0x702A, data bytes 6–7 km/L × 10, 12–13 fuel L × 10, 14–15 range km).
+- **Tuning** (engine poll): ignition timing, air-fuel ratio actual and target (λ × 14.7; "CUT" at λ 2.0, the fuel
+  cut), short and long fuel trims, calculated and absolute load, throttle plate, catalyst temperature. From the
+  broadcast: torque estimated / requested (raw, unit unknown) and the blow-off valve.
+- **Dynamics:** a row of stability chips: VSA, ABS, Agile Handling Assist, VSA OFF button, hill start hold, brake
+  system, power steering (0x1A4, 0x1A6, 0x1AB, 0x1B0; mostly unverified on our car). With the engine stopped the
+  "brake system" and "power steering" bits read set (ERROR / DISABLED); to be checked with the engine running.
+- **Lateral G** scale corrected to 0.012 m/s² per count (provisional, DIAG-PLAN errand); it read about 7 × low.
+- **The engine data** (`s660-can.js` `engineData`, tested) is decoded from the recorder's status file and merged into
+  `/api/vehicle`; all of it needs Drive recording on "Listen + engine data", and the tabs say so when it is off. The
+  poll is now 22 requests at 5 per second (`s660-diag poll` takes `s03` for a whole OBD service and `60:702A` for a
+  UDS read).
+- **Gear pop-up** (Settings > Options, **Off / 1–5 s**, default 2): after a shift, the estimated gear shows over
+  CarPlay's top-right corner in a yellow box with a black figure. A gear counts once it has held 400 ms; a further
+  change replaces it and restarts the time; after 3 s with no gear (a stop) pulling away shows 1 again
+  (`gearPopup.ts`, tested). While it is on, `/api/vehicle` is polled every 200 ms over CarPlay too.
+- **Later the same day:** the pill reads just **Rec** (amber still means requests are being sent); the Engine tab's range
+  card was dropped (the dash shows it); the Battery trend is shorter so its card fits the screen (scale 11.5–14.5 V,
+  guides at 12, 13, 14 V). **Settings > CarPlay > CarPlay** (on / off): off = the dongle is found but never started, so
+  the phone has nothing to join (testing in the garage without unplugging it). Changing it on the unit reloads the
+  page; a change made through the API or web interface applies at the next kiosk start. Tabs with controls scroll to
+  keep the knob's row in view.
+- **`?view=PANEL.TAB`** (e.g. `http://localhost:3000/?view=vehicle.battery`) opens a page on that tab, for headless
+  screenshots on the Pi: `chromium --headless=new --user-data-dir=/tmp/hl --hide-scrollbars --window-size=720,480
+  --virtual-time-budget=8000 --screenshot=/tmp/x.png "http://localhost:3000/?view=vehicle.battery"`. **Such a page
+  never starts the dongle.** Before that rule, the first headless screenshot did: CarPlay's start resets the dongle,
+  and it dropped off USB under the running kiosk for 3 s (the kiosk recovered by itself).
+- **CarPlay off, final form:** the app never starts the dongle and stops looking for it; the CarPlay panel says
+  "CarPlay is off" and the strip shows one "CarPlay off" pill instead of Dongle / Phone. Left unstarted, **the dongle
+  reboots itself about every 12 s** (it falls off USB for ~4 s and comes back); that is harmless, and the phone does
+  not connect (checked 2026-11-02). **Switching the dongle's hub port off was tried and dropped:** the port really
+  loses power (`…/1-1.3-port1/disable`, the dongle's light goes out), but on this car something else shares that port
+  through a splitter, and it went off too. Do not reintroduce port switching for this.

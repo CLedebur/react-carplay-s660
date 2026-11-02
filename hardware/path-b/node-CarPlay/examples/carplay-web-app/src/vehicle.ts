@@ -1,0 +1,176 @@
+// What the Vehicle panel shows, as GET /api/vehicle must answer it (the CAN service decodes it:
+// references/S660-CAN-bus.md). Everything is in physical units, and a value is null when its CAN
+// message has not been seen lately (ignition off, no adapter), so the panel shows "--" and never a
+// stale number. The panel only reads: nothing here is ever sent to the car.
+export type Gear = 'R' | 1 | 2 | 3 | 4 | 5 | 6
+
+export interface VehicleData {
+  live: boolean // frames are arriving; false while the bus is silent
+  // drive
+  speedKmh: number | null // the speedometer's value (0x309), the one the dash shows
+  rpm: number | null
+  gear: Gear | null // estimated from rpm / speed with the clutch up; null = neutral, clutch in, or unknown
+  throttlePct: number | null // 0-100
+  brakeMpa: number | null // driver's brake pressure
+  boostBar: number | null // manifold pressure relative to the atmosphere; negative = vacuum
+  // engine
+  coolantC: number | null
+  intakeC: number | null
+  outsideC: number | null
+  fuelPct: number | null // 0-100
+  odometerKm: number | null
+  // the car's own warning lamps (0x324): lampA / lampB are oil pressure and charging, which is which unknown
+  lamps: { engine: boolean; lampA: boolean; lampB: boolean; eps: boolean } | null
+  coolantLamp: boolean | null
+  blowOff: boolean | null
+  torqueEst: number | null // raw, unit unknown
+  torqueReq: number | null
+  // dynamics
+  steeringDeg: number | null // + = right
+  yawDegPerS: number | null // + = turning right
+  latG: number | null // + = the car is being pushed LEFT (a left turn)
+  longG: number | null // + = accelerating, - = braking
+  wheelKmh: { fl: number; fr: number; rl: number; rr: number } | null
+  // body
+  clutchUp: boolean | null // true = pedal released
+  brakePedal: boolean | null
+  handbrake: boolean | null
+  reverse: boolean | null
+  headlights: 0 | 1 | 2 | 3 | null // off, parking, low beam, high beam
+  indicators: { left: boolean; right: boolean } | null
+  wipers: 0 | 1 | 2 | 3 | null // off, intermittent, low, high
+  belts: { driver: boolean; passenger: boolean } | null // true = buckled
+  vsa: { lamp: boolean; unavailable: boolean; active: boolean; abs: boolean; agile: boolean } | null
+  vsaOffButton: boolean | null
+  brakeHold: boolean | null // not verified
+  brakeError: boolean | null
+  epsDisabled: boolean | null
+  // battery: not broadcast, so it comes from the drive recorder's OBD poll (PID 42), only while
+  // Drive recording is on "Listen + engine data" (engineData true)
+  engineData: boolean
+  batteryV: number | null
+  batteryTrend: [number, number][] | null // [seconds ago, volts], oldest first, the last 15 minutes
+  // from the same OBD poll: the engine computer, and the cluster (0x60) for range and fuel
+  mil: { on: boolean; count: number } | null // check-engine lamp and the number of stored codes
+  dtcStored: string[] | null // 'P0301', ...
+  dtcPending: string[] | null
+  timingDeg: number | null
+  lambda: number | null // 1.0 = stoichiometric (14.7:1)
+  lambdaCmd: number | null
+  stftPct: number | null
+  ltftPct: number | null
+  loadPct: number | null
+  absLoadPct: number | null
+  throttlePlatePct: number | null
+  catalystC: number | null
+  rangeKm: number | null // the dash's range
+  fuelL: number | null
+  rangeKmPerL: number | null // the economy the range is worked out with
+}
+
+export const HEADLIGHTS = ['OFF', 'PARKING', 'LOW BEAM', 'HIGH BEAM'] as const
+export const WIPERS = ['OFF', 'INTERVAL', 'LOW', 'HIGH'] as const
+
+export const emptyVehicle: VehicleData = {
+  live: false,
+  speedKmh: null, rpm: null, gear: null, throttlePct: null, brakeMpa: null, boostBar: null,
+  coolantC: null, intakeC: null, outsideC: null, fuelPct: null, odometerKm: null,
+  lamps: null, coolantLamp: null, blowOff: null, torqueEst: null, torqueReq: null,
+  vsaOffButton: null, brakeHold: null, brakeError: null, epsDisabled: null,
+  steeringDeg: null, yawDegPerS: null, latG: null, longG: null, wheelKmh: null,
+  clutchUp: null, brakePedal: null, handbrake: null, reverse: null, headlights: null,
+  indicators: null, wipers: null, belts: null, vsa: null,
+  engineData: false, batteryV: null, batteryTrend: null,
+  mil: null, dtcStored: null, dtcPending: null, timingDeg: null, lambda: null, lambdaCmd: null,
+  stftPct: null, ltftPct: null, loadPct: null, absLoadPct: null, throttlePlatePct: null, catalystC: null,
+  rangeKm: null, fuelL: null, rangeKmPerL: null,
+}
+
+// What the voltage says, for a 12 V lead-acid battery. With the engine running the alternator should
+// hold 13.2-15 V; stopped (ignition on, so under a light load) about 12.4 V or more is healthy.
+export type BatteryTone = 'ok' | 'warn' | 'bad'
+export const RUNNING_RPM = 400
+export const batteryState = (v: number | null, rpm: number | null): { label: string; tone: BatteryTone } | null => {
+  if (v === null) return null
+  if (rpm !== null && rpm > RUNNING_RPM) {
+    if (v > 15) return { label: 'OVERCHARGING', tone: 'bad' }
+    if (v >= 13.2) return { label: 'CHARGING', tone: 'ok' }
+    return { label: 'NOT CHARGING', tone: 'bad' }
+  }
+  if (v >= 12.6) return { label: 'FULL', tone: 'ok' }
+  if (v >= 12.4) return { label: 'GOOD', tone: 'ok' }
+  if (v >= 12.1) return { label: 'LOW', tone: 'warn' }
+  return { label: 'VERY LOW', tone: 'bad' }
+}
+
+// The G-plot dot: where the car is being pushed, as seen from above (left turn = left, accelerating = up).
+export const gDot = (latG: number | null, longG: number | null, range = 1): { x: number; y: number } => {
+  const clamp = (v: number) => Math.max(-1, Math.min(1, v / range))
+  return { x: latG === null ? 0 : -clamp(latG), y: longG === null ? 0 : -clamp(longG) } // screen y grows downward
+}
+
+// Rough drive for the screens when there is no CAN data (open the app with ?demo=1). Not real physics.
+export const demoVehicle = (t: number): VehicleData => {
+  const speed = Math.max(0, 55 + 50 * Math.sin(t / 7))
+  const ratios = [158.5, 99, 68, 51, 40, 30.5]
+  const gear = Math.min(6, Math.max(1, Math.ceil(speed / 22))) as 1 | 2 | 3 | 4 | 5 | 6
+  const accel = Math.cos(t / 7) * 0.35
+  const steer = 220 * Math.sin(t / 3.1)
+  const lat = (steer / 500) * 0.6 * Math.min(1, speed / 60)
+  const wheels = (k: number) => Math.max(0, (speed / 1.0495) * k)
+  return {
+    live: true,
+    speedKmh: speed,
+    rpm: Math.min(7200, 900 + speed * ratios[gear - 1]),
+    gear: speed < 4 ? null : gear,
+    throttlePct: Math.max(0, Math.min(100, 30 + accel * 160)),
+    brakeMpa: accel < -0.2 ? -accel * 8 : 0,
+    boostBar: accel > 0 ? accel * 2.2 : -0.5 + accel * 0.6,
+    coolantC: 88 + 4 * Math.sin(t / 30),
+    intakeC: 34 + 3 * Math.sin(t / 20),
+    outsideC: 23,
+    fuelPct: 71,
+    odometerKm: 44677,
+    lamps: { engine: false, lampA: false, lampB: false, eps: false },
+    coolantLamp: false,
+    blowOff: accel < -0.25,
+    torqueEst: Math.round(accel * 400),
+    torqueReq: Math.round(accel * 420),
+    vsaOffButton: false,
+    brakeHold: false,
+    brakeError: false,
+    epsDisabled: false,
+    steeringDeg: steer,
+    yawDegPerS: lat * 22,
+    latG: lat,
+    longG: accel,
+    wheelKmh: { fl: wheels(1 - lat * 0.08), fr: wheels(1 + lat * 0.08), rl: wheels(1 - lat * 0.05), rr: wheels(1 + lat * 0.05) },
+    clutchUp: true,
+    brakePedal: accel < -0.2,
+    handbrake: false,
+    reverse: false,
+    headlights: Math.floor(t / 10) % 4 as 0 | 1 | 2 | 3,
+    indicators: { left: steer < -150, right: steer > 150 },
+    wipers: (Math.floor(t / 14) % 4) as 0 | 1 | 2 | 3,
+    belts: { driver: true, passenger: Math.floor(t / 20) % 2 === 0 },
+    vsa: { lamp: false, unavailable: false, active: false, abs: false, agile: Math.abs(lat) > 0.4 },
+    engineData: true,
+    mil: { on: false, count: 0 },
+    dtcStored: [],
+    dtcPending: [],
+    timingDeg: 10 + accel * 30,
+    lambda: accel < -0.25 ? 2 : accel > 0.2 ? 0.82 : 1,
+    lambdaCmd: accel > 0.2 ? 0.8 : 1,
+    stftPct: 2 * Math.sin(t / 3),
+    ltftPct: 2.3,
+    loadPct: Math.max(0, 30 + accel * 150),
+    absLoadPct: Math.max(0, 35 + accel * 220),
+    throttlePlatePct: Math.max(12, 20 + accel * 90),
+    catalystC: 640 + 60 * Math.sin(t / 15),
+    rangeKm: 343,
+    fuelL: 22.5,
+    rangeKmPerL: 15.2,
+    batteryV: 14.1 + 0.15 * Math.sin(t / 5),
+    batteryTrend: Array.from({ length: 90 }, (_, i) => [900 - i * 10, 14.1 + 0.15 * Math.sin((t - 900 + i * 10) / 5)] as [number, number]),
+  }
+}

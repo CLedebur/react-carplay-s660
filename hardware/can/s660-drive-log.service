@@ -1,0 +1,14 @@
+[Unit]
+Description=S660 drive recorder: Settings > Options > Drive recording (BUILD_NOTES §40)
+After=s660-can.service
+RequiresMountsFor=/persist
+
+[Service]
+ExecStart=/usr/local/sbin/s660-drive-log
+# However it ends, an engine-data session is closed and the adapter goes back to silent (M1).
+ExecStopPost=/bin/sh -c '[ ! -e /run/s660-diag-session.drive-log ] || { /usr/local/sbin/s660-diag session-stop; rm -f /run/s660-diag-session.drive-log; }'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

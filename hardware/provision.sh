@@ -360,6 +360,7 @@ install -m 775 "${PB}/run-chromium-kiosk.sh" "${KIOSK_DIR}/run-chromium-kiosk.sh
 install -m 664 "${PB}/serve-build.js" "${KIOSK_DIR}/serve-build.js"
 install -m 664 "${PB}/s660-api.js" "${KIOSK_DIR}/s660-api.js"   # /api/stats + /api/power (serve-build.js requires it)
 install -m 664 "${PB}/web-admin.js" "${KIOSK_DIR}/web-admin.js"   # the optional web interface (s660-api.js requires it)
+install -m 664 "${PB}/s660-can.js" "${KIOSK_DIR}/s660-can.js"   # CAN service behind /api/vehicle (listen-only; optional)
 
 # The unit. No PAMName=login: cage talks to seatd directly, RuntimeDirectory= provides
 # XDG_RUNTIME_DIR, and skipping the logind session saves user@1000 + a session bus at boot
@@ -422,6 +423,13 @@ sudo install -m 755 "${CAN}/s660-can-check" /usr/local/sbin/s660-can-check
 sudo install -m 644 "${CAN}/s660-can.service" /etc/systemd/system/s660-can.service
 sudo systemctl daemon-reload
 sudo udevadm control --reload-rules
+# Read-only diagnostics (DIAG-PLAN.md) and the drive recorder (BUILD_NOTES §40). The recorder runs from
+# boot but records nothing until Settings > Options > Drive recording is switched on.
+sudo install -m 755 "${CAN}/s660-diag" /usr/local/sbin/s660-diag
+sudo install -m 755 "${CAN}/s660-drive-log" /usr/local/sbin/s660-drive-log
+sudo install -m 644 "${CAN}/s660-drive-log.service" /etc/systemd/system/s660-drive-log.service
+sudo systemctl daemon-reload
+sudo systemctl enable s660-drive-log.service
 
 
 # ============================================================================

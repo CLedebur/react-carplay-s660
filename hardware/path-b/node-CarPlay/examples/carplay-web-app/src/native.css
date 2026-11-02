@@ -21,6 +21,9 @@
 .nui-page { position: absolute; inset: 0; background: #000; }
 .nui-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.72); }
 .nui { position: absolute; left: 50%; top: 0; width: 720px; height: 480px; margin-left: -360px; overflow: hidden; }
+/* Everything is drawn as wide as the glass (aspect x 480) and squeezed into the 720 px the panel is fed;
+   the width and the scaleX come from the glassAspect setting (NativeUi.tsx, Fit). */
+.nui .fit { position: absolute; left: 0; top: 0; height: 480px; transform-origin: 0 0; }
 
 /* focus: one treatment everywhere */
 .nui .f.focused { background: var(--focus) !important; color: #000 !important; border-color: var(--focus) !important; }
@@ -30,17 +33,19 @@
 
 /* status strip + rail */
 .nui .strip {
-  position: absolute; left: 0; right: 0; top: 0; height: 48px; border-bottom: 2px solid var(--line);
-  display: flex; align-items: center; gap: 10px; padding: 0 14px 0 122px; font-size: 20px; font-weight: 700;
+  position: absolute; left: 110px; right: 0; top: 0; height: 48px; border-bottom: 2px solid var(--line);
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 20px; font-weight: 700;
 }
 .nui .strip .title { margin-right: auto; font-size: 24px; }
 .nui .pill { display: flex; align-items: center; gap: 6px; padding: 3px 10px; border: 2px solid var(--line); border-radius: 20px; font-size: 17px; font-weight: 700; }
 .nui .pill i { width: 12px; height: 12px; border-radius: 50%; background: currentColor; display: inline-block; }
 .nui .pill.ok { color: var(--ok); border-color: var(--ok); }
 .nui .pill.off { color: var(--dim); }
+.nui .pill.warn { color: var(--warn); border-color: var(--warn); }
 .nui .pill.off i { background: transparent; border: 2px solid currentColor; }
 .nui .pill b { color: #fff; font-weight: 700; }
 .nui .clock { font-variant-numeric: tabular-nums; font-size: 24px; margin-left: 6px; }
+.nui .otemp { font-variant-numeric: tabular-nums; font-size: 24px; margin-left: 6px; color: var(--dim); }
 
 .nui .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 110px; border-right: 2px solid var(--line); display: flex; flex-direction: column; }
 .nui .rail .item {
@@ -55,6 +60,26 @@
 .nui .rail .item small { font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
 
 .nui .content { position: absolute; left: 110px; right: 0; top: 48px; bottom: 0; padding: 12px 14px; }
+.nui .content.tabbed { top: 92px; overflow-y: auto; overflow-x: hidden; }
+/* Pushed into a read-only tab: the knob scrolls it. A yellow bar on the left says so; the scrollbar shows how far. */
+.nui .content.tabbed::-webkit-scrollbar { width: 6px; }
+.nui .content.tabbed::-webkit-scrollbar-thumb { background: var(--dim); }
+.nui-page.paning .content.tabbed { box-shadow: inset 5px 0 0 var(--focus); }
+/* Gear pop-up over CarPlay: the focus yellow, black figure, top right */
+.nui .gearpop {
+  position: absolute; top: 14px; right: 14px; width: 120px; height: 120px; background: var(--focus); color: #000;
+  display: flex; align-items: center; justify-content: center; font-size: 100px; font-weight: 900; line-height: 1;
+  border: 3px solid #000;
+}
+.nui-page.paning .content.tabbed::-webkit-scrollbar-thumb { background: var(--focus); }
+
+/* tab bar under the strip */
+.nui .tabs { position: absolute; left: 110px; right: 0; top: 48px; height: 44px; border-bottom: 2px solid var(--line); display: flex; overflow: hidden; }
+.nui .tab { flex: 1 0 auto; padding: 0 16px; display: flex; align-items: center; justify-content: center; position: relative; font-size: 20px; font-weight: 800; color: var(--dim); border-right: 2px solid var(--line); white-space: nowrap; }
+.nui .tab:last-child { border-right: 0; }
+.nui .tab.on { color: #fff; }
+.nui .tab.on::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 5px; background: #fff; }
+.nui .tab.focused.on::after { background: #000; }
 
 /* waiting for the phone */
 .nui .wait h2 { font-size: 36px; line-height: 1.1; margin-bottom: 4px; }
@@ -89,8 +114,7 @@
 .nui .bar > div { position: absolute; inset: 0 auto 0 0; background: #fff; }
 .nui .bar .tick { position: absolute; top: -6px; bottom: -6px; width: 3px; background: var(--warn); }
 .nui .scale { display: flex; justify-content: space-between; font-size: 15px; color: var(--dim); font-weight: 600; margin: -2px 0 4px; }
-.nui .power { position: absolute; left: 14px; right: 14px; bottom: 44px; height: 62px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.nui .pager { position: absolute; left: 14px; right: 14px; bottom: 8px; text-align: center; font-size: 17px; font-weight: 700; color: var(--dim); }
+.nui .power { position: absolute; left: 14px; right: 14px; bottom: 14px; height: 62px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* settings page 2 */
 .nui .optrow { display: flex; align-items: center; gap: 14px; border: 3px solid #fff; font-size: 21px; font-weight: 800; line-height: 1.15; min-height: 56px; }
@@ -114,7 +138,8 @@
 .nui .cap { position: absolute; left: 0; right: 0; bottom: 176px; text-align: center; font-size: 18px; font-weight: 700; color: var(--dim); }
 
 /* restarting / shutting down */
-.nui-bye { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.nui-bye { position: absolute; inset: 0; background: #000; }
+.nui-bye .fit.bye { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
 .nui-bye h2 { font-size: 44px; }
 .nui-bye p { font-size: 22px; color: var(--dim); font-weight: 600; max-width: 520px; }
 .nui-bye.failed h2 { color: var(--bad); }
@@ -134,3 +159,100 @@
 
 /* settings page 2: web interface row */
 .nui .optrow.web .lbl small { display: block; font-size: 17px; font-weight: 700; margin-top: 2px; }
+
+/* settings: display tab and the aspect test pattern */
+.nui .aspectline { font-size: 26px; font-weight: 800; margin: 2px 0 4px; }
+.nui .aspectline .n { font-size: 48px; font-variant-numeric: tabular-nums; }
+.nui .aspectline .px { font-size: 18px; color: var(--dim); font-weight: 700; }
+.nui .btn.net.two { height: 56px; }
+.nui .pattern { position: absolute; inset: 0; background: #000; }
+.nui .pattern svg { display: block; }
+.nui .pattern .grid { stroke: #4a4a4a; stroke-width: 2; }
+.nui .pattern .axis { stroke: #fff; stroke-width: 2; }
+.nui .pattern .diag { stroke: var(--warn); stroke-width: 2; }
+.nui .pattern .shape { fill: none; stroke: #fff; stroke-width: 4; }
+.nui .pattern .shape.solid { fill: rgba(255, 255, 255, 0.14); }
+.nui .pattern .frame { fill: none; stroke: var(--focus); stroke-width: 4; }
+.nui .pattern-cap { position: absolute; left: 14px; bottom: 14px; width: 340px; background: #000; border: 3px solid #fff; padding: 6px 10px; font-size: 17px; font-weight: 700; line-height: 1.25; }
+.nui .pattern-cap .big { display: block; font-size: 34px; font-weight: 800; margin: 0; }
+.nui .pattern-cap .big .n { font-size: 34px; }
+.nui .pattern-cap .dim { color: var(--dim); }
+
+/* vehicle panel */
+.nui .vgrid { display: grid; gap: 10px; height: 100%; }
+.nui .vgrid.drive { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 1fr; align-content: start; }
+.nui .vgrid.drive .vcard h3 { margin-bottom: 0; }
+.nui .vgrid.engine { grid-template-columns: 1fr 1fr; grid-auto-rows: 166px; height: auto; }
+.nui .vgrid.tuning { grid-template-columns: 1fr 1fr; grid-auto-rows: 166px; height: auto; position: relative; }
+.nui .vstack { display: flex; flex-direction: column; gap: 10px; }
+.nui .vstack .vgrid.dyn { height: 340px; }
+.nui .vchips.stab { grid-template-rows: none; grid-auto-rows: 96px; height: auto; }
+.nui .vpair { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.nui .vdiag .dtc { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 24px; font-weight: 800; align-items: baseline; }
+.nui .vdiag .dtc .k { font-size: 18px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.nui .vdiag .dtc .v.ok { color: var(--ok); }
+.nui .vdiag .dtc .v.warn { color: var(--warn); }
+.nui .vdiag .dtc .v.bad { color: var(--bad); }
+.nui .vgrid.batt { grid-template-columns: 1.1fr 1fr; grid-template-rows: auto 1fr; position: relative; }
+.nui .btrend { width: 100%; height: auto; display: block; }
+.nui .btrend .guide { stroke: var(--line); stroke-width: 2; stroke-dasharray: 6 6; }
+.nui .btrend .line { fill: none; stroke: #fff; stroke-width: 4; stroke-linejoin: round; }
+.nui .btrend text { fill: var(--dim); font-size: 18px; font-weight: 700; }
+.nui .vgrid.dyn { grid-template-columns: 1.15fr 1fr 1fr; }
+.nui .span2 { grid-column: span 2; }
+.nui .vcard { padding: 6px 12px 8px; }
+.nui .vbig { display: flex; align-items: baseline; gap: 8px; }
+.nui .vbig .n { font-size: 56px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.nui .vbig.mid .n { font-size: 44px; }
+.nui .vbig.huge .n { font-size: 80px; line-height: 1; }
+.nui .vbig .u { font-size: 24px; font-weight: 800; color: var(--dim); }
+.nui .vbarwrap { position: relative; flex: 1; }
+.nui .vbar { position: relative; height: 22px; border: 2px solid #fff; }
+.nui .vbar > div { position: absolute; top: 0; bottom: 0; background: #fff; }
+.nui .vbar.warn > div { background: var(--warn); }
+.nui .vbar.bad > div { background: var(--bad); }
+.nui .vtick { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1px; background: var(--warn); }
+.nui .vtick.scale { background: var(--dim); top: -3px; bottom: -3px; width: 2px; }
+.nui .vticklabels { position: relative; height: 18px; font-size: 15px; color: var(--dim); font-weight: 700; }
+.nui .vticklabels span { position: absolute; transform: translateX(-50%); }
+.nui .vcard.lines { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.nui .vline { display: flex; align-items: center; gap: 12px; height: 30px; }
+.nui .vline .vticklabels { display: none; }
+.nui .vline .k { width: 96px; font-size: 18px; color: var(--dim); font-weight: 700; }
+.nui .vline .val { min-width: 118px; text-align: right; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nui .vline small { font-size: 15px; color: var(--dim); font-weight: 700; }
+.nui .vline.one { justify-content: space-between; margin-top: 6px; }
+.nui .vline.one .k { width: auto; }
+.nui .gplot { width: 100%; display: block; }
+.nui .gplot .ring, .nui .gplot .axis { fill: none; stroke: var(--line); stroke-width: 2; }
+.nui .gplot .trail { fill: none; stroke: var(--dim); stroke-width: 3; stroke-linejoin: round; }
+.nui .gplot .dot { fill: #fff; stroke: #000; stroke-width: 3; }
+.nui .gplot text { fill: #fff; font-size: 15px; font-weight: 700; }
+.nui .gplot text.sm { fill: var(--dim); font-size: 13px; }
+.nui .gread { display: flex; justify-content: space-between; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nui .wgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.nui .wbox { border: 2px solid var(--line); padding: 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
+.nui .wbox .k { font-size: 16px; color: var(--dim); font-weight: 700; }
+.nui .wbox .n { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nui .swheel { width: 124px; height: 124px; display: block; margin: 6px auto 4px; }
+.nui .swheel * { fill: none; stroke: #fff; stroke-width: 6; stroke-linecap: round; }
+.nui .swheel .top { stroke: var(--focus); }
+.nui .vchips { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 10px; height: 100%; }
+.nui .chip { border: 3px solid #fff; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+.nui .chip .k { font-size: 16px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); font-weight: 700; }
+.nui .chip .s { font-size: 23px; font-weight: 800; line-height: 1.1; }
+.nui .chip.on { background: #fff; color: #000; }
+.nui .chip.on .k { color: #000; }
+.nui .chip.warn { border-color: var(--warn); color: var(--warn); }
+.nui .chip.on.warn { background: var(--warn); color: #000; }
+.nui .chip .arrows { display: flex; gap: 10px; font-size: 30px; line-height: 1; }
+.nui .chip .arrows b { flex: 1; text-align: center; border: 3px solid var(--line); color: var(--dim); padding: 2px 0; }
+.nui .chip .arrows b.on { background: #fff; color: #000; border-color: #fff; }
+.nui .vehicle.nodata .vgrid, .nui .vehicle.nodata .vchips { opacity: 0.3; }
+.nui .vdiag { display: flex; flex-direction: column; gap: 12px; }
+.nui .vdiag .vchips { grid-template-columns: repeat(3, 1fr); grid-template-rows: none; grid-auto-rows: 96px; height: auto; }
+.nui .vnone { position: absolute; left: 70px; right: 70px; top: 90px; background: #000; border: 3px solid var(--warn); padding: 14px 18px; font-size: 20px; font-weight: 600; display: flex; flex-direction: column; gap: 6px; }
+.nui .vnone b { font-size: 28px; color: var(--warn); }
+.nui .vdemo { position: absolute; right: 14px; bottom: 0; font-size: 14px; font-weight: 800; color: var(--warn); }
+.nui .btn.net.two, .nui .btn.net.compact { height: 48px; margin-top: 8px; }
+.nui .content .btn.net { margin-top: 8px; }

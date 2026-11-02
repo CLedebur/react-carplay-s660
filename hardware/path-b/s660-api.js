@@ -9,6 +9,7 @@
 //   GET  /api/webadmin         whether the web interface is on, its addresses and (when on) the login PIN
 //   POST /api/webadmin         {"toggle":true} or {"enabled":bool} -- needs the x-s660-ui header
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
+//   GET  /api/vehicle          decoded CAN data for the Vehicle panel (s660-can.js; listen-only)
 //
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
 'use strict'
@@ -17,6 +18,17 @@ const os = require('os')
 const path = require('path')
 const { execFile } = require('child_process')
 const { createWebAdmin } = require('./web-admin')
+
+// The CAN service is optional: without s660-can.js the panel just shows "no data", the kiosk keeps running.
+let vehicle = null
+let engineData = () => ({ engineData: false })
+try {
+  const can = require('./s660-can')
+  vehicle = can.createVehicle()
+  engineData = can.engineData
+} catch (err) {
+  console.error(`s660-api: no CAN service (${err.message})`)
+}
 
 const MITM_INPUT_NAME = 'S660 CarPlay OPERA MITM' // hardware/opera-mitm/firmware USB product string
 const VIDEO_DECODER = '/dev/video10' // bcm2835-codec-decode: held by Chromium's GPU process while it HW-decodes
@@ -136,6 +148,32 @@ const videoDecoderBusy = () => {
   return false
 }
 
+// The drive recorder's own report (s660-drive-log.service); null when it is not running.
+const driveLogState = () => {
+  try {
+    return JSON.parse(readText('/run/s660-drive-log.json'))
+  } catch {
+    return null
+  }
+}
+
+// The battery for the Vehicle panel. No CAN message carries it, so it comes from the drive recorder's
+// OBD poll (PID 42, module voltage), which runs only with Drive recording on "Listen + engine data".
+const BATTERY_FRESH_S = 5
+const BATTERY_TREND_S = 15 * 60
+const battery = () => {
+  const d = driveLogState()
+  const now = Date.now() / 1000
+  const samples = (d?.battery || []).filter(([t]) => now - t <= BATTERY_TREND_S)
+  const last = samples[samples.length - 1]
+  const step = Math.max(1, Math.ceil(samples.length / 180)) // at most 180 points for the trend
+  return {
+    engineData: !!d?.engine,
+    batteryV: last && now - last[0] <= BATTERY_FRESH_S ? last[1] / 1000 : null,
+    batteryTrend: samples.filter((_, i) => i % step === 0 || i === samples.length - 1).map(([t, mv]) => [Math.round(now - t), mv / 1000]),
+  }
+}
+
 const stats = async full => ({
   cpuTempC: cpuTempC(),
   nvmeTempC: nvmeTempC(),
@@ -147,6 +185,7 @@ const stats = async full => ({
   persistFreeGb: persistFreeGb(),
   mitmLinked: mitmLinked(),
   videoDecoderBusy: full ? videoDecoderBusy() : null,
+  driveLog: driveLogState(),
 })
 
 // ---- network (NetworkManager). Wi-Fi is preferred; the phone's Bluetooth tethering is the fallback.
@@ -267,6 +306,7 @@ const SETTINGS_FILE =
   (fs.existsSync('/persist/ui') ? '/persist/ui/settings.json' : path.join(os.homedir(), '.s660-ui-settings.json'))
 // Each setting's default and its allowed values (keep in step with carplay-web-app/src/settings.ts).
 const SETTINGS = {
+  carplayEnabled: { default: true, allowed: [true, false] },
   autoRunCarplay: { default: true, allowed: [true, false] },
   units: { default: 'c', allowed: ['c', 'f'] },
   clock: { default: '24h', allowed: ['24h', '12h'] },
@@ -274,7 +314,17 @@ const SETTINGS = {
   fps: { default: 30, allowed: [30, 60] },
   wifiBand: { default: '5ghz', allowed: ['5ghz', '2.4ghz'] },
   nightMode: { default: false, allowed: [true, false] },
+  carplayWidth: { default: 896, allowed: [848, 896] },
+  carplayShape: { default: 'fill', allowed: ['fill', 'exact'] },
+  // Visible glass width / height x 1000: a range, not a list (carplay-web-app/src/settings.ts GLASS_ASPECT).
+  glassAspect: { default: 1875, min: 1500, max: 2400 },
+  // The drive recorder (hardware/can/s660-drive-log) reads this from the same file every 2 s.
+  driveLog: { default: 'off', allowed: ['off', 'listen', 'engine'] },
+  gearPopup: { default: 2, allowed: [0, 1, 2, 3, 4, 5] }, // seconds; 0 = off
 }
+
+const isAllowed = (spec, v) =>
+  spec.allowed ? spec.allowed.includes(v) : Number.isInteger(v) && v >= spec.min && v <= spec.max
 
 // Saved values that are no longer allowed fall back to their default instead of breaking the UI.
 const readSettings = () => {
@@ -283,14 +333,14 @@ const readSettings = () => {
     saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
   } catch {}
   return Object.fromEntries(
-    Object.entries(SETTINGS).map(([k, spec]) => [k, spec.allowed.includes(saved[k]) ? saved[k] : spec.default]),
+    Object.entries(SETTINGS).map(([k, spec]) => [k, isAllowed(spec, saved[k]) ? saved[k] : spec.default]),
   )
 }
 
 // Only known keys with an allowed value are accepted; anything else is a 400, not a silent drop.
 const writeSettings = patch => {
   for (const [k, v] of Object.entries(patch)) {
-    if (!SETTINGS[k] || !SETTINGS[k].allowed.includes(v)) throw new Error(`bad setting: ${k}`)
+    if (!SETTINGS[k] || !isAllowed(SETTINGS[k], v)) throw new Error(`bad setting: ${k}`)
   }
   const next = { ...readSettings(), ...patch }
   const tmp = `${SETTINGS_FILE}.tmp`
@@ -319,6 +369,11 @@ const handle = (req, res) => {
       body => sendJson(res, 200, body),
       err => sendJson(res, 500, { error: String(err.message || err) }),
     )
+    return true
+  }
+
+  if (url === '/api/vehicle' && req.method === 'GET') {
+    sendJson(res, 200, { ...(vehicle ? vehicle.snapshot() : { live: false }), ...engineData(driveLogState(), Date.now() / 1000), ...battery() })
     return true
   }
 

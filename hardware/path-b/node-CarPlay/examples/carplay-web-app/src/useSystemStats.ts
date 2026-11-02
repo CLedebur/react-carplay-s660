@@ -19,6 +19,14 @@ export interface SystemStats {
   persistFreeGb: number | null
   mitmLinked: boolean
   videoDecoderBusy: boolean | null
+  // The drive recorder (hardware/can/s660-drive-log); null when it is not running.
+  driveLog: {
+    setting: 'off' | 'listen' | 'engine'
+    recording: boolean
+    engine: boolean // read-only requests are being sent to the engine computer
+    bytes: number
+    note: string
+  } | null
 }
 
 // Polls while `intervalMs` is set; pass null to stop (the CarPlay stream gets every CPU cycle).

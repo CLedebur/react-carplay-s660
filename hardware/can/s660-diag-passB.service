@@ -1,0 +1,10 @@
+[Unit]
+Description=S660 stage 6 pass B, one 45-minute piece (hardware/can/DIAG-PLAN.md)
+After=s660-can.service
+RequiresMountsFor=/persist
+
+[Service]
+Type=exec
+ExecStart=/persist/can/bin/s660-passB
+ExecStopPost=/usr/local/sbin/s660-diag session-stop
+RuntimeMaxSec=55min

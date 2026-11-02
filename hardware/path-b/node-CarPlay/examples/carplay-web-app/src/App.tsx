@@ -1,4 +1,5 @@
 import {
+  CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -21,11 +22,11 @@ import { carplayCommandsFor, ControlHandler } from './controls'
 import { NativeUi } from './NativeUi'
 import { useHeadUnit } from './useHeadUnit'
 import { Settings, StartSettings, reloadPending } from './settings'
-import { settingsPage } from './nav'
 import { useNetwork } from './useNetwork'
 import { useSettings } from './useSettings'
 import { useWebAdmin } from './useWebAdmin'
 import { useSystemStats } from './useSystemStats'
+import { useVehicle, VEHICLE_POLL_MS, VEHICLE_STATUS_POLL_MS } from './useVehicle'
 import { InitEvent, RenderErrorEvent } from './worker/render/RenderEvents'
 
 // Display vs. video geometry (BUILD_NOTES 22.8). The S660 glass is 135x72 mm (1.875:1) behind a
@@ -39,9 +40,16 @@ const DISPLAY_WIDTH = 720
 const DISPLAY_HEIGHT = 480
 
 // video: what the dongle / iOS renders. Default: 848 x 480
-const width = 848
 const height = 480
 
+
+// 'fill' squeezes the picture over the whole 720 px frame (the panel's stretch then makes it a little
+// wide: 848/480 against the glass's aspect). 'exact' gives it its true shape on the glass: narrower, pushed
+// to the right edge (the sidebar side), with the black bar on the left.
+const videoStyle = (s: Settings, width: number): CSSProperties =>
+  s.carplayShape === 'exact'
+    ? { height: '100%', width: `${Math.round((DISPLAY_WIDTH * (width / height) * 1000) / s.glassAspect)}px`, marginLeft: 'auto' }
+    : { width: '100%', height: '100%' }
 
 const videoChannel = new MessageChannel()
 const micChannel = new MessageChannel()
@@ -51,7 +59,7 @@ const micChannel = new MessageChannel()
 // decode, 30 halves it again, plenty for a dash) and right-hand drive, so iOS puts the CarPlay
 // sidebar on the right.
 const buildConfig = (s: Settings): Partial<DongleConfig> => ({
-  width,
+  width: s.carplayWidth,
   height,
   fps: s.fps,
   mediaDelay: 300,
@@ -61,6 +69,8 @@ const buildConfig = (s: Settings): Partial<DongleConfig> => ({
 })
 
 const RETRY_DELAY_MS = 30000
+
+const SCREENSHOT_VIEW = new URLSearchParams(window.location.search).has('view')
 
 // How often to re-check for the dongle via navigator.usb.getDevices() (cheap, no device I/O).
 // Backstops navigator.usb.ondisconnect, which was measured taking 15-30s to fire after a
@@ -300,28 +310,33 @@ function App() {
   // show, and exactly what would have said "the phone never joined the dongle's Wi-Fi". On an
   // unchanged poll we now leave the status (and the already-started, idempotent worker) alone;
   // the worker's own link-status / plugged / unplugged / failure events drive the line from here.
-  const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings()
+  const { settings, loaded: settingsLoaded, update: updateSettings, preview: previewSettings } = useSettings()
   const settingsRef = useRef(settings)
   settingsRef.current = settings
   // The settings CarPlay was last started with: what is on the dongle now, not what is saved.
   const [started, setStarted] = useState<StartSettings | null>(null)
 
-  const devicePresentRef = useRef<boolean | null>(null)
+  // Settings > CarPlay > CarPlay off: the dongle is found but never started, so the phone has nothing to
+  // join (testing with the phone nearby). Switching it reloads the page, as Reload CarPlay does.
+  const devicePresentRef = useRef<string | null>(null)
   const checkDevice = useCallback(
     async () => {
-      const present = !!(await findDevice())
-      if (present === devicePresentRef.current) return // no change -- don't touch the status
-      devicePresentRef.current = present
-      if (present) {
-        setDeviceFound(true)
+      const found = !!(await findDevice())
+      // A ?view= page is a second copy for a screenshot (nav.ts uiFromQuery): it must never take the dongle
+      // from the kiosk (2026-11-02: one did, and the dongle reset under the running CarPlay).
+      const run = found && settingsRef.current.carplayEnabled && !SCREENSHOT_VIEW
+      const state = `${found}/${run}`
+      if (state === devicePresentRef.current) return // no change -- don't touch the status
+      devicePresentRef.current = state
+      setDeviceFound(found)
+      if (run) {
         clearStatus()
         const s = settingsRef.current
-        setStarted({ handDrive: s.handDrive, fps: s.fps, wifiBand: s.wifiBand })
+        setStarted({ handDrive: s.handDrive, fps: s.fps, wifiBand: s.wifiBand, carplayWidth: s.carplayWidth })
         carplayWorker.postMessage({ type: 'start', payload: { config: buildConfig(s) } })
       } else {
         carplayWorker.postMessage({ type: 'stop' })
-        setDeviceFound(false)
-        setStatus('Dongle not connected', 'warn')
+        setStatus(found ? 'CarPlay is switched off (Settings › CarPlay)' : 'Dongle not connected', 'warn')
       }
     },
     [carplayWorker, setStatus, clearStatus],
@@ -335,6 +350,7 @@ function App() {
   // event's own latency.
   useEffect(() => {
     if (!settingsLoaded) return // start the dongle with the saved settings, not the defaults
+    if (!settings.carplayEnabled) return // CarPlay off: the dongle is never started, so nothing to look for
     navigator.usb.onconnect = async () => {
       checkDevice()
     }
@@ -346,7 +362,14 @@ function App() {
     checkDevice()
     const pollId = setInterval(checkDevice, POLL_INTERVAL_MS)
     return () => clearInterval(pollId)
-  }, [carplayWorker, checkDevice, settingsLoaded])
+  }, [carplayWorker, checkDevice, settingsLoaded, settings.carplayEnabled])
+
+  const carplayEnabledAtLoad = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!settingsLoaded) return
+    if (carplayEnabledAtLoad.current === null) carplayEnabledAtLoad.current = settings.carplayEnabled
+    else if (settings.carplayEnabled !== carplayEnabledAtLoad.current) window.location.reload()
+  }, [settings.carplayEnabled, settingsLoaded])
 
   const sendTouchEvent = useCarplayTouch(carplayWorker, DISPLAY_WIDTH, DISPLAY_HEIGHT)
 
@@ -359,6 +382,7 @@ function App() {
     plugged: isPlugged,
     settings,
     update: updateSettings,
+    preview: previewSettings,
     reloadCarplay,
     onNetworkChanged: () => refreshNetworkRef.current(),
     toggleWebAdmin: () => toggleWebRef.current(),
@@ -386,15 +410,20 @@ function App() {
   // Poll the Pi only while a native page is up: the stream gets every CPU cycle it can.
   const nativeShowing = !(headUnit.ui.panel === 'carplay' && headUnit.carplayShown)
   const settingsOpen = nativeShowing && headUnit.ui.panel === 'settings'
+  const vehicleOpen = nativeShowing && headUnit.ui.panel === 'vehicle'
+  // Any native page shows the outside temperature beside the clock, so the slow poll runs on all of them.
+  // Over CarPlay only the gear pop-up needs it, at the fast rate so a shift shows promptly.
+  const vehicle = useVehicle(vehicleOpen || (!nativeShowing && settings.gearPopup > 0) ? VEHICLE_POLL_MS : nativeShowing ? VEHICLE_STATUS_POLL_MS : null)
   const stats = useSystemStats(nativeShowing ? (settingsOpen ? 2000 : 10000) : null, settingsOpen)
-  const networkPageOpen = settingsOpen && settingsPage(headUnit.ui) === 4
+  const networkPageOpen = settingsOpen && headUnit.ui.tab.settings === 'network'
   const { network, refresh: refreshNetwork } = useNetwork(networkPageOpen ? 3000 : null)
   refreshNetworkRef.current = refreshNetwork
-  const optionsPageOpen = settingsOpen && settingsPage(headUnit.ui) === 2
+  const optionsPageOpen = settingsOpen && headUnit.ui.tab.settings === 'options'
   const { web, toggle: toggleWeb } = useWebAdmin(optionsPageOpen ? 3000 : null)
   toggleWebRef.current = toggleWeb
 
   const isLoading = !isPlugged
+  const streamWidth = started?.carplayWidth ?? settings.carplayWidth // what the dongle renders now, not what is saved
 
   return (
     <div
@@ -411,13 +440,14 @@ function App() {
         dongle={deviceFound === null ? null : !!deviceFound}
         linkStatus={status?.text ?? null}
         stats={stats}
+        vehicle={vehicle}
         network={network}
         web={web}
         netBusy={headUnit.netBusy}
         holding={headUnit.holding}
         power={headUnit.power}
         lastKey={headUnit.lastKey}
-        streamLabel={`${width}×${height} ${started?.fps ?? settings.fps}`}
+        streamLabel={`${streamWidth}×${height} ${started?.fps ?? settings.fps}`}
       />
       <div
         id="videoContainer"
@@ -437,7 +467,7 @@ function App() {
         <canvas
           ref={canvasRef}
           id="video"
-          style={isPlugged ? { width: '100%', height: '100%' } : { display: 'none' }} // squeeze 896 -> 720
+          style={isPlugged ? videoStyle(settings, streamWidth) : { display: 'none' }}
         />
       </div>
       {status && (status.level === 'error' || isLoading) && (

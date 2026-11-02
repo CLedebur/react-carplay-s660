@@ -1,0 +1,313 @@
+#!/usr/bin/python3
+# Read-only diagnostic requests for the S660 (hardware/can/DIAG-PLAN.md).
+#
+#   sudo s660-diag session-start      # stop s660-can, adapter C+M0 (verified), slcand -> can0
+#   s660-diag obd [--29] 01 00         # OBD-II: service 01, PID 00 (functional request)
+#   s660-diag uds 30 22 F181           # UDS to 0x18DA30F1: read data by identifier F181
+#   sudo s660-diag session-stop       # stop slcand, adapter C+M1 (verified), start s660-can
+#   s660-diag sweep 10 0000 FFFF --skip-f1   # stage 6: which 0x22 identifiers module 0x10 answers
+#       [--min-mv 12100] [--max-minutes 45]  # pause on a low battery / after a while (resumable)
+#   s660-diag poll 5 04 05 0C s03 60:702A ...  # stage 5: requests in turn, 5 per second, until stopped:
+#                                      #   0C = OBD 01 PID 0C, s03 = OBD service 03 (no PID),
+#                                      #   60:702A = UDS 0x22 DID 702A on module 0x60
+#
+# Safety (DIAG-PLAN "Safety rules"): only the read-only services in ALLOWED can be sent, at most
+# one request per MIN_GAP seconds, and only inside a session (the adapter is silent otherwise).
+# Every request and reply is appended to LOG.
+import json, os, socket, struct, subprocess, sys, termios, time
+
+DEV = "/dev/s660-can"
+# The overrides exist for the bench test against a vcan interface (no car, no adapter).
+IFACE = os.environ.get("S660_DIAG_IFACE", "can0")
+LOG = os.environ.get("S660_DIAG_LOG", "/persist/can/diag.jsonl")
+SESSION = os.environ.get("S660_DIAG_SESSION", "/run/s660-diag-session")
+MIN_GAP = 0.1                       # seconds between requests (<= 10 per second)
+TIMEOUT = 0.5                       # seconds to wait for a reply
+
+# Read-only services only. OBD-II: 01 current data, 02 freeze frame, 03/07/0A fault codes,
+# 09 vehicle info. UDS: 22 read data by identifier. Everything else is refused, notably
+# 04/14 (clear codes), 10, 11, 27, 2E, 2F, 31, 34-37, 85.
+ALLOWED = {"obd": {0x01, 0x02, 0x03, 0x07, 0x09, 0x0A}, "uds": {0x22}}
+
+# Linux ISO-TP socket constants (linux/can/isotp.h); Python does not export all of them.
+SOL_CAN_ISOTP, CAN_ISOTP_OPTS, CAN_ISOTP_TX_PADDING = 106, 1, 0x004
+EFF = getattr(socket, "CAN_EFF_FLAG", 0x80000000)   # 29-bit ID flag
+
+
+def check_request(kind, payload):
+    """Raise ValueError unless payload is a whitelisted read-only request."""
+    if not payload:
+        raise ValueError("empty request")
+    if payload[0] not in ALLOWED[kind]:
+        raise ValueError(f"service 0x{payload[0]:02X} is not on the read-only whitelist")
+    if kind == "uds" and len(payload) != 3:
+        raise ValueError("UDS 0x22 takes exactly one 2-byte identifier")
+    if len(payload) > 7:
+        raise ValueError("requests are single-frame (<= 7 bytes)")
+
+
+def adapter(cmds):
+    """Send slcan commands to the adapter's tty and return the reply to the last one.
+
+    If the channel was left open, the tty carries a stream of received frames. So every
+    command but the last is sent first, the stream (and any stale bytes) is drained once the
+    C has closed the channel, and only then is the last command sent and its reply read."""
+    fd = os.open(DEV, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    a = termios.tcgetattr(fd)
+    a[0] = a[1] = a[3] = 0
+    a[6][termios.VMIN] = a[6][termios.VTIME] = 0
+    termios.tcsetattr(fd, termios.TCSANOW, a)
+
+    def read_for(seconds, until_cr=False):
+        out, end = b"", time.time() + seconds
+        while time.time() < end and not (until_cr and out.endswith(b"\r")):
+            try:
+                out += os.read(fd, 4096)
+            except BlockingIOError:
+                time.sleep(0.01)
+        return out
+
+    for c in cmds[:-1]:
+        os.write(fd, (c + "\r").encode())
+        time.sleep(0.1)
+    read_for(0.5)                                   # drain frames still in flight
+    os.write(fd, (cmds[-1] + "\r").encode())
+    out = read_for(0.5, until_cr=True)
+    os.close(fd)
+    return out.decode(errors="replace").strip()
+
+
+def session_start():
+    if os.path.exists(SESSION):
+        sys.exit(f"a session is already open ({SESSION}): the drive recorder's, or another one")
+    subprocess.run(["systemctl", "stop", "s660-can.service"], check=True)
+    time.sleep(0.5)
+    if adapter(["C", "M0", "m"]) != "M0":
+        adapter(["C", "M1"])
+        sys.exit("adapter did not confirm M0; left silent")
+    # -c: slcand closes the channel (C) when it exits, so session-stop finds it closed
+    subprocess.run(["slcand", "-o", "-c", "-s6", DEV, IFACE], check=True)
+    for _ in range(50):
+        if subprocess.run(["ip", "link", "show", IFACE], capture_output=True).returncode == 0:
+            break
+        time.sleep(0.1)
+    subprocess.run(["ip", "link", "set", IFACE, "up"], check=True)
+    open(SESSION, "w").write(str(time.time()))
+    print("session open: adapter in M0 (can transmit), can0 up at 500k")
+
+
+def session_stop():
+    subprocess.run(["pkill", "-f", f"slcand .*{DEV}"])
+    time.sleep(0.5)
+    if os.path.exists(SESSION):
+        os.remove(SESSION)
+    mode = adapter(["C", "M1", "m"])
+    if mode != "M1":
+        sys.exit(f"adapter replied '{mode}', not M1: unplug it (power-up is silent)")
+    # --no-block: when the drive recorder's own stop calls this, a blocking start would wait for that
+    # stop to finish, which waits for this: a deadlock until systemd's timeouts (seen 2026-11-02).
+    # During shutdown systemd refuses the start; the adapter is already verified silent by then.
+    if subprocess.run(["systemctl", "start", "--no-block", "s660-can.service"]).returncode != 0:
+        print("session closed: adapter back in M1 (silent); s660-can.service not restarted (shutting down?)")
+        return
+    print("session closed: adapter back in M1 (silent), s660-can.service running")
+
+
+def request(kind, tx, rx, payload):
+    check_request(kind, payload)
+    if not os.path.exists(SESSION):
+        sys.exit("no session: run 'sudo s660-diag session-start' first")
+    s = socket.socket(socket.AF_CAN, socket.SOCK_DGRAM, socket.CAN_ISOTP)
+    # Pad every frame to 8 bytes (0x00), as many Honda modules require.
+    s.setsockopt(SOL_CAN_ISOTP, CAN_ISOTP_OPTS, struct.pack("=IIBBBB", CAN_ISOTP_TX_PADDING, 0, 0, 0, 0, 0))
+    s.bind((IFACE, rx, tx))
+    s.settimeout(TIMEOUT)
+    t = time.time()
+    s.send(bytes(payload))
+    try:
+        reply = s.recv(4095)
+    except socket.timeout:
+        reply = None
+    s.close()
+    rec = {"t": t, "kind": kind, "tx": f"{tx & 0x1FFFFFFF:X}", "rx": f"{rx & 0x1FFFFFFF:X}",
+           "req": bytes(payload).hex(" "), "reply": reply.hex(" ") if reply else None}
+    with open(LOG, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    print(f"{rec['tx']} -> {rec['req']}   {rec['rx']} <- {rec['reply'] or '(no reply)'}", flush=True)
+    time.sleep(MIN_GAP)
+    return reply
+
+
+def isotp_socket(tx, rx):
+    s = socket.socket(socket.AF_CAN, socket.SOCK_DGRAM, socket.CAN_ISOTP)
+    s.setsockopt(SOL_CAN_ISOTP, CAN_ISOTP_OPTS, struct.pack("=IIBBBB", CAN_ISOTP_TX_PADDING, 0, 0, 0, 0, 0))
+    s.bind((IFACE, rx, tx))
+    return s
+
+
+def battery_mv():
+    """Module voltage (OBD 01 42) in mV from the engine computer, or None if it did not answer."""
+    s = isotp_socket(0x18DB33F1 | EFF, 0x18DAF110 | EFF)
+    s.settimeout(TIMEOUT)
+    s.send(bytes([0x01, 0x42]))
+    try:
+        reply = s.recv(4095)
+    except socket.timeout:
+        reply = None
+    s.close()
+    with open(LOG, "a") as f:
+        f.write(json.dumps({"t": time.time(), "kind": "obd", "tx": "18DB33F1", "rx": "18DAF110",
+                            "req": "01 42", "reply": reply.hex(" ") if reply else None}) + "\n")
+    time.sleep(MIN_GAP)
+    return reply[2] << 8 | reply[3] if reply and reply[:2] == b"\x41\x42" and len(reply) >= 4 else None
+
+
+def sweep(addr, start, end, skip_f1, min_mv=None, max_minutes=None):
+    """Ask module `addr` for every DID in start..end with 0x22 (DIAG-PLAN stage 6).
+
+    Keeps positive replies and every negative reply other than 7F 22 31 (no such DID) in
+    sweep-AA-SSSS-EEEE.jsonl, saves progress in .state, and stops on the plan's stop rules."""
+    if not os.path.exists(SESSION):
+        sys.exit("no session: run 'sudo s660-diag session-start' first")
+    base = os.path.join(os.path.dirname(LOG), f"sweep-{addr:02X}-{start:04X}-{end:04X}")
+    did = start
+    if os.path.exists(base + ".state"):
+        did = int(open(base + ".state").read()) + 1
+        print(f"resuming at {did:04X}")
+    s = isotp_socket(0x18DA00F1 | addr << 8 | EFF, 0x18DAF100 | addr | EFF)
+    counts = {"positive": 0, "absent": 0, "kept_negative": 0, "timeout": 0}
+    odd_run = timeout_run = 0
+    answered = False
+    out = open(base + ".jsonl", "a")
+    last_send = 0.0
+    began = time.time()
+    while did <= end:
+        if skip_f1 and 0xF100 <= did <= 0xF1FF:
+            did = 0xF200
+            continue
+        payload = [0x22, did >> 8, did & 0xFF]
+        check_request("uds", payload)
+        time.sleep(max(0.0, MIN_GAP - (time.time() - last_send)))
+        last_send = time.time()
+        s.settimeout(TIMEOUT)
+        s.send(bytes(payload))
+        reply, deadline = None, time.time() + 5
+        while time.time() < deadline:
+            try:
+                reply = s.recv(4095)
+            except socket.timeout:
+                reply = None
+                break
+            if reply[:3] != b"\x7f\x22\x78":       # 78 = response pending: keep waiting
+                break
+        if reply is None:
+            counts["timeout"] += 1
+            timeout_run += 1
+            kind = "timeout"
+        else:
+            answered = True
+            timeout_run = 0
+            if reply[0] == 0x62:
+                kind, odd_run = "positive", 0
+            elif reply[:3] == b"\x7f\x22\x31":
+                kind, odd_run = "absent", 0
+            else:
+                kind = "kept_negative"
+                odd_run = odd_run + 1 if reply[:3] not in (b"\x7f\x22\x33", b"\x7f\x22\x22") else 0
+            counts[kind] += 1
+        if kind != "absent":
+            out.write(json.dumps({"t": last_send, "addr": f"{addr:02X}", "did": f"{did:04X}", "kind": kind,
+                                  "reply": reply.hex(" ") if reply else None}) + "\n")
+            out.flush()
+        if did % 16 == 15 or did == end:
+            open(base + ".state", "w").write(str(did))
+        if did % 256 == 255:
+            mv = battery_mv() if min_mv else None
+            # The engine answers that check from the same address as the sweep (0x18DAF110), so
+            # the sweep's socket got a copy of the reply: drop it, or every later DID reads one late.
+            s.setblocking(False)
+            try:
+                while True:
+                    s.recv(4095)
+            except BlockingIOError:
+                pass
+            print(f"{did:04X} {counts}" + (f" battery {mv} mV" if min_mv else ""), flush=True)
+            if min_mv and (mv is None or mv < min_mv):
+                open(base + ".state", "w").write(str(did))
+                sys.exit(f"paused at {did:04X}: battery {mv} mV, limit {min_mv} mV (resumes from here)")
+            if max_minutes is not None and time.time() - began > max_minutes * 60:
+                open(base + ".state", "w").write(str(did))
+                print(f"paused at {did:04X}: {max_minutes} min reached (resumes from here)")
+                return
+        if odd_run >= 5:
+            open(base + ".state", "w").write(str(did))
+            sys.exit(f"stopped at {did:04X}: 5 unexpected replies in a row {counts}")
+        if answered and timeout_run >= 3:
+            open(base + ".state", "w").write(str(did))
+            sys.exit(f"stopped at {did:04X}: 3 timeouts in a row from a module that was answering {counts}")
+        did += 1
+    s.close()
+    print(f"done {start:04X}-{end:04X} on 0x{addr:02X}: {counts}")
+
+
+def poll_item(token):
+    """'0C' -> OBD 01 PID 0C; 's03' -> OBD service 03; '60:702A' -> UDS 0x22 DID 702A on module 0x60.
+    Every one is checked against the whitelist before the poll starts."""
+    if token.startswith("s"):
+        item = ("obd", 0x18DB33F1 | EFF, 0x18DAF110 | EFF, [int(token[1:], 16)])
+    elif ":" in token:
+        addr, did = (int(x, 16) for x in token.split(":"))
+        item = ("uds", 0x18DA00F1 | addr << 8 | EFF, 0x18DAF100 | addr | EFF, [0x22, did >> 8, did & 0xFF])
+    else:
+        item = ("obd", 0x18DB33F1 | EFF, 0x18DAF110 | EFF, [0x01, int(token, 16)])
+    check_request(item[0], item[3])
+    return item
+
+
+def poll(rate, tokens):
+    """Stage 5: send each request in turn, `rate` per second, until stopped. Every request and reply
+    goes to LOG, beside the listen-only recording."""
+    if not 0 < rate <= 1 / MIN_GAP:
+        raise ValueError(f"rate must be 0-{1 / MIN_GAP:.0f} per second")
+    items = [poll_item(tok) for tok in tokens]
+    while True:
+        for item in items:
+            t = time.time()
+            request(*item)
+            time.sleep(max(0.0, 1 / rate - (time.time() - t)))
+
+
+def main(argv):
+    if not argv:
+        sys.exit("usage: s660-diag session-start | obd [--29] SVC [PID] | uds ADDR 22 DID"
+                 " | sweep ADDR START END [--skip-f1] [--min-mv MV] [--max-minutes N] | poll RATE ITEM... | session-stop")
+    cmd, args = argv[0], argv[1:]
+    if cmd == "session-start":
+        session_start()
+    elif cmd == "session-stop":
+        session_stop()
+    elif cmd == "obd":
+        ext = args[:1] == ["--29"]
+        payload = [int(x, 16) for x in args[1 if ext else 0:]]
+        tx, rx = (0x18DB33F1 | EFF, 0x18DAF110 | EFF) if ext else (0x7DF, 0x7E8)
+        request("obd", tx, rx, payload)
+    elif cmd == "uds":
+        # s660-diag uds 30 22 F181 -> 0x18DA30F1, payload 22 F1 81
+        addr, service, did = int(args[0], 16), int(args[1], 16), int(args[2], 16)
+        payload = [service] + list(did.to_bytes(2, "big"))
+        request("uds", 0x18DA00F1 | addr << 8 | EFF, 0x18DAF100 | addr | EFF, payload)
+    elif cmd == "sweep":
+        opt = lambda name: int(args[args.index(name) + 1]) if name in args else None
+        sweep(int(args[0], 16), int(args[1], 16), int(args[2], 16), "--skip-f1" in args,
+              opt("--min-mv"), opt("--max-minutes"))
+    elif cmd == "poll":
+        poll(float(args[0]), args[1:])
+    else:
+        sys.exit(f"unknown command '{cmd}'")
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except ValueError as e:
+        sys.exit(f"refused, nothing sent: {e}")

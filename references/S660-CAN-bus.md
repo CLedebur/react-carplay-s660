@@ -274,10 +274,10 @@ Byte 0 holds only the counter and checksum.
 "0x12E byte 3". 0x12E is not in the spreadsheet, and 0x21E byte 3 is. The blog's ID is almost
 certainly a transposition of 0x21E. Confirm with a capture.
 
-### 0x221 (545) — "ECON status"?
+### 0x221 (545) — "ECON status"? (unknown: resets to 59–60 at ignition-on, falls while driving)
 | Byte/bit | Meaning |
 |---|---|
-| byte 0 | Changes steadily between 0b00011111 and 0b00100111. Does not follow the throttle. Purpose unknown. |
+| byte 0 (bits 5–0) | The sheet: changes steadily between 0b00011111 and 0b00100111, does not follow the throttle, purpose unknown. **Our car, still unknown.** Observed: 59–60 at every ignition-on (before the drive, after it, and later); during the 13.5 min drive it fell one step at a time, 59 → 55, and it was **back at 59–60 after the drive**. Each step came after a similar amount of the 0x324 bytes 2–3 counter (1,001 / 1,388 / 1,198 counts), not a similar distance. Ruled out, 2026-11-01: a long-run average economy and a fuel-used / fuel-left value (neither would recover after the drive), and the dash's average km/L (15.2 on the dash vs 59 → 14.75 at 0.25 km/L per count; not an exact match). The dash's range (329 km at the time) is on no broadcast field, so the cluster (0x60) calculates it. Next: look for 152 / 329 in the cluster's identifiers (stage 6 pass C), and note the dash's average km/L and range before and after a drive. |
 | byte 3 | C/S |
 
 ### 0x255 (597) — wheel speeds (coarse)
@@ -302,10 +302,10 @@ Sent every 40 ms, about half as often as 0x1D0. Easier to use: one byte per whee
 ### 0x305 (773) — seat belts
 | Byte/bit | Meaning |
 |---|---|
-| byte 0, bit 7 | Seat-belt warning lamp on |
+| byte 0, bit 7 | Seat-belt warning lamp on. **Checked 2026-11-02:** on exactly while the driver's belt is unbuckled; the passenger belt does not set it |
 | byte 1, bit 7 / bit 6 | Passenger airbag ON / OFF indicator (unconfirmed, probably unused) |
-| byte 1, bit 5 / bit 4 | Driver belt buckled / unbuckled |
-| byte 1, bit 3 / bit 2 | Passenger belt buckled / unbuckled |
+| byte 1, bit 5 / bit 4 | Driver belt buckled / unbuckled. **Checked 2026-11-02** (`2026-11-02-belts-lamps`) |
+| byte 1, bit 3 / bit 2 | Passenger belt buckled / unbuckled. **Checked 2026-11-02** |
 | byte 6 | C/S |
 
 ### 0x309 (777) — speedometer speed
@@ -327,12 +327,15 @@ Only the counter and checksum change.
 |---|---|
 | byte 0 | Coolant temperature, °C = raw − 40 (raw 140 = 100 °C) |
 | byte 1 | Intake air temperature, °C = raw − 40 |
-| bytes 2–3 | Fuel used? Only ever increases, even when stopped. Sometimes holds steady for ~7 s while driving. |
+| bytes 2–3 | Fuel used? Only ever increases, even when stopped. Sometimes holds steady for ~7 s while driving. **Our car:** +4,411 counts over the 13.5 min drive (raw 73 → 4,484, no wrap seen). 0x221 steps down after roughly every 1,000–1,400 counts, which supports "injected-fuel counter". |
 | byte 5 | Looks like boost, but is sometimes constant and sometimes random |
 | byte 6, bit 7 | Blow-off valve |
-| byte 6, bit 1 | Engine alert? |
-| byte 6, bit 0 | Oil alert? |
-| byte 7, bit 7 | EPS alert? |
+| byte 6, bit 4 | Set for 0.2 s while the engine stops (2026-11-02); purpose unknown |
+| byte 6, bit 3 | A lamp that is on with the engine stopped (2026-11-02): cleared 0.2 s after engine start. Oil pressure or charging? |
+| byte 6, bit 2 | Another such lamp: cleared first, 0.1 s after start, together with byte 7 bit 7. Oil pressure or charging? |
+| byte 6, bit 1 | "Engine alert?" in the sheet. On with the engine stopped, cleared last (0.3 s after start), back on at once at engine stop: behaves like the check-engine lamp's bulb check |
+| byte 6, bit 0 | "Oil alert?" in the sheet. **Never seen set on our car**, not even with the engine stopped, when the oil-pressure lamp is lit: so not that lamp |
+| byte 7, bit 7 | "EPS alert?" in the sheet. On with the engine stopped (as the EPS lamp is), cleared at engine start with byte 6 bit 2 |
 | byte 7 | C/S (bits 5–0) |
 
 ### 0x328 (808) — unknown
