@@ -44,6 +44,7 @@
 .nui .pill.off i { background: transparent; border: 2px solid currentColor; }
 .nui .pill b { color: #fff; font-weight: 700; }
 .nui .clock { font-variant-numeric: tabular-nums; font-size: 24px; margin-left: 6px; }
+.nui .otemp { font-variant-numeric: tabular-nums; font-size: 24px; margin-left: 6px; color: var(--dim); }
 
 .nui .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 110px; border-right: 2px solid var(--line); display: flex; flex-direction: column; }
 .nui .rail .item {
@@ -169,7 +170,7 @@
 .nui .vgrid { display: grid; gap: 10px; height: 100%; }
 .nui .vgrid.drive { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 1fr; align-content: start; }
 .nui .vgrid.drive .vcard h3 { margin-bottom: 0; }
-.nui .vgrid.engine { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); }
+.nui .vgrid.engine { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, 1fr); }
 .nui .vgrid.dyn { grid-template-columns: 1.15fr 1fr 1fr; }
 .nui .span2 { grid-column: span 2; }
 .nui .vcard { padding: 6px 12px 8px; }
@@ -195,7 +196,6 @@
 .nui .vline small { font-size: 15px; color: var(--dim); font-weight: 700; }
 .nui .vline.one { justify-content: space-between; margin-top: 6px; }
 .nui .vline.one .k { width: auto; }
-.nui .vpair { display: flex; justify-content: space-between; align-items: baseline; }
 .nui .gplot { width: 100%; display: block; }
 .nui .gplot .ring, .nui .gplot .axis { fill: none; stroke: var(--line); stroke-width: 2; }
 .nui .gplot .trail { fill: none; stroke: var(--dim); stroke-width: 3; stroke-linejoin: round; }
@@ -222,6 +222,8 @@
 .nui .chip .arrows b { flex: 1; text-align: center; border: 3px solid var(--line); color: var(--dim); padding: 2px 0; }
 .nui .chip .arrows b.on { background: #fff; color: #000; border-color: #fff; }
 .nui .vehicle.nodata .vgrid, .nui .vehicle.nodata .vchips { opacity: 0.3; }
+.nui .vdiag { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+.nui .vdiag .vchips { grid-template-columns: repeat(3, 1fr); grid-template-rows: 110px; height: auto; }
 .nui .vnone { position: absolute; left: 70px; right: 70px; top: 90px; background: #000; border: 3px solid var(--warn); padding: 14px 18px; font-size: 20px; font-weight: 600; display: flex; flex-direction: column; gap: 6px; }
 .nui .vnone b { font-size: 28px; color: var(--warn); }
 .nui .vdemo { position: absolute; right: 14px; bottom: 0; font-size: 14px; font-weight: 800; color: var(--warn); }

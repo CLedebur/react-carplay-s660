@@ -8,7 +8,7 @@ export type PowerAction = 'restart' | 'shutdown'
 export type HoldAction = PowerAction | 'reload'
 
 export type SettingsTab = 'status' | 'options' | 'carplay' | 'network' | 'display' | 'power'
-export type VehicleTab = 'drive' | 'engine' | 'dynamics' | 'body'
+export type VehicleTab = 'drive' | 'engine' | 'dynamics' | 'body' | 'diag'
 export type TabId = SettingsTab | VehicleTab
 
 // What the knob can land on. rail:* is the left rail, sw:* the hold-Mode switcher, tab:* a tab in the
@@ -48,6 +48,7 @@ export const VEHICLE_TABS: Tab<VehicleTab>[] = [
   { id: 'engine', label: 'Engine', items: [] },
   { id: 'dynamics', label: 'Dynamics', items: [] },
   { id: 'body', label: 'Body', items: [] },
+  { id: 'diag', label: 'Diag', items: [] },
 ]
 
 export const tabsOf = (panel: Panel): Tab<TabId>[] =>
@@ -65,7 +66,11 @@ export interface UiState {
 const firstTabs = { settings: SETTINGS_TABS[0].id, vehicle: VEHICLE_TABS[0].id }
 export const initialUi: UiState = { panel: 'carplay', switcher: false, focus: 'rail:carplay', tab: firstTabs, pattern: false, fine: false }
 
-export const openPanel = (panel: Panel): UiState => ({ ...initialUi, panel, focus: `rail:${panel}` })
+// Opening a panel that has tabs puts the knob on its first tab; CarPlay has none, so it stays on the rail.
+export const openPanel = (panel: Panel): UiState => {
+  const tabs = tabsOf(panel)
+  return { ...initialUi, panel, focus: tabs.length ? `tab:${tabs[0].id}` : `rail:${panel}` }
+}
 export const openSwitcher = (ui: UiState): UiState => ({ ...ui, switcher: true, focus: `sw:${ui.panel}` })
 export const closeSwitcher = (ui: UiState): UiState => ({ ...ui, switcher: false, focus: `rail:${ui.panel}` })
 
@@ -81,13 +86,14 @@ export const currentTab = (ui: UiState): Tab<TabId> | null =>
 // True while the knob is inside a tab's controls (as opposed to on the rail or the tab bar).
 export const inTab = (ui: UiState): boolean => !!currentTab(ui)?.items.includes(ui.focus)
 
-// Knob order. On the rail or the tab bar: the three rail items, then the panel's tabs (each one shows
-// as the knob lands on it). Pushed into a tab: only that tab's controls, so one page is a short loop.
+// Knob order, one level at a time: the three rail items; push opens a panel and moves to its tab bar,
+// where the knob walks only the tabs (each one shows as the knob lands on it); push on a tab with
+// controls loops over just those. Back climbs one level.
 export const focusRing = (ui: UiState): FocusId[] => {
   if (ui.switcher) return ['sw:carplay', 'sw:vehicle', 'sw:settings']
   if (inTab(ui)) return currentTab(ui)!.items
-  const rail: FocusId[] = ['rail:carplay', 'rail:vehicle', 'rail:settings']
-  return [...rail, ...tabsOf(ui.panel).map((t): FocusId => `tab:${t.id}`)]
+  if (ui.focus.startsWith('tab:')) return tabsOf(ui.panel).map((t): FocusId => `tab:${t.id}`)
+  return ['rail:carplay', 'rail:vehicle', 'rail:settings']
 }
 
 const withTab = (ui: UiState, focus: FocusId): UiState => {
@@ -145,6 +151,7 @@ export const nativeKey = (ui: UiState, control: Control): NativeResult => {
     case 'back':
       if (ui.switcher) return { ui: closeSwitcher(ui) }
       if (inTab(ui)) return { ui: { ...ui, focus: `tab:${currentTab(ui)!.id}` } } // out of the tab, onto its title
+      if (ui.focus.startsWith('tab:')) return { ui: { ...ui, focus: `rail:${ui.panel}` } } // off the tab bar, onto the rail
       return { ui: ui.panel === 'carplay' ? ui : openPanel('carplay'), opensCarplay: true }
     case 'knobPush': {
       const f = ui.focus

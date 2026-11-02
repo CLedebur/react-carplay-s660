@@ -109,7 +109,6 @@ const Engine = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
   const coolTone: Tone = cool === null ? '' : cool >= COOLANT_HOT_C ? 'bad' : cool >= COOLANT_WARN_C ? 'warn' : 'ok'
   const fuel = d.fuelPct
   const fuelTone: Tone = fuel === null ? '' : fuel <= LOW_FUEL_PCT ? 'warn' : ''
-  const alerts = d.alerts ? ([d.alerts.engine && 'ENGINE', d.alerts.oil && 'OIL', d.alerts.eps && 'STEERING'].filter(Boolean) as string[]) : null
   return (
     <div className="vgrid engine">
       <Card title="Coolant">
@@ -127,15 +126,6 @@ const Engine = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
       <Card title="Boost">
         <Big value={d.boostBar === null ? '--' : (d.boostBar > 0 ? '+' : '') + d.boostBar.toFixed(2)} unit="bar" size="mid" />
         <Bar value={d.boostBar} min={BOOST_MIN} max={BOOST_MAX} from={0} ticks={[{ at: 0 }]} />
-      </Card>
-      <Card title="Outside · Odometer">
-        <div className="vpair">
-          <Big value={num(conv(d.outsideC))} unit={unit} size="mid" />
-          <Big value={d.odometerKm === null ? '--' : d.odometerKm.toLocaleString('en')} unit="km" size="mid" />
-        </div>
-      </Card>
-      <Card title="Car's own warnings">
-        <Big value={alerts === null ? '--' : alerts.length ? alerts.join(' ') : 'NONE'} tone={alerts?.length ? 'bad' : alerts ? 'ok' : ''} size="mid" />
       </Card>
     </div>
   )
@@ -275,6 +265,30 @@ const Body = ({ d, units }: { d: VehicleData; units: Settings['units'] }) => {
   )
 }
 
+// The warning bits the car broadcasts (0x324). The names are the reference sheet's guesses: with the
+// ignition on and the engine stopped, ENGINE and STEERING read ON, as the dash's own lamps do then.
+const lamp = (v: boolean | undefined) => (v === undefined ? '--' : v ? 'ON' : 'OFF')
+
+const Diag = ({ d }: { d: VehicleData }) => {
+  const a = d.alerts
+  const on = a ? ([a.engine && 'ENGINE', a.oil && 'OIL', a.eps && 'STEERING'].filter(Boolean) as string[]) : null
+  return (
+    <div className="vdiag">
+      <Card title="Car's own warnings">
+        <Big value={on === null ? '--' : on.length ? on.join(' ') : 'NONE'} tone={on?.length ? 'bad' : on ? 'ok' : ''} size="mid" />
+      </Card>
+      <div className="vchips">
+        <Chip label="Engine warning" state={lamp(a?.engine)} warn={!!a?.engine} />
+        <Chip label="Oil warning" state={lamp(a?.oil)} warn={!!a?.oil} />
+        <Chip label="Steering (EPS)" state={lamp(a?.eps)} warn={!!a?.eps} />
+      </div>
+      <div className="note dim">
+        Warning lamps as the car broadcasts them. ENGINE and STEERING are normally ON with the engine stopped.
+      </div>
+    </div>
+  )
+}
+
 export const VehiclePage = ({ tab, data, settings, demo }: { tab: VehicleTab; data: VehicleData | null; settings: Settings; demo: boolean }) => {
   const live = !!data?.live
   const d = live ? data! : emptyVehicle
@@ -284,6 +298,7 @@ export const VehiclePage = ({ tab, data, settings, demo }: { tab: VehicleTab; da
       {tab === 'engine' && <Engine d={d} units={settings.units} />}
       {tab === 'dynamics' && <Dynamics d={d} />}
       {tab === 'body' && <Body d={d} units={settings.units} />}
+      {tab === 'diag' && <Diag d={d} />}
       {!live && (
         <div className="vnone">
           <b>No data from the car</b>

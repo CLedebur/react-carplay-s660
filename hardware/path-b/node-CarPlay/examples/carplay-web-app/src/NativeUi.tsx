@@ -531,6 +531,9 @@ const TITLES = { carplay: 'CarPlay', vehicle: 'Vehicle', settings: 'Settings' }
 export const NativeUi = (props: NativeUiProps) => {
   const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, vehicle, network, web, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
+  // Outside air (0x21E), beside the clock; hidden when the car is not sending it.
+  const outC = vehicle?.live ? vehicle.outsideC : null
+  const outside = outC === null ? null : `${Math.round(settings.units === 'f' ? toFahrenheit(outC) : outC)}°${settings.units === 'f' ? 'F' : 'C'}`
   const pagesUp = !(ui.panel === 'carplay' && streaming) // the switcher alone dims the video instead
   const g = settings.glassAspect
 
@@ -558,6 +561,7 @@ export const NativeUi = (props: NativeUiProps) => {
                       <i />
                       Controls
                     </span>
+                    {outside !== null && <span className="otemp">{outside}</span>}
                     <span className="clock">{clock}</span>
                   </div>
                   <Rail panel={ui.panel} focus={ui.focus} />

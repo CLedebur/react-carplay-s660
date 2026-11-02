@@ -396,8 +396,8 @@ function App() {
   const nativeShowing = !(headUnit.ui.panel === 'carplay' && headUnit.carplayShown)
   const settingsOpen = nativeShowing && headUnit.ui.panel === 'settings'
   const vehicleOpen = nativeShowing && headUnit.ui.panel === 'vehicle'
-  const statusOpen = settingsOpen && headUnit.ui.tab.settings === 'status'
-  const vehicle = useVehicle(vehicleOpen ? VEHICLE_POLL_MS : statusOpen ? VEHICLE_STATUS_POLL_MS : null)
+  // Any native page shows the outside temperature beside the clock, so the slow poll runs on all of them.
+  const vehicle = useVehicle(vehicleOpen ? VEHICLE_POLL_MS : nativeShowing ? VEHICLE_STATUS_POLL_MS : null)
   const stats = useSystemStats(nativeShowing ? (settingsOpen ? 2000 : 10000) : null, settingsOpen)
   const networkPageOpen = settingsOpen && headUnit.ui.tab.settings === 'network'
   const { network, refresh: refreshNetwork } = useNetwork(networkPageOpen ? 3000 : null)

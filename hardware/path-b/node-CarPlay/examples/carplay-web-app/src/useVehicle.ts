@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { demoVehicle, VehicleData } from './vehicle'
 
 export const VEHICLE_POLL_MS = 200 // the Vehicle panel's refresh
-export const VEHICLE_STATUS_POLL_MS = 2000 // Settings > Status only needs to know whether the bus is alive
+export const VEHICLE_STATUS_POLL_MS = 2000 // other native pages: the strip's outside temperature, Settings > Status's bus row
 
 // Demo mode: open the app with ?demo=1 to see the Vehicle screens move without CAN data.
 export const vehicleDemo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('demo')

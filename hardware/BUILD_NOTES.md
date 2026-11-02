@@ -2824,9 +2824,14 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
 
 ### 39.1 Navigation and the Vehicle panel
 - The rail now has **CarPlay, Vehicle, Settings**. Vehicle and Settings each have a **tab bar** under the title strip
-  (Vehicle: Drive, Engine, Dynamics, Body; Settings: Status, Options, CarPlay, Network, Display, Power). Turning the knob
-  from the rail walks the tabs and the page follows; **push** enters a tab that has controls (a short loop of its own
-  items); **Back** steps out onto the tab, and Back again leaves for CarPlay. The Vehicle tabs are read-only.
+  (Vehicle: Drive, Engine, Dynamics, Body, Diag; Settings: Status, Options, CarPlay, Network, Display, Power).
+  **The knob works one level at a time** (changed 2026-11-02; before, it ran from the rail straight on through the
+  tabs, so reaching Vehicle's tabs meant turning past Settings): on the rail it walks only the three panels; **push**
+  opens one and moves onto its tab bar, where it walks only the tabs (wrapping) and the page follows; **push** on a tab
+  with controls enters a short loop of its own items. **Back** climbs one level: out of a tab onto the tab bar, off
+  the tab bar onto the rail, and from the rail to CarPlay. The Vehicle tabs are read-only.
+- **Engine** shows coolant, fuel, intake air and boost (2 x 2). The car's warning bits (0x324) are on **Diag** (the summary line that was on Engine, plus a box per lamp), and
+  the **outside temperature** is in the title strip beside the clock on every native page (hidden with no CAN data).
   Logic and tests: `nav.ts`, `nav.test.ts`.
 - The title strip's bottom line used to run across the rail's top icon; it now starts at the rail's divider.
 - `src/VehicleTabs.tsx` draws the four tabs. Values are `null` until their CAN message has been seen, and then show `--`;
@@ -2835,8 +2840,9 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   the `VehicleData` interface in `src/vehicle.ts`, **physical units, already decoded**: km/h, rpm, bar (relative to the
   atmosphere), MPa, °C, g, degrees, `fuelPct` 0-100, booleans. Sign conventions are in that file (steering and yaw +
   right; `latG` + = pushed left; `longG` + = accelerating). `live:false` (or any field `null`) when the bus is silent.
-  The UI polls it every **200 ms while the Vehicle panel is up**, every 2 s while Settings > Status is up (for its "CAN bus"
-  row), and never otherwise, so the backend can start and stop its candump on demand.
+  The UI polls it every **200 ms while the Vehicle panel is up**, every 2 s on any other native page (the strip's outside
+  temperature and Settings > Status's "CAN bus" row), and **never while CarPlay is full screen**, so the backend can start
+  and stop its candump on demand.
 
 ### 39.4 The CAN service: `hardware/path-b/s660-can.js` (2026-11-01)
 - **Loaded by `s660-api.js`** (a guarded `require`: without the file `/api/vehicle` answers `{"live":false}` and the
@@ -2856,6 +2862,11 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   a plausible order, R while reversing out of the garage, odometer ending at the dash's 44,697 km. The G values
   are often exactly 0.00: 28 % of 0x1EA frames are zero (the sensor's dead band), so a steady cruise reads 0 g.
 - Live check on the Pi (listening while a diagnostic sweep ran): `live:true`, odometer 44,697, no stray candump after `stop()`.
+- **Deployed to the car 2026-11-02** (overlay off): `live:true` within 1.5 s of the first request, candump gone 10 s after
+  the last. The Carlinkit dongle was missing after both software reboots that day (nothing on its hub port,
+  1-1.3.1, until it was plugged back in). **Unconfirmed:** the dongle is also unplugged by hand while the car is parked
+  (so the phone does not connect to it from the office), so this may not be the reboot's doing. Retest with the dongle
+  known to be plugged in before treating it as a fault.
 - Display thresholds in `VehicleTabs.tsx` (coolant amber 105 °C, red 110 °C; low fuel 10 %) are placeholders, not
   Honda's numbers.
 
