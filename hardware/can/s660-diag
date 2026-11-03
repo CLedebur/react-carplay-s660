@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Read-only diagnostic requests for the S660 (hardware/can/DIAG-PLAN.md).
+# Read-only diagnostic requests for the S660 (references/S660-diagnostics.md).
 #
 #   sudo s660-diag session-start      # stop s660-can, adapter C+M0 (verified), slcand -> can0
 #   s660-diag obd [--29] 01 00         # OBD-II: service 01, PID 00 (functional request)
@@ -11,7 +11,7 @@
 #                                      #   0C = OBD 01 PID 0C, s03 = OBD service 03 (no PID),
 #                                      #   60:702A = UDS 0x22 DID 702A on module 0x60
 #
-# Safety (DIAG-PLAN "Safety rules"): only the read-only services in ALLOWED can be sent, at most
+# Safety (references/S660-diagnostics.md §9): only the read-only services in ALLOWED can be sent, at most
 # one request per MIN_GAP seconds, and only inside a session (the adapter is silent otherwise).
 # Every request and reply is appended to LOG.
 import json, os, socket, struct, subprocess, sys, termios, time
@@ -25,9 +25,12 @@ MIN_GAP = 0.1                       # seconds between requests (<= 10 per second
 TIMEOUT = 0.5                       # seconds to wait for a reply
 
 # Read-only services only. OBD-II: 01 current data, 02 freeze frame, 03/07/0A fault codes,
-# 09 vehicle info. UDS: 22 read data by identifier. Everything else is refused, notably
-# 04/14 (clear codes), 10, 11, 27, 2E, 2F, 31, 34-37, 85.
-ALLOWED = {"obd": {0x01, 0x02, 0x03, 0x07, 0x09, 0x0A}, "uds": {0x22}}
+# 09 vehicle info. UDS: 22 read data by identifier; 19 read fault memory, sub-functions 01 (count) and
+# 02 (list by status mask) only; 21 read data by local identifier (KWP2000, older Honda tools). Everything
+# else is refused, notably 04/14 (clear codes), 10, 11, 27, 2E, 2F, 31, 34-37, 85.
+ALLOWED = {"obd": {0x01, 0x02, 0x03, 0x07, 0x09, 0x0A}, "uds": {0x19, 0x21, 0x22}}
+UDS_LENGTH = {0x22: 3, 0x21: 2, 0x19: 3}   # 22 DID-hi DID-lo; 21 LID; 19 sub mask
+UDS_19_SUBS = {0x01, 0x02}
 
 # Linux ISO-TP socket constants (linux/can/isotp.h); Python does not export all of them.
 SOL_CAN_ISOTP, CAN_ISOTP_OPTS, CAN_ISOTP_TX_PADDING = 106, 1, 0x004
@@ -40,8 +43,10 @@ def check_request(kind, payload):
         raise ValueError("empty request")
     if payload[0] not in ALLOWED[kind]:
         raise ValueError(f"service 0x{payload[0]:02X} is not on the read-only whitelist")
-    if kind == "uds" and len(payload) != 3:
-        raise ValueError("UDS 0x22 takes exactly one 2-byte identifier")
+    if kind == "uds" and len(payload) != UDS_LENGTH[payload[0]]:
+        raise ValueError(f"UDS 0x{payload[0]:02X} takes exactly {UDS_LENGTH[payload[0]]} bytes")
+    if kind == "uds" and payload[0] == 0x19 and payload[1] not in UDS_19_SUBS:
+        raise ValueError("UDS 0x19 only with sub-function 01 or 02 (read the fault memory, never clear it)")
     if len(payload) > 7:
         raise ValueError("requests are single-frame (<= 7 bytes)")
 
@@ -126,6 +131,12 @@ def request(kind, tx, rx, payload):
     s.send(bytes(payload))
     try:
         reply = s.recv(4095)
+        # 7F xx 78 = response pending: the module answers properly a moment later (the EPS does, to 0x19).
+        for _ in range(10):
+            if not (reply and len(reply) == 3 and reply[0] == 0x7F and reply[2] == 0x78):
+                break
+            s.settimeout(2.0)
+            reply = s.recv(4095)
     except socket.timeout:
         reply = None
     s.close()
@@ -163,7 +174,7 @@ def battery_mv():
 
 
 def sweep(addr, start, end, skip_f1, min_mv=None, max_minutes=None):
-    """Ask module `addr` for every DID in start..end with 0x22 (DIAG-PLAN stage 6).
+    """Ask module `addr` for every DID in start..end with 0x22 (S660-diagnostics.md stage 6).
 
     Keeps positive replies and every negative reply other than 7F 22 31 (no such DID) in
     sweep-AA-SSSS-EEEE.jsonl, saves progress in .state, and stops on the plan's stop rules."""

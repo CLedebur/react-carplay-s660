@@ -1,5 +1,5 @@
 [Unit]
-Description=S660 stage 6 sweep of module 0x%i, one piece, until 12.1 V or the end (hardware/can/DIAG-PLAN.md)
+Description=S660 stage 6 sweep of module 0x%i, one piece, until 12.1 V or the end (references/S660-diagnostics.md)
 After=s660-can.service
 RequiresMountsFor=/persist
 

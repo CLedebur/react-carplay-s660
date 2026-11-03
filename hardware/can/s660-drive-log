@@ -4,7 +4,7 @@
 #
 #   off     nothing is recorded
 #   listen  the bus, as heard (candump -L): nothing is ever sent
-#   engine  the bus, plus read-only OBD requests to the engine computer (s660-diag poll, DIAG-PLAN
+#   engine  the bus, plus read-only OBD requests to the engine computer (s660-diag poll, S660-diagnostics.md
 #           stage 5): the adapter leaves silent mode for as long as the recording runs
 #
 # A recording starts when the car's own broadcast is heard and stops 10 s after it goes quiet
@@ -31,7 +31,7 @@ PIDS = "42 04 05 06 42 07 0B 0C 0D 42 0E 0F 11 34 42 3C 43 44 01 s03 s07 60:702A
 BATTERY_SAMPLES = 900                  # about 15 minutes of voltage readings for the panel's trend
 REPLY = re.compile(r"-> ([0-9a-f ]+?)\s{3}\S+ <- ([0-9a-f ]+)$")    # s660-diag's line for each request
 POLL_RATE = "5"
-# Research requests (DIAG-PLAN stage 6c), only while this file exists: whitespace-separated s660-diag poll
+# Research requests (S660-diagnostics.md stage 6c), only while this file exists: whitespace-separated s660-diag poll
 # tokens, '#' starts a comment. They are spread evenly between two rounds of PIDS and the rate goes to
 # EXTRA_RATE, so PIDS keep their pace (52 extras: each one about every 10 s). Delete the file to stop.
 EXTRA = os.environ.get("S660_DRIVE_EXTRA", "/persist/can/drive-extra-items")

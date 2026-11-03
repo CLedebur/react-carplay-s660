@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stage 6 (DIAG-PLAN): one piece of a module's full 0x22 sweep, `s660-sweep-piece 30` for the EPS. Stops
+# Stage 6 (references/S660-diagnostics.md): one piece of a module's full 0x22 sweep, `s660-sweep-piece 30` for the EPS. Stops
 # below 12.1 V (no time cap, by request 2026-11-02); the next run resumes from /persist/can/sweep-AA-0000-FFFF.state. Run by
 # s660-diag-sweep@AA.service, whose ExecStopPost puts the adapter back to silent however it ends.
 A=$1

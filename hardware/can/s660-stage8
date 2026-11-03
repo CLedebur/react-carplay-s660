@@ -1,0 +1,101 @@
+#!/usr/bin/python3
+# DIAG-PLAN stage 8, parked, ignition on: (1) each module's own fault memory, UDS 0x19 01/02 (never the SRS);
+# (2) an 11-bit address scan, 0x22 0xF110 on 0x700-0x7FF; (3) KWP2000 0x21 local identifiers 00-FF on the
+# swept modules. Read-only: every request goes through s660-diag's whitelist. Run by systemd-run with
+# ExecStopPost=s660-diag session-stop, so the adapter goes back to silent however this ends.
+import importlib.machinery, importlib.util, os, socket, struct, subprocess, sys, time
+
+DIAG = "/usr/local/sbin/s660-diag"
+loader = importlib.machinery.SourceFileLoader("s660diag", DIAG)
+spec = importlib.util.spec_from_loader("s660diag", loader)
+d = importlib.util.module_from_spec(spec)
+loader.exec_module(d)
+
+FAULT_MODULES = [0x10, 0x28, 0x30, 0x60, 0xB4]      # not 0x53, the SRS
+KWP_MODULES = [0x10, 0x28, 0x30, 0x60]
+MIN_MV = 12100
+
+
+def uds(addr, payload):
+    return d.request("uds", 0x18DA00F1 | addr << 8 | d.EFF, 0x18DAF100 | addr | d.EFF, payload)
+
+
+def obd_codes():
+    for svc in (0x03, 0x07):
+        d.request("obd", 0x18DB33F1 | d.EFF, 0x18DAF110 | d.EFF, [svc])
+
+
+def fault_memory():
+    print("== 1: fault memory (0x19)", flush=True)
+    for addr in FAULT_MODULES:
+        uds(addr, [0x19, 0x01, 0xFF])
+        uds(addr, [0x19, 0x02, 0xFF])
+
+
+def scan_11bit():
+    """0x22 0xF110 as a single frame on each 11-bit ID; any 0x700-0x7FF frame heard within 0.3 s, other
+    than our own, is an answer. No flow control is sent, so a multi-frame reply shows as its first frame."""
+    print("== 2: 11-bit scan, 0x700-0x7FF", flush=True)
+    payload = [0x22, 0xF1, 0x10]
+    d.check_request("uds", payload)
+    s = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+    s.bind((d.IFACE,))
+    s.settimeout(0.05)
+    found = {}
+    for tx in range(0x700, 0x800):
+        if tx == 0x7DF:            # the functional (broadcast) ID: not a module
+            continue
+        frame = bytes([len(payload)] + payload).ljust(8, b"\0")
+        s.send(struct.pack("=IB3x8s", tx, 8, frame))
+        end = time.time() + 0.3
+        while time.time() < end:
+            try:
+                cid, _, data = struct.unpack("=IB3x8s", s.recv(16))
+            except socket.timeout:
+                continue
+            if not cid & d.EFF and 0x700 <= cid <= 0x7FF and cid != tx:
+                found.setdefault(tx, []).append((cid, data.hex(" ")))
+                print(f"{tx:03X} -> 22 f1 10   {cid:03X} <- {data.hex(' ')}", flush=True)
+        time.sleep(d.MIN_GAP)
+    s.close()
+    print(f"11-bit: {len(found)} IDs answered", flush=True)
+
+
+def kwp21():
+    print("== 3: KWP2000 0x21 local identifiers 00-FF", flush=True)
+    for addr in KWP_MODULES:
+        mv = d.battery_mv()
+        if mv is not None and mv < MIN_MV:
+            print(f"stopped before 0x{addr:02X}: battery {mv} mV", flush=True)
+            return
+        counts = {}
+        for lid in range(0x100):
+            r = uds(addr, [0x21, lid])
+            k = "positive" if r and r[0] == 0x61 else (f"7F {r[2]:02X}" if r and r[0] == 0x7F and len(r) > 2 else ("timeout" if r is None else "other"))
+            counts[k] = counts.get(k, 0) + 1
+            if lid >= 8 and counts.get("timeout", 0) == lid + 1:
+                print(f"0x{addr:02X}: no replies to 0x21, skipped", flush=True)
+                break
+        print(f"0x{addr:02X} 0x21: {counts} battery {mv} mV", flush=True)
+
+
+def main():
+    if subprocess.run([DIAG, "session-start"]).returncode:
+        sys.exit("no session")
+    log = os.environ.get("S660_DIAG_LOG", "")
+    rec = subprocess.Popen(["candump", "-L", "any"], stdout=open(log.replace(".jsonl", ".log"), "w")) if log else None
+    try:
+        print("== fault codes before", flush=True)
+        obd_codes()
+        fault_memory()
+        scan_11bit()
+        kwp21()
+        print("== fault codes after", flush=True)
+        obd_codes()
+    finally:
+        if rec:
+            rec.terminate()
+
+
+if __name__ == "__main__":
+    main()

@@ -10,6 +10,9 @@ other row as "reported", not "verified".
 Sources and attribution are at the end. Where the sources disagree, the conflict is called out
 in place. It is not silently resolved.
 
+This page covers what the car **broadcasts**. What its modules answer when **asked** (OBD-II,
+Honda identifiers, fault memory) is in `references/S660-diagnostics.md`.
+
 ## What this project needs first
 
 | Use | ID | Where | Meaning |
@@ -102,7 +105,7 @@ Scaling and ranges are as the author reported them. `?` marks the author's own u
 ### 0x091 (145) — yaw rate (found on our car; "unknown" in the sheet)
 | Byte/bit | Meaning |
 |---|---|
-| bytes 0–1 | **Yaw rate ✓ our car.** Offset binary: rate = raw − 32768. About **0.0037 °/s per count**, positive = turning **right** (clockwise seen from above). It tracks the yaw rate worked out from the rear wheel speeds with r = −0.98. The scale is ±5%, limited by the assumed rear track (1.275 m). |
+| bytes 0–1 | **Yaw rate ✓ our car.** Offset binary: rate = raw − 32768. About **0.0037 °/s per count**, positive = turning **right** (clockwise seen from above). It tracks the yaw rate worked out from the rear wheel speeds with r = −0.98. The scale is ±5%, limited by the assumed rear track (1.275 m). **Against GPS (2026-11-03): 0.00406 °/s per count, r = 0.97; rest value 0x8022.** |
 | bytes 2–3 | Unknown |
 
 ### 0x13C (316) — accelerator pedal / torque
@@ -283,7 +286,7 @@ certainly a transposition of 0x21E. Confirm with a capture.
 ### 0x221 (545) — "ECON status"? (unknown: resets to 59–60 at ignition-on, falls while driving)
 | Byte/bit | Meaning |
 |---|---|
-| byte 0 (bits 5–0) | The sheet: changes steadily between 0b00011111 and 0b00100111, does not follow the throttle, purpose unknown. **Our car, still unknown.** Observed: 59–60 at every ignition-on (before the drive, after it, and later); during the 13.5 min drive it fell one step at a time, 59 → 55, and it was **back at 59–60 after the drive**. Each step came after a similar amount of the 0x324 bytes 2–3 counter (1,001 / 1,388 / 1,198 counts), not a similar distance. Ruled out, 2026-11-01: a long-run average economy and a fuel-used / fuel-left value (neither would recover after the drive), and the dash's average km/L (15.2 on the dash vs 59 → 14.75 at 0.25 km/L per count; not an exact match). The dash's range (329 km at the time) is on no broadcast field, so the cluster (0x60) calculates it. Next: look for 152 / 329 in the cluster's identifiers (stage 6 pass C), and note the dash's average km/L and range before and after a drive. |
+| byte 0 (bits 5–0) | The sheet: changes steadily between 0b00011111 and 0b00100111, does not follow the throttle, purpose unknown. **Our car, still unknown.** Observed: 59–60 at every ignition-on (before the drive, after it, and later); during the 13.5 min drive it fell one step at a time, 59 → 55, and it was **back at 59–60 after the drive**. Each step came after a similar amount of the 0x324 bytes 2–3 counter (1,001 / 1,388 / 1,198 counts), not a similar distance. Ruled out, 2026-11-01: a long-run average economy and a fuel-used / fuel-left value (neither would recover after the drive), and the dash's average km/L (15.2 on the dash vs 59 → 14.75 at 0.25 km/L per count; not an exact match). The dash's range (329 km at the time) is on no broadcast field, so the cluster (0x60) calculates it. **Found 2026-11-02:** the range, fuel left and average km/L are in the cluster's identifier 0x702A (`S660-diagnostics.md`). 0x221 itself is still unexplained. |
 | byte 3 | C/S |
 
 ### 0x255 (597) — wheel speeds (coarse)
@@ -400,6 +403,29 @@ same side in every tight turn. Left versus right uses the steering sign (right +
 against the driveway's right turn). The car has staggered tyres (15-inch front, 16-inch rear),
 but on straights above 30 km/h front and rear agree within 0.03%, so the ABS already corrects
 for them. 0x19B (pulse counters) was not tested; its sheet row says FL, RL, FR, RR.
+
+## Speeds checked against GPS (2026-11-03)
+
+A phone GPS track of two drives, aligned with the bus to within 1 s (steady, straight, above
+30 km/h): **0x309** (speedometer) reads **5.7 % high**, the usual meter margin; **0x158** reads
+**2.6 % high**; the four **0x1D0** wheel speeds read **0.5–0.75 % high**. For true speed, use the
+0x1D0 average.
+
+## Indirect tyre pressure (wheel-speed ratios, 2026-11-03)
+
+A soft tyre has a smaller rolling radius, so its wheel turns faster. Over steady driving above
+30 km/h, the left / right speed ratio of each axle (0x1D0) against the path curvature (yaw rate ÷
+speed) is a straight line (r = 0.98). Its slope is close to the track width (1.49–1.52 m front,
+1.26–1.32 m rear), as the geometry predicts. The intercept is the straight-line ratio:
+
+| Drive | FL / FR | RL / RR |
+|---|---|---|
+| 2026-11-03, morning | 1 − 0.080 % | 1 + 0.243 % |
+| 2026-11-03, midday | 1 − 0.095 % | 1 + 0.243 % |
+
+Tyres at 1.9 bar front and 2.0 bar rear. The ratios repeat between drives to about 0.015 %, and
+a soft tyre shifts its ratio by 0.1–0.5 %, so a soft-tyre warning is feasible. Not yet tested
+with a tyre let down (about 0.3 bar out of one, then the same road).
 
 ## Gear position: not broadcast, calculate it
 

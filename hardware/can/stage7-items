@@ -1,0 +1,5 @@
+# DIAG-PLAN stage 7: the chassis modules' identifiers that change, read parked with the engine idling while the
+# steering and brake are worked. VSA 0x28 (18) and EPS 0x30 (7); the static ones (ASCII, battery, zeros) are left out.
+28:4000 28:4001 28:4002 28:4003 28:4004 28:4005 28:4006 28:4007
+28:4030 28:4031 28:4032 28:4033 28:4034 28:4035 28:4070 28:4071 28:4072 28:4073
+30:4800 30:4801 30:4808 30:4809 30:48AA 30:48AB 30:48FA

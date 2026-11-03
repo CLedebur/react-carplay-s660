@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+# The 0x731 -> 0x736/0x737 stream (DIAG-PLAN stage 8): one frame with a different read-only payload first, then a
+# 0x22 0xF110 single frame on 0x731 every 1.5 s, which keeps the 2 s stream running, until stopped.
+import importlib.machinery, importlib.util, socket, struct, subprocess, sys, time
+D = "/usr/local/sbin/s660-diag"
+l = importlib.machinery.SourceFileLoader("d", D); s = importlib.util.spec_from_loader("d", l)
+d = importlib.util.module_from_spec(s); l.exec_module(d)
+if subprocess.run([D, "session-start"]).returncode:
+    sys.exit("no session")
+rec = subprocess.Popen(["candump", "-L", "can0"], stdout=open(sys.argv[1], "w"))
+k = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW); k.bind(("can0",))
+def send(payload):
+    d.check_request("uds", payload)
+    k.send(struct.pack("=IB3x8s", 0x731, 8, bytes([len(payload)] + payload).ljust(8, b"\0")))
+time.sleep(1)
+send([0x22, 0xF1, 0x90]); print("variant 22 F190 sent", time.time(), flush=True)
+time.sleep(4)
+print("keep-alive start", time.time(), flush=True)
+try:
+    while True:
+        send([0x22, 0xF1, 0x10]); time.sleep(1.5)
+finally:
+    rec.terminate()

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Read the 23 identifiers the instrument cluster (0x60) answers (DIAG-PLAN stage 6 pass C), once,
+# Read the 23 identifiers the instrument cluster (0x60) answers (S660-diagnostics.md stage 6 C), once,
 # into /persist/can/cluster-LABEL.jsonl. Read before and after changing the dash; compare the two.
 [ -n "$1" ] || { echo "usage: s660-cluster-read LABEL"; exit 2; }
 D=/usr/local/sbin/s660-diag
