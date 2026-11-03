@@ -385,7 +385,7 @@ before or after any piece.
 From here on a sweep piece has **no time cap** (`s660-sweep-piece`, by request): it stops at 12.1 V or the end of
 the range, and the unit's `RuntimeMaxSec=4h` only catches a hung run.
 
-### Stage 6 — VSA 0x28 full range (pass C, 2026-11-02, in progress)
+### Stage 6 — VSA 0x28 full range (pass C, 2026-11-02/03, complete)
 Piece 1: 0x0000–0xF3FF (minus 0xF1xx), started straight after the EPS, recorder on listen-only; battery 12.41 →
 12.09 V, where it paused at the cutoff. No fault codes before or after. **20 identifiers:**
 - **0x4000–0x4007** (8), **0x4030–0x4035** (6), **0x4070–0x4073** (4). The 0x403x and 0x407x blocks come in
@@ -393,7 +393,8 @@ Piece 1: 0x0000–0xF3FF (minus 0xF1xx), started straight after the EPS, recorde
   per-channel records. Several hold `7d`-ish byte pairs (0x7A–0x7D), plausibly the four wheel-speed sensors at rest.
 - **0xE600** = battery voltage in mV (`2f 6e` = 12,142 mV) and **0xE602** (`00 00 00`), as on the engine and the EPS.
 
-0xF400–0xFFFF still to do (≈ 5 min).
+Piece 2 (2026-11-03): 0xF400–0xFFFF, nothing more; battery 12.77 V, no fault codes. **VSA total: 20 identifiers**,
+no locked ones. All four modules planned for a full sweep (engine, cluster, EPS, VSA) are now done.
 
 ### Stage 6c — engine identifiers on a drive (set up 2026-11-03)
 The drive recorder takes an optional list of extra requests, `/persist/can/drive-extra-items` (whitespace-separated
