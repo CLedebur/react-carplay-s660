@@ -78,6 +78,9 @@ label.inline{display:flex;gap:8px;align-items:center;font-weight:400;margin:8px 
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0 24px}td.n{text-align:right;font-variant-numeric:tabular-nums}
 main.wide{max-width:1100px}svg.chart{width:100%;height:auto;display:block;margin:2px 0 14px}svg.chart text{fill:var(--dim);font-size:12px}
 svg.chart .ax{stroke:var(--line);stroke-width:1}svg.chart .ln{fill:none;stroke:var(--accent);stroke-width:1.6}svg.chart .ln2{fill:none;stroke:var(--fg);stroke-width:1.2;opacity:.6}
+/* fill: main takes 90 % of the width and the rest of the viewport's height, and its pre scrolls inside it (Logs) */
+body.fill{height:100vh;height:100dvh;display:flex;flex-direction:column}body.fill main{flex:1;min-height:0;display:flex;flex-direction:column;width:90%;max-width:none;padding:12px 0}
+body.fill main pre{flex:1;min-height:0;margin:0}
 .gdot{width:180px;height:180px}.gdot circle.ring{fill:none;stroke:var(--line)}.gdot circle.dot{fill:var(--accent)}`
 
 const CLIENT_JS = `
@@ -149,8 +152,8 @@ const VEHICLE_JS = `
   poll();
 })();`
 
-const page = (title, body, { nav = true, wide = false } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · S660</title><style>${CSS}</style></head><body>
+const page = (title, body, { nav = true, wide = false, fill = false } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · S660</title><style>${CSS}</style></head><body${fill ? ' class="fill"' : ''}>
 <header><b>S660 head unit</b>${nav ? '<a href="/">Status</a><a href="/vehicle">Vehicle</a><a href="/drives">Drives</a><a href="/settings">Settings</a><a href="/wifi">Wi-Fi</a><a href="/logs">Logs</a><a href="/diag">Diagnostics</a><a href="/power">Power</a><a href="/logout">Log out</a>' : ''}</header>
 <main${wide ? ' class="wide"' : ''}>${body}</main><script>${CLIENT_JS}</script></body></html>`
 
@@ -518,7 +521,12 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
     // sudo used to log whole nmcli command lines, Wi-Fi passwords included (sudoers-s660-nmcli stops that). Never show one.
     if (out.ok) out.out = out.out.replace(/(wifi-sec\.psk\s+)\S+/g, '$1********').replace(/(psk[=:]\s*)\S+/gi, '$1********')
     const tabs = Object.keys(LOG_UNITS).map(k => (k === which ? `<b>${k}</b>` : `<a href="/logs?unit=${k}">${k}</a>`)).join(' · ')
-    return page('Logs', `<h1>Logs</h1><p>${tabs}</p><pre>${esc(out.ok ? out.out : out.err || 'no output')}</pre>`)
+    // The box opens scrolled to the end: the newest lines are the ones wanted.
+    return page(
+      'Logs',
+      `<h1>Logs</h1><p>${tabs}</p><pre id="log">${esc(out.ok ? out.out : out.err || 'no output')}</pre><script>var l=document.getElementById('log');l.scrollTop=l.scrollHeight</script>`,
+      { fill: true },
+    )
   }
 
   const DIAG = [
