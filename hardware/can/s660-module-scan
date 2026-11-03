@@ -1,0 +1,15 @@
+#!/bin/sh
+# DIAG-PLAN "module scan": ask every UDS address 0x00-0xFF (not 0x33, functional, or 0xF1, us) for its
+# assembly part number, 0x22 0xF110, which every module found so far answers. One request every ~0.5 s;
+# no reply within 0.5 s = nothing there. Replies go to /persist/can/module-scan.jsonl.
+D=/usr/local/sbin/s660-diag
+export S660_DIAG_LOG=/persist/can/$(date +%F-%H%M)-module-scan.jsonl
+$D session-start || exit 1
+echo "== fault codes before"; $D obd --29 03; $D obd --29 07
+for i in $(seq 0 255); do
+  a=$(printf %02X $i)
+  [ "$a" = 33 ] || [ "$a" = F1 ] && continue
+  $D uds $a 22 F110 | grep -v "(no reply)"
+  sleep 0.3
+done
+echo "== fault codes after"; $D obd --29 03; $D obd --29 07

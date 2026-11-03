@@ -333,3 +333,72 @@ went 23 → 26 and 23 → 24 (counters?); 0x7020 changed four flag bits.
 (0.008–0.025 between turns; road camber and the sensor's dead band), **positive raw = turning left**. That is
 about 7 × the scale assumed so far (0.00169), so the panel's lateral G currently reads far too low. Needs the
 roundabout loops to confirm.
+
+### Stage 6 pass B — engine computer 0x10, 0x0000–0xFFFF (2026-11-02, complete)
+Three 45-minute pieces (`s660-diag-passB.service`; `--min-mv 12100 --max-minutes 45`), ignition on, engine off, a
+battery tender (normal, then cold-weather / AGM mode). Battery 12.53 → 12.43 V, 12.83 → 12.57 V, 12.55 → 12.48 V;
+the cutoff never came near. **No fault codes before or after any piece, no timeouts, no unexpected replies, and
+no locked identifiers.** The adapter was back in `M1` after each. Results in `captures/sweep-10-0000-FFFF.jsonl`.
+
+**52 identifiers answered**, in a few blocks:
+
+| DIDs | Count | First look |
+|---|---|---|
+| 0x2600–0x2686 | 35 | Mostly 54-byte records; many bytes look like flags. The likely home of live values |
+| 0x3000–0x300C | 5 | 0x3004 contains ASCII (`dsea.`) |
+| 0xE411–0xE41F | 6 | 64-byte records, mostly `FF`, with 4-byte entries such as `02 C1 09 CC` (event or freeze records?) |
+| 0xE5FF, 0xE602, 0xE80E | 3 | Zeros |
+| **0xE600** | 1 | `30 E8` = 12,520 mV: **the battery voltage**, as on the cluster (0x60 0xE600) |
+| 0xE800 | 1 | 12 bytes of ASCII, an identification string |
+| 0xF806 | 1 | 4 bytes |
+
+**Next (stage 6c):** read these 52 with the engine cold, then warm and idling, then revving, and look for the
+bytes that track coolant (OBD 05), rpm and load, then for one that rises like oil temperature (slower than coolant).
+The drive recorder could also poll a handful of them on a drive once the candidates are known.
+
+### Module scan — every UDS address (2026-11-02)
+`s660-module-scan`: 0x22 0xF110 (assembly part number) to 0x18DA00F1–0x18DAFFF1, skipping 0x33 (functional) and
+0xF1 (the tester), one request every ~0.5 s: 254 addresses in 4½ min. No fault codes before or after; adapter back
+in `M1`. **Six modules answer**, the five already known and one more:
+
+| Address | 0xF110 | Module |
+|---|---|---|
+| 0x10 | `37820-5JA-N041` M1 | Engine (PGM-FI) |
+| 0x28 | `57110-TDJ-9210` M1 | VSA |
+| 0x30 | `53200-TDJ-J13` | EPS |
+| 0x53 | `77960-TDJ-J611` M2 | SRS |
+| 0x60 | `78100-TDJ-N320` M1 | Instrument cluster |
+| **0xB4** | **`36130-TDJ-J110` M1** | **City Brake Active System (CTBA) sensor unit**, behind the rear-view mirror. Identified by its part number: a used-parts listing for exactly this unit ([BE FORWARD PA54896743](https://autoparts.beforward.jp/detail/Car-Electronics/Backup-Cameras/PA54896743/)); system description: [Honda CTBA](https://gershon.ucoz.com/HONDA/ctba.pdf) |
+
+No body / keyless, climate or immobiliser module answers on this bus. **CTBA is a safety system, like the SRS: it
+gets no sweep.**
+
+### Stage 6 — EPS 0x30 full range (2026-11-02, complete)
+Piece 1 (`s660-diag-sweep@30.service`): 0x0000–0x69FF, no fault codes before or after, no unexpected replies,
+battery 12.44 → 12.33 V. **8 identifiers so far, all in 0x48xx:** 0x4800, 0x4801, 0x4808, 0x4809, 0x48AA,
+0x48AB, 0x48AF (ASCII, a part-number-like string) and 0x48FA.
+Piece 2: 0x6A00–0xD3FF, nothing (battery 12.68 → 12.58 V). Piece 3: 0xD400–0xFFFF (minus 0xF1xx), battery
+12.48 → 12.41 V, two more: **0xE600** = battery voltage in mV (`30 26` = 12,326 mV, the same identifier as on the
+engine) and **0xE602** (`00 00 00`, as on the engine). **EPS total: 10 identifiers**, no locked ones, no fault codes
+before or after any piece.
+
+From here on a sweep piece has **no time cap** (`s660-sweep-piece`, by request): it stops at 12.1 V or the end of
+the range, and the unit's `RuntimeMaxSec=4h` only catches a hung run.
+
+### Stage 6 — VSA 0x28 full range (pass C, 2026-11-02, in progress)
+Piece 1: 0x0000–0xF3FF (minus 0xF1xx), started straight after the EPS, recorder on listen-only; battery 12.41 →
+12.09 V, where it paused at the cutoff. No fault codes before or after. **20 identifiers:**
+- **0x4000–0x4007** (8), **0x4030–0x4035** (6), **0x4070–0x4073** (4). The 0x403x and 0x407x blocks come in
+  repeating 3- and 2-identifier patterns, e.g. 0x4032 = 0x4035 and 0x4030 ≈ 0x4033, which looks like per-wheel or
+  per-channel records. Several hold `7d`-ish byte pairs (0x7A–0x7D), plausibly the four wheel-speed sensors at rest.
+- **0xE600** = battery voltage in mV (`2f 6e` = 12,142 mV) and **0xE602** (`00 00 00`), as on the engine and the EPS.
+
+0xF400–0xFFFF still to do (≈ 5 min).
+
+### Stage 6c — engine identifiers on a drive (set up 2026-11-03)
+The drive recorder takes an optional list of extra requests, `/persist/can/drive-extra-items` (whitespace-separated
+`s660-diag poll` tokens). While it exists, the extras are spread evenly between two rounds of the normal requests
+and the rate goes from 5 to 10 per second, so the normal requests keep their pace. `drive-extra-items.6c` is the
+list for this stage: the 52 engine identifiers from pass B, each read about every 10–12 s. Installed before a cold
+start (coolant 23 °C), all 52 answered with the ignition on. Every request and reply is in the drive's `.jsonl`,
+beside the bus recording. Delete the file on the Pi to go back to the normal requests.
