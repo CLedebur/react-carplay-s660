@@ -1,6 +1,6 @@
 // Built-in web interface: plain HTML pages for the settings that are awkward to change with a knob
-// (saved Wi-Fi networks, the same settings as on screen, logs, diagnostics, restart). Loaded by
-// s660-api.js; no npm deps.
+// (saved Wi-Fi networks, the same settings as on screen, logs, diagnostics, restart), the live vehicle
+// data and the drive history. Loaded by s660-api.js; no npm deps.
 //
 // It is OFF until the Settings page turns it on, and off again after a reboot, 30 minutes without use,
 // or too many wrong PINs. Turning it on makes a fresh 6-digit PIN that only the head unit's screen
@@ -74,7 +74,11 @@ summary{cursor:pointer;border:2px solid var(--line);border-radius:6px;font-weigh
 details form{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}details input{width:auto;flex:1;min-width:10em}
 .card{border:2px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}.card.focus{border-color:var(--accent)}
 .toast{position:fixed;left:12px;right:12px;bottom:12px;background:var(--accent);color:#000;padding:10px 14px;border-radius:8px;font-weight:700;max-width:736px;margin:0 auto}
-label.inline{display:flex;gap:8px;align-items:center;font-weight:400;margin:8px 0}label.inline input{width:auto}`
+label.inline{display:flex;gap:8px;align-items:center;font-weight:400;margin:8px 0}label.inline input{width:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0 24px}td.n{text-align:right;font-variant-numeric:tabular-nums}
+main.wide{max-width:1100px}svg.chart{width:100%;height:auto;display:block;margin:2px 0 14px}svg.chart text{fill:var(--dim);font-size:12px}
+svg.chart .ax{stroke:var(--line);stroke-width:1}svg.chart .ln{fill:none;stroke:var(--accent);stroke-width:1.6}svg.chart .ln2{fill:none;stroke:var(--fg);stroke-width:1.2;opacity:.6}
+.gdot{width:180px;height:180px}.gdot circle.ring{fill:none;stroke:var(--line)}.gdot circle.dot{fill:var(--accent)}`
 
 const CLIENT_JS = `
 (function(){
@@ -100,13 +104,58 @@ const CLIENT_JS = `
   bind()
 })();`
 
-const page = (title, body, { nav = true } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
+// The live Vehicle page polls /vehicle.json once a second and fills in the cells by key. The groups follow the
+// unit's own Vehicle panel (carplay-web-app/src/VehicleTabs.tsx); a value the car is not sending shows "--".
+const VEHICLE_JS = `
+(function(){
+  var F=window.S660_UNITS==='f';
+  function n(v,d){return v===null||v===undefined?'--':(+v).toFixed(d)}
+  function t(v){return v===null||v===undefined?'--':Math.round(F?v*9/5+32:v)+(F?' °F':' °C')}
+  function yn(v,a,b){return v===null||v===undefined?'--':v?a:b}
+  var LIGHTS=['Off','Parking','Low beam','High beam'],WIPERS=['Off','Interval','Low','High'];
+  var V={
+    speed:function(d){return n(d.speedKmh,0)+' km/h'},rpm:function(d){return n(d.rpm,0)+' rpm'},gear:function(d){return d.gear===null?'--':d.gear},
+    throttle:function(d){return n(d.throttlePct,0)+' %'},brake:function(d){return n(d.brakeMpa,1)+' MPa'},boost:function(d){return n(d.boostBar,2)+' bar'},
+    clutch:function(d){return yn(d.clutchUp,'Up','Pressed')},brakePedal:function(d){return yn(d.brakePedal,'Pressed','Released')},
+    coolant:function(d){return t(d.coolantC)},intake:function(d){return t(d.intakeC)},outside:function(d){return t(d.outsideC)},catalyst:function(d){return t(d.catalystC)},
+    timing:function(d){return n(d.timingDeg,1)+' °'},trims:function(d){return n(d.stftPct,1)+' % / '+n(d.ltftPct,1)+' %'},
+    lambda:function(d){return n(d.lambda,2)+' / '+n(d.lambdaCmd,2)},load:function(d){return n(d.loadPct,0)+' % / '+n(d.absLoadPct,0)+' %'},
+    plate:function(d){return n(d.throttlePlatePct,0)+' %'},battery:function(d){return n(d.batteryV,2)+' V'},
+    latG:function(d){return n(d.latG,2)+' g'},longG:function(d){return n(d.longG,2)+' g'},yaw:function(d){return n(d.yawDegPerS,1)+' °/s'},
+    steer:function(d){return n(d.steeringDeg,0)+' °'},
+    wheels:function(d){var w=d.wheelKmh;return w?[w.fl,w.fr,w.rl,w.rr].map(function(x){return n(x,1)}).join(' · '):'--'},
+    vsa:function(d){var v=d.vsa;return !v?'--':v.unavailable?'UNAVAILABLE':v.abs?'ABS acting':v.active?'VSA acting':v.agile?'AHA acting':v.lamp?'Lamp on':'Ready'},
+    events:function(d){var e=d.vsaEvents;return e?e.agile+' / '+e.active+' / '+e.abs:'--'},
+    fuel:function(d){return n(d.fuelPct,0)+' %'+(d.fuelL===null||d.fuelL===undefined?'':' · '+n(d.fuelL,1)+' L')},
+    range:function(d){return d.rangeKm===null||d.rangeKm===undefined?'--':d.rangeKm+' km at '+n(d.rangeKmPerL,1)+' km/L'},
+    odo:function(d){return d.odometerKm===null?'--':d.odometerKm.toLocaleString()+' km'},
+    lights:function(d){return d.headlights===null?'--':LIGHTS[d.headlights]},wipers:function(d){return d.wipers===null?'--':WIPERS[d.wipers]},
+    indicators:function(d){var i=d.indicators;return !i?'--':i.left&&i.right?'Hazards':i.left?'Left':i.right?'Right':'Off'},
+    handbrake:function(d){return yn(d.handbrake,'On','Off')},reverse:function(d){return yn(d.reverse,'Engaged','No')},
+    belts:function(d){var b=d.belts;return !b?'--':'Driver '+(b.driver?'buckled':'UNBUCKLED')+' · passenger '+(b.passenger?'buckled':'unbuckled')},
+    lamps:function(d){var l=d.lamps;if(!l)return '--';var on=[];if(l.engine)on.push('engine');if(l.lampA||l.lampB)on.push('oil / charging');if(l.eps)on.push('EPS');return on.length?on.join(', '):'All off'},
+    mil:function(d){return !d.mil?'--':d.mil.on?'ON ('+d.mil.count+' codes)':'Off'},
+    codes:function(d){var s=d.dtcStored,p=d.dtcPending;if(!s&&!p)return '--';return ((s||[]).join(', ')||'none')+' / '+((p||[]).join(', ')||'none')},
+    eps:function(d){return yn(d.epsDisabled,'DISABLED','Working')},hold:function(d){return yn(d.brakeError,'ERROR',yn(d.brakeHold,'Holding','Off'))}
+  };
+  function draw(d){
+    document.getElementById('live').textContent=d.live?'Live':'No data: ignition off, or the CAN adapter is unplugged';
+    document.getElementById('live').className=d.live?'ok':'bad';
+    document.querySelectorAll('[data-k]').forEach(function(c){c.textContent=V[c.dataset.k](d)});
+    var dot=document.getElementById('dot'),x=d.latG===null?0:Math.max(-1,Math.min(1,-d.latG)),y=d.longG===null?0:Math.max(-1,Math.min(1,d.longG));
+    dot.setAttribute('cx',90+x*80);dot.setAttribute('cy',90-y*80);
+  }
+  function poll(){fetch('/vehicle.json',{credentials:'same-origin'}).then(function(r){if(r.redirected||!r.ok)throw 0;return r.json()}).then(draw).catch(function(){document.getElementById('live').textContent='The unit stopped answering';document.getElementById('live').className='bad'}).then(function(){setTimeout(poll,1000)})}
+  poll();
+})();`
+
+const page = (title, body, { nav = true, wide = false } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · S660</title><style>${CSS}</style></head><body>
-<header><b>S660 head unit</b>${nav ? '<a href="/">Status</a><a href="/settings">Settings</a><a href="/wifi">Wi-Fi</a><a href="/logs">Logs</a><a href="/diag">Diagnostics</a><a href="/power">Power</a><a href="/logout">Log out</a>' : ''}</header>
-<main>${body}</main><script>${CLIENT_JS}</script></body></html>`
+<header><b>S660 head unit</b>${nav ? '<a href="/">Status</a><a href="/vehicle">Vehicle</a><a href="/drives">Drives</a><a href="/settings">Settings</a><a href="/wifi">Wi-Fi</a><a href="/logs">Logs</a><a href="/diag">Diagnostics</a><a href="/power">Power</a><a href="/logout">Log out</a>' : ''}</header>
+<main${wide ? ' class="wide"' : ''}>${body}</main><script>${CLIENT_JS}</script></body></html>`
 
 const createWebAdmin = deps => {
-  const { stats, network, readSettings, writeSettings, SETTINGS, nmRows } = deps
+  const { stats, network, readSettings, writeSettings, SETTINGS, nmRows, vehicleData, drives } = deps
   let server = null
   let pin = null
   let lastActivity = 0
@@ -256,6 +305,125 @@ ${n.links.map(l => row(`${l.type}`, [l.state, l.name, l.ip, l.signal === null ? 
       'Settings',
       `${flash(url)}<h1>Settings</h1><form method="post" action="/settings">${fields}<p><button>Save</button></p></form>
 <p class="dim">Hand drive, frame rate, Wi-Fi band and CarPlay width only reach the dongle when CarPlay restarts: use <a href="/power">Power → Restart CarPlay</a>.</p>`,
+    )
+  }
+
+  // ---- vehicle, live
+  const VEHICLE_GROUPS = [
+    ['Drive', [['Speed', 'speed'], ['Engine', 'rpm'], ['Gear (estimated)', 'gear'], ['Accelerator', 'throttle'], ['Brake pressure', 'brake'], ['Boost', 'boost'], ['Clutch', 'clutch'], ['Brake pedal', 'brakePedal']]],
+    ['Dynamics', [['Lateral G', 'latG'], ['Longitudinal G', 'longG'], ['Yaw rate', 'yaw'], ['Steering', 'steer'], ['Wheels FL · FR · RL · RR (km/h)', 'wheels'], ['VSA', 'vsa'], ['Since start: AHA / VSA / ABS', 'events']]],
+    ['Engine', [['Coolant', 'coolant'], ['Intake air', 'intake'], ['Catalyst', 'catalyst'], ['Battery', 'battery'], ['Timing', 'timing'], ['Fuel trim short / long', 'trims'], ['Lambda actual / commanded', 'lambda'], ['Load / absolute load', 'load'], ['Throttle plate', 'plate']]],
+    ['Body', [['Fuel', 'fuel'], ['Range', 'range'], ['Odometer', 'odo'], ['Outside', 'outside'], ['Lights', 'lights'], ['Indicators', 'indicators'], ['Wipers', 'wipers'], ['Handbrake', 'handbrake'], ['Reverse', 'reverse'], ['Seat belts', 'belts']]],
+    ['Warnings', [['Warning lamps', 'lamps'], ['Check-engine lamp', 'mil'], ['Fault codes stored / pending', 'codes'], ['Power steering', 'eps'], ['Brake hold', 'hold']]],
+  ]
+  const vehiclePage = () => {
+    const units = readSettings().units === 'f' ? 'f' : 'c'
+    const groups = VEHICLE_GROUPS.map(([title, rows]) => `<div><h2>${esc(title)}</h2><table>${rows.map(([label, k]) => `<tr><td>${esc(label)}</td><td class="n" data-k="${k}">--</td></tr>`).join('')}</table></div>`).join('')
+    return page(
+      'Vehicle',
+      `<h1>Vehicle <small id="live" class="dim">Waiting…</small></h1>
+<div class="grid">${groups}<div><h2>G</h2><svg class="gdot" viewBox="0 0 180 180"><circle class="ring" cx="90" cy="90" r="80"/><circle class="ring" cx="90" cy="90" r="40"/><line class="ax" x1="10" y1="90" x2="170" y2="90" stroke="currentColor" opacity=".3"/><line x1="90" y1="10" x2="90" y2="170" stroke="currentColor" opacity=".3"/><circle id="dot" class="dot" cx="90" cy="90" r="7"/></svg><p class="dim">Rings at 0.5 g and 1 g. Up is accelerating, right is a right-hand turn.</p></div></div>
+<p class="dim">Updated every second, read-only. Engine values (timing, trims, lambda, load, battery, fault codes) need Drive recording on "Listen + engine data".</p>
+<script>window.S660_UNITS=${JSON.stringify(units)}</script><script>${VEHICLE_JS}</script>`,
+      { wide: true },
+    )
+  }
+
+  // ---- drive history
+  const fmtDuration = s => (s === null || s === undefined ? '--' : s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor(s / 60) % 60} min` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`)
+  const short = s => (s === null || s === undefined ? '--' : s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor(s / 60) % 60} min` : s >= 60 ? `${Math.round(s / 60)} min` : `${Math.round(s)} s`)
+  const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+  const fmtMb = b => `${(b / 1e6).toFixed(b < 1e7 ? 1 : 0)} MB`
+  const temp = (c, units) => (c === null || c === undefined ? '--' : units === 'f' ? `${Math.round((c * 9) / 5 + 32)} °F` : `${c} °C`)
+  const parked = sm => sm && sm.distanceKm < 0.1
+
+  const drivesPage = url => {
+    if (!drives) return page('Drives', '<h1>Drives</h1><p class="bad">The drive history is not installed on this unit (s660-drives.js).</p>')
+    const list = drives.list()
+    if (list === null) return page('Drives', '<h1>Drives</h1><p>No recordings yet. Switch on Settings → Options → Drive recording.</p>')
+    drives.prune(new Set(list.map(d => d.name)))
+    const showParked = url.searchParams.get('all') === '1'
+    const missing = list.filter(d => !d.recording && !d.summary).map(d => d.name)
+    drives.want(missing)
+    const rows = list
+      .filter(d => showParked || !parked(d.summary))
+      .map(d => {
+        const sm = d.summary
+        const cells = d.recording
+          ? `<td colspan="6" class="dim">Recording now</td>`
+          : !sm
+            ? `<td colspan="6" class="dim">Working it out…</td>`
+            : `<td class="n">${short((sm.end - sm.start) / 1000)}</td><td class="n">${parked(sm) ? 'parked' : `${sm.distanceKm.toFixed(1)} km`}</td><td class="n">${Math.round(sm.max.speedKmh)}</td><td class="n">${sm.max.rpm}</td><td class="n">${sm.events.agile}/${sm.events.active}/${sm.events.abs}</td><td>${sm.requests && sm.requests.codes.length ? `<span class="bad">${esc(sm.requests.codes.join(', '))}</span>` : sm.requests ? 'none' : '<span class="dim">not read</span>'}</td>`
+        return `<tr><td><a href="/drives/${esc(d.name)}">${esc(d.when)}</a><br><span class="dim">${d.mode === 'engine' ? 'with engine data' : 'listen only'} · ${fmtMb(d.bytes)}</span></td>${cells}</tr>`
+      })
+      .join('')
+    const hidden = list.filter(d => parked(d.summary)).length
+    return page(
+      'Drives',
+      `${missing.length ? '<meta http-equiv="refresh" content="10">' : ''}<h1>Drives</h1>
+<p class="dim">Every recording the drive recorder made, newest first. ${missing.length ? `Working out ${missing.length} summar${missing.length === 1 ? 'y' : 'ies'} (each log is read once); this page refreshes.` : ''}</p>
+<table><tr><th>Started</th><th>Length</th><th>Distance</th><th>Top km/h</th><th>Top rpm</th><th>AHA/VSA/ABS</th><th>Fault codes</th></tr>${rows || '<tr><td colspan="7">None.</td></tr>'}</table>
+<p>${showParked ? '<a href="/drives">Hide the parked recordings</a>' : hidden ? `<a href="/drives?all=1">Show ${hidden} parked recording${hidden === 1 ? '' : 's'}</a> (ignition on, car not moving)` : ''}</p>`,
+      { wide: true },
+    )
+  }
+
+  // A line chart of one trace column, drawn on the server as SVG (no scripts or libraries needed).
+  const chart = (series, col, label, unit, { col2 = null, label2 = '', zero = false } = {}) => {
+    const W = 1000, H = 170, L = 52, R = 8, T = 18, B = 22
+    const pts = series.filter(r => r[col] !== null)
+    if (pts.length < 2) return ''
+    const vals = series.flatMap(r => [r[col], col2 === null ? null : r[col2]]).filter(v => v !== null)
+    let lo = Math.min(...vals), hi = Math.max(...vals)
+    if (zero) lo = Math.min(lo, 0)
+    if (hi === lo) hi = lo + 1
+    const tMax = series[series.length - 1][0] || 1
+    const x = t => L + ((W - L - R) * t) / tMax
+    const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo))
+    const path = c => series.filter(r => r[c] !== null).map((r, i) => `${i ? 'L' : 'M'}${x(r[0]).toFixed(1)} ${y(r[c]).toFixed(1)}`).join('')
+    const ticks = [lo, (lo + hi) / 2, hi].map(v => `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.abs(hi - lo) < 5 ? v.toFixed(2) : Math.round(v)}</text><line class="ax" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" opacity=".35"/>`).join('')
+    const minutes = Array.from({ length: Math.floor(tMax / 300) + 1 }, (_, i) => i * 300).map(t => `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${t / 60} min</text>`).join('')
+    return `<h2>${esc(label)} <span class="dim">(${esc(unit)})</span>${col2 !== null ? ` <span class="dim">· white: ${esc(label2)}</span>` : ''}</h2>
+<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${ticks}${minutes}${col2 !== null ? `<path class="ln2" d="${path(col2)}"/>` : ''}<path class="ln" d="${path(col)}"/></svg>`
+  }
+
+  const drivePage = name => {
+    const d = drives && drives.get(name)
+    if (!d) return null
+    const units = readSettings().units
+    const sm = d.summary
+    if (!sm) {
+      if (!d.recording) drives.want([name])
+      return page('Drive', `<meta http-equiv="refresh" content="10"><h1>${esc(d.when)}</h1><p>${d.recording ? 'Still recording. The summary is worked out once it ends.' : 'Working out the summary (the whole log is read once). This page refreshes.'}</p>`)
+    }
+    const row = (k, v) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`
+    const n = (v, dp, unit) => (v === null || v === undefined ? '--' : `${(+v).toFixed(dp)} ${unit}`)
+    const m = sm.max
+    const gears = Object.entries(sm.gearS).sort().map(([g, s]) => `${esc(g)} ${mmss(s)}`).join(' · ') || '--'
+    const rq = sm.requests
+    const S = sm.series
+    // series columns: t, speed, rpm, boost, latG, longG, coolant, throttle, gear
+    return page(
+      'Drive',
+      `<h1>${esc(d.when)} <small class="dim">${d.mode === 'engine' ? 'with engine data' : 'listen only'}</small></h1>
+<p><a href="/drives">← All drives</a></p>
+<div class="grid"><div><h2>Trip</h2><table>
+${row('Length', fmtDuration((sm.end - sm.start) / 1000))}${row('Moving', fmtDuration(sm.movingS))}
+${row('Distance', parked(sm) ? 'parked' : `${sm.distanceKm.toFixed(1)} km`)}${row('Odometer', sm.odometer.start === null ? '--' : `${sm.odometer.start.toLocaleString()} → ${sm.odometer.end.toLocaleString()} km`)}
+${row('Fuel', sm.fuelPct.start === null ? '--' : `${sm.fuelPct.start} → ${sm.fuelPct.end} %`)}${row('Outside', temp(sm.outsideC, units))}
+${row('Time in each gear (m:ss)', gears)}${row('Stalls', sm.stalls)}</table></div>
+<div><h2>Peaks</h2><table>
+${row('Speed', n(m.speedKmh, 0, 'km/h'))}${row('Engine', `${m.rpm} rpm`)}${row('Boost', n(m.boostBar, 2, 'bar'))}
+${row('Lateral G (1 s average)', n(m.latG, 2, 'g'))}${row('Accelerating', n(m.longG, 2, 'g'))}${row('Braking', `${n(m.brakeG, 2, 'g')} · ${n(m.brakeMpa, 1, 'MPa')}`)}
+${row('Coolant', temp(m.coolantC, units))}${row('Intake air', temp(m.intakeC, units))}</table></div>
+<div><h2>Safety systems and faults</h2><table>
+${row('AHA (Agile Handling Assist)', sm.events.agile)}${row('VSA interventions', sm.events.active)}${row('ABS', sm.events.abs)}
+${row('Fault codes', !rq ? '<span class="dim">not read (listen-only recording)</span>' : rq.codes.length ? `<span class="bad">${esc(rq.codes.join(', '))}</span>` : 'none')}
+${row('Battery', !rq || rq.batteryV.min === null ? '--' : `${rq.batteryV.min.toFixed(2)} – ${rq.batteryV.max.toFixed(2)} V`)}</table></div></div>
+${chart(S, 1, 'Speed', 'km/h', { zero: true })}${chart(S, 2, 'Engine', 'rpm', { zero: true })}${chart(S, 3, 'Boost', 'bar')}
+${chart(S, 4, 'Lateral G', 'g, + = turning left', { col2: 5, label2: 'longitudinal G' })}${chart(S, 7, 'Accelerator', '%', { zero: true })}${chart(S, 6, 'Coolant', '°C')}
+<p class="dim">One point a second from the bus recording. Peaks are worked out five times a second.</p>`,
+      { wide: true },
     )
   }
 
@@ -425,6 +593,16 @@ ${isActive ? '' : `<form data-ajax data-confirm="Delete ${esc(name)}?" method="p
       return redirect(res, '/login', null, { 'Set-Cookie': `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` })
     }
     if (path === '/' && !post) return send(res, 200, await statusPage(url))
+    if (path === '/vehicle' && !post) return send(res, 200, vehiclePage())
+    if (path === '/vehicle.json' && !post) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      return res.end(JSON.stringify(vehicleData ? vehicleData() : { live: false }))
+    }
+    if (path === '/drives' && !post) return send(res, 200, drivesPage(url))
+    if (path.startsWith('/drives/') && !post) {
+      const html = drivePage(path.slice('/drives/'.length))
+      return html ? send(res, 200, html) : send(res, 404, page('Not found', '<h1>No such drive</h1><p><a href="/drives">All drives</a></p>'))
+    }
     if (path === '/settings') {
       if (!post) return send(res, 200, settingsPage(url))
       const form = await readForm(req)

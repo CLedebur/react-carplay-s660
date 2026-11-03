@@ -11,6 +11,8 @@
 //   POST /api/power            {"action":"restart"|"shutdown"}  -- needs the x-s660-ui header
 //   GET  /api/vehicle          decoded CAN data for the Vehicle panel (s660-can.js; listen-only)
 //
+// The web interface (web-admin.js) shows the same vehicle data and the drive history (s660-drives.js).
+//
 // Every reading is null when its source is missing, so the UI shows "--" instead of lying.
 'use strict'
 const fs = require('fs')
@@ -28,6 +30,13 @@ try {
   engineData = can.engineData
 } catch (err) {
   console.error(`s660-api: no CAN service (${err.message})`)
+}
+// The drive history for the web interface is optional too.
+let createDrives = null
+try {
+  createDrives = require('./s660-drives').createDrives
+} catch (err) {
+  console.error(`s660-api: no drive history (${err.message})`)
 }
 
 const MITM_INPUT_NAME = 'S660 CarPlay OPERA MITM' // hardware/opera-mitm/firmware USB product string
@@ -357,7 +366,10 @@ const writeSettings = patch => {
 }
 
 // The built-in web interface (web-admin.js): off until the unit's own screen turns it on.
-const webAdmin = createWebAdmin({ stats, network, readSettings, writeSettings, SETTINGS, nmRows })
+// The Vehicle panel's data: the bus, the recorder's engine poll and the battery.
+const vehicleData = () => ({ ...(vehicle ? vehicle.snapshot() : { live: false }), ...engineData(driveLogState(), Date.now() / 1000), ...battery() })
+const drives = createDrives ? createDrives({ recordingFile: () => driveLogState()?.file || null }) : null
+const webAdmin = createWebAdmin({ stats, network, readSettings, writeSettings, SETTINGS, nmRows, vehicleData, drives })
 
 // Returns true when it handled the request.
 const handle = (req, res) => {
@@ -380,7 +392,7 @@ const handle = (req, res) => {
   }
 
   if (url === '/api/vehicle' && req.method === 'GET') {
-    sendJson(res, 200, { ...(vehicle ? vehicle.snapshot() : { live: false }), ...engineData(driveLogState(), Date.now() / 1000), ...battery() })
+    sendJson(res, 200, vehicleData())
     return true
   }
 

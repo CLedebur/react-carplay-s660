@@ -3063,3 +3063,21 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   reset button / a new image.
 - Still open, and harmless while **J2 (the CM4 reset cable) is not connected**: the RP2350 E9 false `car=1` (§35).
   Fix it (a lower R4, or a firmware workaround) before J2 goes in.
+
+## 45. 2026-11-03 — Web interface from SSH; live vehicle data and drive history on it
+
+- **`s660-web`** (`hardware/path-b/s660-web`, installed in `/usr/local/bin`): over SSH, `s660-web` switches the web
+  interface on and prints its address and the login PIN; `s660-web status` prints them without switching; `s660-web
+  off` switches it off. It makes the same calls to the kiosk's local API as Settings > Options. The PIN is still single
+  use (run it again after each login), and the server still switches itself off after 30 minutes unused and at boot.
+  SSH access (key only) is at least as strong a proof of presence as seeing the screen.
+- **Vehicle** page: everything the unit's Vehicle panel shows (drive, dynamics, engine, body, warnings) and a G dot,
+  updated every second from `/vehicle.json` (the same data as `/api/vehicle`, behind the web login).
+- **Drives** page: every drive-recorder log, newest first, with length, distance, top speed and rpm, AHA / VSA / ABS
+  counts and fault codes. Parked recordings (ignition on, no movement) are hidden behind a link. Each drive has its
+  own page: trip, peaks (G as a 1 s average), time in each gear, stalls, the battery range, and charts of speed, rpm,
+  boost, lateral / longitudinal G, accelerator and coolant (inline SVG, one point a second).
+- **`s660-drives.js`** works the summaries out from the candump log with `s660-can.js`'s own decoding, in a `nice`
+  child process, one log at a time, on the first visit to the page; each is kept in `/persist/ui/drives/` (deleted when
+  the recorder deletes its log). A 325 MB log takes about 45 s on the CM4. Tested with `s660-drives.test.js` and
+  checked against the 2026-11-03 drive (18.4 km, 133 km/h, 29 AHA, 1 VSA, 3 ABS, the one stall).
