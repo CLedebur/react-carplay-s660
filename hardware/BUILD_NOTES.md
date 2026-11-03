@@ -3002,7 +3002,11 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   change replaces it and restarts the time; after 3 s with no gear (a stop) pulling away shows 1 again
   (`gearPopup.ts`, tested). While it is on, `/api/vehicle` is polled every 200 ms over CarPlay too.
   **2026-11-03:** it now shows over every page (Vehicle, Settings, the waiting page, the switcher), not only over
-  CarPlay, so `/api/vehicle` is polled every 200 ms everywhere while it is on.
+  CarPlay, so `/api/vehicle` is polled every 200 ms everywhere while it is on. It was about 2 s late on the road: the
+  clutch switch says "up" a median 0.6 s after the gear is already engaged. The estimate no longer waits for it
+  (the ratio within 4 %; with the pedal down, only above 1,100 rpm) and a gear settles after 300 ms: on that
+  drive's 30 shifts, about 0.7 s sooner with no more wrong gears (DIAG-PLAN, drive of 2026-11-03). **Lateral G**
+  on the Vehicle panel is now speed x yaw rate; 0x1EA bytes 0-1 are not usable.
 - **Later the same day:** the pill reads just **Rec** (amber still means requests are being sent); the Engine tab's range
   card was dropped (the dash shows it); the Battery trend is shorter so its card fits the screen (scale 11.5–14.5 V,
   guides at 12, 13, 14 V). **Settings > CarPlay > CarPlay** (on / off): off = the dongle is found but never started, so

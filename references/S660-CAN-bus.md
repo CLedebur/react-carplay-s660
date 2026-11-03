@@ -254,6 +254,12 @@ r = 0.97 over 1,171 half-second windows. That is about 13% more than the sheet. 
 The same sensor most likely uses the same 0.00169 for both axes. The drive's lateral peaks
 (−2910 / +1412 counts) would then be −0.50 g / +0.24 g, which is plausible.
 
+**2026-11-03, checked against a phone GPS track:** bytes 2–3 gave 0.00162 m/s² per count (r = 0.97), confirming
+the longitudinal scale. Bytes 0–1 are **not usable** as lateral G: zero in 99 % of frames and inside about
+±1.5 m/s², not proportional outside it, and left and right turns differ several-fold. The yaw rate 0x091 is good
+(GPS heading rate: 0.00406 °/s per count, r = 0.97; rest value 0x8022), so the head unit uses speed × yaw rate
+for lateral G instead.
+
 ### 0x1FB (507) — unknown
 Byte 0 holds only the counter and checksum.
 

@@ -403,3 +403,37 @@ and the rate goes from 5 to 10 per second, so the normal requests keep their pac
 list for this stage: the 52 engine identifiers from pass B, each read about every 10–12 s. Installed before a cold
 start (coolant 23 °C), all 52 answered with the ignition on. Every request and reply is in the drive's `.jsonl`,
 beside the bus recording. Delete the file on the Pi to go back to the normal requests.
+
+### Drive of 2026-11-03: stage 6c, tyre baseline, lateral G (results)
+Cold start (coolant 23 °C) at 10:19:57, 22 min, 16 km, up to 121 km/h, recorder on engine data plus the 52 engine
+identifiers (`drive-extra-items.6c`). A phone GPS track of the same drive (kept out of the repo) gave a speed and a
+heading independent of the car; it lines up with the bus to 0.5 s. Tyres 1.9 bar front, 2.0 bar rear (as driven).
+
+**Speeds against GPS** (steady, straight, above 30 km/h): the displayed speed 0x309 reads 5.7 % high (the usual
+speedometer margin); 0x158 2.6 % high; the four wheel speeds 0x1D0 0.5–0.75 % high.
+
+**Yaw rate 0x091** against the GPS heading rate: r = 0.97, 0.00406 °/s per count (0.0037 in use, from the wheel
+speeds): confirmed to within 10 %. Rest value 34 counts.
+
+**0x1EA:** bytes 2–3 are longitudinal acceleration, r = 0.97 against d(speed)/dt, 0.00162 m/s² per count (0.00169 in
+use). Bytes 0–1 are **not a usable lateral G**: zero in 99 % of frames, zero inside about ±1.5 m/s², not
+proportional outside it, and left and right turns differ several-fold (raw ≈ +900 at −4 m/s², −540 at +4 m/s²).
+Speed × yaw rate is the reliable lateral acceleration; the Vehicle panel should use it instead.
+
+**Tyre baseline (indirect TPMS):** 267 s of steady driving above 30 km/h. Left/right ratio against path curvature
+(yaw rate / speed) is a straight line, r = 0.98, slope 1.52 m (front) and 1.32 m (rear), close to the track
+widths, as the model predicts. The straight-line ratios: **FL/FR = 1 − 0.080 %, RL/RR = 1 + 0.243 %**, front/rear
+1 − 0.048 %; the first and second halves of the drive agree to ±0.03 %. A soft tyre shifts its ratio by 0.1–0.5 %,
+so a warning is feasible. Next: let ~0.3 bar out of one tyre and drive the same road.
+
+**Stage 6c, engine identifiers through the warm-up** (coolant 23 → 92 °C):
+- **0x2610:** byte 6–7 rpm; byte 10 coolant sensor raw (falls as it warms); **byte 11 coolant (value − 40), the same
+  as OBD 05**; byte 12 intake sensor raw; **byte 13 intake air (value − 40), the same as OBD 0F**; bytes 18–19
+  speed. **Byte 38 (value − 40)** is a third temperature: ambient on the move, it climbs only at a standstill
+  (39 → 91 °C over 8 min idling) and falls as soon as the car moves or the radiator fan runs. Airflow-dependent:
+  most likely the manifold air after the intercooler or the engine bay, **not oil**.
+- **0x2660 bytes 46–47:** engine run time in seconds (13 → 1,329 over the 22 min).
+- **No oil-temperature field:** nothing starts at ambient and lags the coolant the way sump oil does. The S07A may
+  have no oil-temperature sensor (the dash has no oil gauge).
+- **0x702A** (cluster, already decoded): range = fuel × km/L matched the dash at the start (22.5 L × 15.2 = 343 km)
+  and at home after the cluster re-read the fuel at ignition-on (22.9 × 15.2 = 349 km).
