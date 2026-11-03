@@ -1,0 +1,30 @@
+#!/bin/bash
+# The head unit's web interface from an SSH session (web-admin.js), without going to the car:
+#   s660-web          switch it on (if it is off) and print its address and login PIN
+#   s660-web status   print the same without switching anything
+#   s660-web off      switch it off
+# It talks to the kiosk's local API (s660-api.js, 127.0.0.1:3000), the same calls Settings > Options makes.
+# The PIN is single use: after a login, run s660-web again for the next one. The server switches itself off
+# after 30 minutes unused and at every boot.
+set -euo pipefail
+API=http://127.0.0.1:3000/api/webadmin
+
+case "${1:-on}" in
+  on) out=$(curl -sf -X POST -H 'x-s660-ui: 1' -H 'content-type: application/json' -d '{"enabled":true}' "$API") ;;
+  off) out=$(curl -sf -X POST -H 'x-s660-ui: 1' -H 'content-type: application/json' -d '{"enabled":false}' "$API") ;;
+  status) out=$(curl -sf "$API") ;;
+  *) echo "usage: s660-web [on|status|off]" >&2; exit 2 ;;
+esac || { echo "s660-web: the kiosk is not answering on 127.0.0.1:3000 (is carplay.service running?)" >&2; exit 1; }
+
+python3 -c '
+import json, sys
+s = json.loads(sys.argv[1])
+if not s["enabled"]:
+    print("Web interface: off")
+    sys.exit()
+print("Web interface: on")
+for u in s["urls"] or ["(no network address yet: is Wi-Fi or the phone tethering up?)"]:
+    print("  " + u)
+print("  PIN " + s["pin"] + "   (single use: run s660-web again after you log in)")
+print("It switches itself off after 30 minutes unused, and at the next boot.")
+' "$out"

@@ -361,6 +361,8 @@ install -m 664 "${PB}/serve-build.js" "${KIOSK_DIR}/serve-build.js"
 install -m 664 "${PB}/s660-api.js" "${KIOSK_DIR}/s660-api.js"   # /api/stats + /api/power (serve-build.js requires it)
 install -m 664 "${PB}/web-admin.js" "${KIOSK_DIR}/web-admin.js"   # the optional web interface (s660-api.js requires it)
 install -m 664 "${PB}/s660-can.js" "${KIOSK_DIR}/s660-can.js"   # CAN service behind /api/vehicle (listen-only; optional)
+install -m 664 "${PB}/s660-drives.js" "${KIOSK_DIR}/s660-drives.js"   # drive history for the web interface (optional)
+sudo install -m 755 "${PB}/s660-web" /usr/local/bin/s660-web   # the web interface from SSH: address + PIN
 
 # The unit. No PAMName=login: cage talks to seatd directly, RuntimeDirectory= provides
 # XDG_RUNTIME_DIR, and skipping the logind session saves user@1000 + a session bus at boot
