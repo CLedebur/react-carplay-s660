@@ -75,6 +75,12 @@
   border: 3px solid var(--focus-ink);
 }
 .nui-page.paning .content.tabbed::-webkit-scrollbar-thumb { background: var(--focus-edge); }
+/* AHA / VSA / ABS pop-up: the same yellow, top left, so it never sits on the gear */
+.nui .vsapop {
+  position: absolute; top: 14px; left: 14px; height: 80px; padding: 0 18px; background: var(--focus); color: var(--focus-ink);
+  display: flex; align-items: center; font-size: 60px; font-weight: 900; line-height: 1; letter-spacing: 0.04em;
+  border: 3px solid var(--focus-ink);
+}
 
 /* tab bar under the strip */
 .nui .tabs { position: absolute; left: 110px; right: 0; top: 48px; height: 44px; border-bottom: 2px solid var(--line); display: flex; overflow: hidden; }

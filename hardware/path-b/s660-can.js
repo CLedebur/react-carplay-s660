@@ -205,11 +205,16 @@ const createVehicle = ({ iface = IFACE, spawnFn = spawn, clock = Date.now } = {}
   let lastSpawn = -Infinity
   let atmMmHg = null
   let idleTimer = null
+  // Interventions counted as they start (0x1A4): an AHA lasts 1-2 s and could fall between two polls,
+  // so the screen watches these counts go up instead of the bits themselves.
+  const vsaEvents = { agile: 0, active: 0, abs: 0 }
+  let vsaBits = null
 
   const stop = () => {
     if (child) child.kill('SIGTERM')
     child = null
     frames.clear()
+    vsaBits = null
   }
 
   const start = () => {
@@ -232,6 +237,11 @@ const createVehicle = ({ iface = IFACE, spawnFn = spawn, clock = Date.now } = {}
         if (p[0] === 0x18b) {
           const rpmFrame = frames.get(0x1dc)
           if (rpmFrame && now - rpmFrame.at <= STALE_MS && be16(rpmFrame.data, 1) === 0) atmMmHg = be16(p[1], 0) / 10
+        }
+        if (p[0] === 0x1a4) {
+          const bits = { agile: bit(p[1][4], 7), active: bit(p[1][2], 0), abs: bit(p[1][2], 1) }
+          if (vsaBits) for (const k in bits) if (bits[k] && !vsaBits[k]) vsaEvents[k]++
+          vsaBits = bits
         }
       }
     })
@@ -256,7 +266,7 @@ const createVehicle = ({ iface = IFACE, spawnFn = spawn, clock = Date.now } = {}
       }, 1000)
       idleTimer.unref()
     }
-    return decode(frames, clock(), atmMmHg)
+    return { ...decode(frames, clock(), atmMmHg), vsaEvents: { ...vsaEvents } }
   }
 
   return { snapshot, stop, running: () => child !== null }

@@ -16,6 +16,7 @@ export interface Settings {
   glassAspect: number // visible glass width / height, x1000 (1875 = 1.875:1); the native UI is drawn to it
   driveLog: 'off' | 'listen' | 'engine' // drive recorder (hardware/can/s660-drive-log): listen never transmits
   gearPopup: 0 | 1 | 2 | 3 | 4 | 5 // seconds the gear shows after a shift, over any page; 0 = off
+  vsaPopup: 0 | 1 | 2 | 3 | 4 | 5 // seconds AHA / VSA / ABS shows after an intervention, over any page; 0 = off
   accent: AccentId // the highlight colour, one of the S660's paints (accent.ts)
 }
 
@@ -37,6 +38,7 @@ export const defaultSettings: Settings = {
   glassAspect: 1875, // 135 x 72 mm, measured (BUILD_NOTES 22.8)
   driveLog: 'off',
   gearPopup: 2,
+  vsaPopup: 2,
   accent: DEFAULT_ACCENT,
 }
 
@@ -54,6 +56,7 @@ const CYCLES: { [K in CycleKey]: readonly Settings[K][] } = {
   carplayWidth: [848, 896],
   driveLog: ['off', 'listen', 'engine'],
   gearPopup: [0, 1, 2, 3, 4, 5],
+  vsaPopup: [0, 1, 2, 3, 4, 5],
   accent: ACCENT_IDS,
 }
 

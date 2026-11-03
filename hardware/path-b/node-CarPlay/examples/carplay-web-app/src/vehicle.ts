@@ -1,3 +1,5 @@
+import { VsaEvents } from './vsaPopup'
+
 // What the Vehicle panel shows, as GET /api/vehicle must answer it (the CAN service decodes it:
 // references/S660-CAN-bus.md). Everything is in physical units, and a value is null when its CAN
 // message has not been seen lately (ignition off, no adapter), so the panel shows "--" and never a
@@ -41,6 +43,7 @@ export interface VehicleData {
   wipers: 0 | 1 | 2 | 3 | null // off, intermittent, low, high
   belts: { driver: boolean; passenger: boolean } | null // true = buckled
   vsa: { lamp: boolean; unavailable: boolean; active: boolean; abs: boolean; agile: boolean } | null
+  vsaEvents: VsaEvents | null // interventions counted as they start, for the pop-up (vsaPopup.ts)
   vsaOffButton: boolean | null
   brakeHold: boolean | null // not verified
   brakeError: boolean | null
@@ -79,7 +82,7 @@ export const emptyVehicle: VehicleData = {
   vsaOffButton: null, brakeHold: null, brakeError: null, epsDisabled: null,
   steeringDeg: null, yawDegPerS: null, latG: null, longG: null, wheelKmh: null,
   clutchUp: null, brakePedal: null, handbrake: null, reverse: null, headlights: null,
-  indicators: null, wipers: null, belts: null, vsa: null,
+  indicators: null, wipers: null, belts: null, vsa: null, vsaEvents: null,
   engineData: false, batteryV: null, batteryTrend: null,
   mil: null, dtcStored: null, dtcPending: null, timingDeg: null, lambda: null, lambdaCmd: null,
   stftPct: null, ltftPct: null, loadPct: null, absLoadPct: null, throttlePlatePct: null, catalystC: null,
@@ -154,6 +157,7 @@ export const demoVehicle = (t: number): VehicleData => {
     wipers: (Math.floor(t / 14) % 4) as 0 | 1 | 2 | 3,
     belts: { driver: true, passenger: Math.floor(t / 20) % 2 === 0 },
     vsa: { lamp: false, unavailable: false, active: false, abs: false, agile: Math.abs(lat) > 0.4 },
+    vsaEvents: { agile: Math.floor(t / 15), active: 0, abs: 0 },
     engineData: true,
     mil: { on: false, count: 0 },
     dtcStored: [],

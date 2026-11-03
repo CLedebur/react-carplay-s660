@@ -6,6 +6,7 @@ import { VehicleData } from './vehicle'
 import { VehiclePage } from './VehicleTabs'
 import { vehicleDemo } from './useVehicle'
 import { initialGearPopup, stepGearPopup } from './gearPopup'
+import { initialVsaPopup, stepVsaPopup } from './vsaPopup'
 import { ACCENTS, accentOf, accentStyle } from './accent'
 import { NetBusy, PowerNotice } from './useHeadUnit'
 import { NetworkInfo } from './useNetwork'
@@ -220,6 +221,7 @@ const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: S
   carplayWidth: { label: 'CarPlay width (after Reload)', show: v => `${v} px${v === 896 ? ' · true shape' : ''}` },
   carplayShape: { label: 'CarPlay picture', show: v => (v === 'fill' ? 'Fill screen' : 'True shape') },
   gearPopup: { label: 'Gear pop-up', show: v => (v === 0 ? 'Off' : `${v} s`) },
+  vsaPopup: { label: 'AHA / VSA pop-up', show: v => (v === 0 ? 'Off' : `${v} s`) },
   driveLog: { label: 'Drive recording', show: v => (v === 'off' ? 'Off' : v === 'listen' ? 'Listen only' : 'Listen + engine data') },
 }
 
@@ -593,10 +595,25 @@ const useGearPopup = (vehicle: VehicleData | null, seconds: number) => {
   return state.shown
 }
 
+// AHA, VSA or ABS for settings.vsaPopup seconds after the car intervenes, top left over whatever is
+// showing (vsaPopup.ts).
+const useVsaPopup = (vehicle: VehicleData | null, seconds: number) => {
+  const [state, setState] = useState(initialVsaPopup)
+  const events = vehicle?.vsaEvents ?? null
+  useEffect(() => setState(s => stepVsaPopup(s, events, Date.now(), seconds * 1000)), [events, seconds])
+  useEffect(() => {
+    if (state.shown === null) return
+    const id = setTimeout(() => setState(s => stepVsaPopup(s, null, Date.now(), seconds * 1000)), Math.max(0, state.until - Date.now()))
+    return () => clearTimeout(id)
+  }, [state, seconds])
+  return state.shown
+}
+
 export const NativeUi = (props: NativeUiProps) => {
   const { ui, streaming, phone, settings, reloadPending, dongle, linkStatus, stats, vehicle, network, web, netBusy, holding, power, lastKey, streamLabel } = props
   const clock = useClock(settings.clock)
   const popGear = useGearPopup(vehicle, settings.gearPopup)
+  const popVsa = useVsaPopup(vehicle, settings.vsaPopup)
   // A tab with more rows than fit scrolls to keep the knob's row in view.
   useEffect(() => {
     document.querySelector('.nui .content.tabbed .f.focused')?.scrollIntoView({ block: 'nearest' })
@@ -665,10 +682,11 @@ export const NativeUi = (props: NativeUiProps) => {
         </div>
       )}
       {ui.switcher && <Switcher focus={ui.focus} glassAspect={g} />}
-      {popGear !== null && (
+      {(popGear !== null || popVsa !== null) && (
         <div className="nui">
           <Fit glassAspect={g}>
-            <div className="gearpop">{popGear}</div>
+            {popGear !== null && <div className="gearpop">{popGear}</div>}
+            {popVsa !== null && <div className="vsapop">{popVsa}</div>}
           </Fit>
         </div>
       )}

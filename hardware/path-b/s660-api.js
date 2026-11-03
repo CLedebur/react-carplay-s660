@@ -321,6 +321,7 @@ const SETTINGS = {
   // The drive recorder (hardware/can/s660-drive-log) reads this from the same file every 2 s.
   driveLog: { default: 'off', allowed: ['off', 'listen', 'engine'] },
   gearPopup: { default: 2, allowed: [0, 1, 2, 3, 4, 5] }, // seconds; 0 = off
+  vsaPopup: { default: 2, allowed: [0, 1, 2, 3, 4, 5] }, // seconds; 0 = off
   // The highlight colour: carplay-web-app/src/accent.ts ACCENTS, same order.
   accent: {
     default: 'carnivalYellow2',
