@@ -3001,6 +3001,8 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   CarPlay's top-right corner in a yellow box with a black figure. A gear counts once it has held 400 ms; a further
   change replaces it and restarts the time; after 3 s with no gear (a stop) pulling away shows 1 again
   (`gearPopup.ts`, tested). While it is on, `/api/vehicle` is polled every 200 ms over CarPlay too.
+  **2026-11-03:** it now shows over every page (Vehicle, Settings, the waiting page, the switcher), not only over
+  CarPlay, so `/api/vehicle` is polled every 200 ms everywhere while it is on.
 - **Later the same day:** the pill reads just **Rec** (amber still means requests are being sent); the Engine tab's range
   card was dropped (the dash shows it); the Battery trend is shorter so its card fits the screen (scale 11.5–14.5 V,
   guides at 12, 13, 14 V). **Settings > CarPlay > CarPlay** (on / off): off = the dongle is found but never started, so
