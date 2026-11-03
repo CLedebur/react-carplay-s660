@@ -1,0 +1,11 @@
+[Unit]
+Description=S660 stage 6 sweep of module 0x%i, one piece, until 12.1 V or the end (hardware/can/DIAG-PLAN.md)
+After=s660-can.service
+RequiresMountsFor=/persist
+
+[Service]
+Type=exec
+ExecStart=/persist/can/bin/s660-sweep-piece %i
+ExecStopPost=/usr/local/sbin/s660-diag session-stop
+# No time cap: the sweep pauses at 12.1 V. 4 h only catches a hung run.
+RuntimeMaxSec=4h

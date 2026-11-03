@@ -1,0 +1,14 @@
+#!/bin/sh
+# Stage 6 (DIAG-PLAN): one piece of a module's full 0x22 sweep, `s660-sweep-piece 30` for the EPS. Stops
+# below 12.1 V (no time cap, by request 2026-11-02); the next run resumes from /persist/can/sweep-AA-0000-FFFF.state. Run by
+# s660-diag-sweep@AA.service, whose ExecStopPost puts the adapter back to silent however it ends.
+A=$1
+[ -n "$A" ] || { echo "usage: s660-sweep-piece ADDR (hex)"; exit 2; }
+D=/usr/local/sbin/s660-diag
+L=/persist/can/$(date +%F-%H%M)-diag-sweep-$A
+$D session-start || exit 1
+candump -L any > "$L.log" & REC=$!
+echo "== fault codes before"; $D obd --29 03; $D obd --29 07
+echo "== module $A"; $D sweep $A 0000 FFFF --skip-f1 --min-mv 12100 || echo "module $A: sweep stopped early"
+echo "== fault codes after"; $D obd --29 03; $D obd --29 07
+kill $REC 2>/dev/null

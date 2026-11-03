@@ -66,12 +66,21 @@ test('stale frames read as null, and live goes false', () => {
   assert.strictEqual(later.live, false)
 })
 
-test('gear from rpm / speed, clutch up only', () => {
+test('gear from rpm / speed, without waiting for the clutch switch', () => {
   assert.strictEqual(estimateGear(3060, 45, true), 3) // 68 rpm per km/h
   assert.strictEqual(estimateGear(3050, 100, true), 6) // 30.5
-  assert.strictEqual(estimateGear(3060, 45, false), null) // clutch down
+  assert.strictEqual(estimateGear(3060, 45, false), 3) // engaged, switch not yet "up"
+  assert.strictEqual(estimateGear(900, 30, false), null) // clutch down at idle: neutral, not 6th
   assert.strictEqual(estimateGear(900, 3, true), null) // creeping
   assert.strictEqual(estimateGear(4000, 45, true), null) // between gears / slipping
+  assert.strictEqual(estimateGear(3240, 45, true), null) // 72 rpm per km/h: 6 % off 3rd, outside 4 %
+})
+
+test('lateral G is speed x yaw rate; + = pushed left (a left turn, yaw below its rest value)', () => {
+  // 0x8022 - 1000 counts = -3.7 deg/s, at 72 km/h on all four wheels: 20 m/s x 0.0646 rad/s = 1.29 m/s²
+  const v = decode(frames('091#7C3A000000000000', '1D0#38407080E101C200'), NOW)
+  assert.ok(Math.abs(v.latG - 1.2915 / 9.81) < 0.002, v.latG)
+  assert.strictEqual(decode(frames('091#7C3A000000000000'), NOW).latG, null) // no wheel speeds
 })
 
 test('candump starts on demand and stops when idle', () => {

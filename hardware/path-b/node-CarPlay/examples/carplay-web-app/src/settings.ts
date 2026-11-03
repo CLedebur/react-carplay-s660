@@ -15,7 +15,7 @@ export interface Settings {
   carplayShape: 'fill' | 'exact' // fill = the picture stretched over the whole frame; exact = true shape, black bar on the left
   glassAspect: number // visible glass width / height, x1000 (1875 = 1.875:1); the native UI is drawn to it
   driveLog: 'off' | 'listen' | 'engine' // drive recorder (hardware/can/s660-drive-log): listen never transmits
-  gearPopup: 0 | 1 | 2 | 3 | 4 | 5 // seconds the gear shows over CarPlay after a shift; 0 = off
+  gearPopup: 0 | 1 | 2 | 3 | 4 | 5 // seconds the gear shows after a shift, over any page; 0 = off
   accent: AccentId // the highlight colour, one of the S660's paints (accent.ts)
 }
 

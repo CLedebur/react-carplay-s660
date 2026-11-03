@@ -31,6 +31,26 @@ PIDS = "42 04 05 06 42 07 0B 0C 0D 42 0E 0F 11 34 42 3C 43 44 01 s03 s07 60:702A
 BATTERY_SAMPLES = 900                  # about 15 minutes of voltage readings for the panel's trend
 REPLY = re.compile(r"-> ([0-9a-f ]+?)\s{3}\S+ <- ([0-9a-f ]+)$")    # s660-diag's line for each request
 POLL_RATE = "5"
+# Research requests (DIAG-PLAN stage 6c), only while this file exists: whitespace-separated s660-diag poll
+# tokens, '#' starts a comment. They are spread evenly between two rounds of PIDS and the rate goes to
+# EXTRA_RATE, so PIDS keep their pace (52 extras: each one about every 10 s). Delete the file to stop.
+EXTRA = os.environ.get("S660_DRIVE_EXTRA", "/persist/can/drive-extra-items")
+EXTRA_RATE = "10"
+
+
+def poll_items():
+    """(rate, tokens) for s660-diag poll: PIDS alone, or PIDS twice with the extras spread between."""
+    try:
+        extra = " ".join(l.split("#")[0] for l in open(EXTRA)).split()
+    except OSError:
+        extra = []
+    if not extra:
+        return POLL_RATE, PIDS
+    base, items = PIDS * 2, []
+    for i, tok in enumerate(base):
+        items.append(tok)
+        items += extra[len(extra) * i // len(base):len(extra) * (i + 1) // len(base)]
+    return EXTRA_RATE, items
 
 
 def mode_setting():
@@ -104,7 +124,10 @@ class Recorder:
             env = dict(os.environ, S660_DIAG_LOG=self.base + ".jsonl")
             for svc in ("03", "07"):          # stored and pending fault codes, once per drive
                 subprocess.run([DIAG, "obd", "--29", svc], env=env, stdout=subprocess.DEVNULL)
-            self.poll = subprocess.Popen([DIAG, "poll", POLL_RATE] + PIDS, env=env, stdout=subprocess.PIPE, text=True)
+            rate, items = poll_items()
+            self.poll = subprocess.Popen([DIAG, "poll", rate] + items, env=env, stdout=subprocess.PIPE, text=True)
+            if len(items) > len(PIDS):
+                self.note = f"research: {len(items) - 2 * len(PIDS)} extra requests ({EXTRA})"
             threading.Thread(target=self.read_poll, args=(self.poll,), daemon=True).start()
         print(f"recording {self.base} ({mode}{', sending requests' if self.engine else ''}) {self.note}", flush=True)
 

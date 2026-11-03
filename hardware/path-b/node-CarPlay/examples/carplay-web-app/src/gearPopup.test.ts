@@ -9,7 +9,7 @@ const run = (seq: (Gear | null)[], showMs = 2000) => {
 
 test('a new gear shows once it has held, and goes after the set time', () => {
   const shown = run([2, 2, 2, 2, ...Array(12).fill(2)])
-  expect(shown.slice(0, 2)).toEqual([null, null]) // settling (400 ms)
+  expect(shown.slice(0, 2)).toEqual([null, null]) // settling (300 ms: shown at the first poll after it)
   expect(shown[2]).toBe(2)
   expect(shown[11]).toBe(2) // 2 s from 400 ms ...
   expect(shown[12]).toBeNull() // ... ends at 2.4 s
@@ -29,5 +29,5 @@ test('the same gear after the clutch does not show again; after a stop, pulling 
   const stop = Math.ceil(FORGET_MS / 200) + 1
   const shown = run([1, 1, 1, ...Array(12).fill(1), ...Array(stop).fill(null), 1, 1, 1])
   expect(shown[shown.length - 1]).toBe(1)
-  expect(SETTLE_MS).toBe(400)
+  expect(SETTLE_MS).toBe(300)
 })

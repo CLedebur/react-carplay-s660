@@ -219,7 +219,7 @@ const OPTIONS: { [K in CycleKey]: { label: string; check?: boolean; show?: (v: S
   nightMode: { label: 'CarPlay night mode', check: true },
   carplayWidth: { label: 'CarPlay width (after Reload)', show: v => `${v} px${v === 896 ? ' · true shape' : ''}` },
   carplayShape: { label: 'CarPlay picture', show: v => (v === 'fill' ? 'Fill screen' : 'True shape') },
-  gearPopup: { label: 'Gear pop-up over CarPlay', show: v => (v === 0 ? 'Off' : `${v} s`) },
+  gearPopup: { label: 'Gear pop-up', show: v => (v === 0 ? 'Off' : `${v} s`) },
   driveLog: { label: 'Drive recording', show: v => (v === 'off' ? 'Off' : v === 'listen' ? 'Listen only' : 'Listen + engine data') },
 }
 
@@ -579,7 +579,8 @@ const PowerScreen = ({ power, glassAspect }: { power: PowerNotice; glassAspect: 
 
 const TITLES = { carplay: 'CarPlay', vehicle: 'Vehicle', settings: 'Settings' }
 
-// The gear after a shift, over CarPlay's top-right corner, for settings.gearPopup seconds (gearPopup.ts).
+// The gear after a shift, in the top-right corner over whatever is showing, for settings.gearPopup seconds
+// (gearPopup.ts).
 const useGearPopup = (vehicle: VehicleData | null, seconds: number) => {
   const [state, setState] = useState(initialGearPopup)
   const gear = vehicle?.live ? vehicle.gear : null
@@ -663,14 +664,14 @@ export const NativeUi = (props: NativeUiProps) => {
           </div>
         </div>
       )}
-      {popGear !== null && ui.panel === 'carplay' && streaming && !ui.switcher && (
+      {ui.switcher && <Switcher focus={ui.focus} glassAspect={g} />}
+      {popGear !== null && (
         <div className="nui">
           <Fit glassAspect={g}>
             <div className="gearpop">{popGear}</div>
           </Fit>
         </div>
       )}
-      {ui.switcher && <Switcher focus={ui.focus} glassAspect={g} />}
       {power && <PowerScreen power={power} glassAspect={g} />}
     </div>
   )

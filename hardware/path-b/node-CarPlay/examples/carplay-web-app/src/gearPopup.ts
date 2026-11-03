@@ -5,7 +5,7 @@ import { Gear } from './vehicle'
 // The estimate drops to null whenever the clutch is pressed or the car is nearly stopped, so a gear
 // counts only once it has held for SETTLE_MS, and the remembered gear is forgotten after FORGET_MS of
 // null (a stop): pulling away then shows 1 again.
-export const SETTLE_MS = 400
+export const SETTLE_MS = 300
 export const FORGET_MS = 3000
 
 export interface GearPopup {

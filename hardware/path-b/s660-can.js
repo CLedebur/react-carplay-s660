@@ -19,13 +19,18 @@ const IDS = [0x091, 0x13c, 0x156, 0x158, 0x17c, 0x18b, 0x1a4, 0x1a6, 0x1ab, 0x1b
 
 // Measured rpm per km/h (0x1DC / 0x158) with the clutch up, 2026-11-01 drive. 5th was seen only briefly.
 const GEAR_RATIOS = [158.5, 99, 68, 51, 40, 30.5]
-const GEAR_TOLERANCE = 0.06
+// 4 %, and no wait for the clutch switch: on the 2026-11-03 drive the ratio matched the new gear a median 0.6 s
+// before the switch said "up" (it sits at the top of the pedal's travel). With the pedal down a ratio only counts
+// above CLUTCH_DOWN_MIN_RPM, so coasting in neutral at idle does not read as a gear. Same wrong-gear count as the
+// old rule (6 %, clutch up only) on that drive's 30 shifts, about 0.7 s sooner.
+const GEAR_TOLERANCE = 0.04
+const CLUTCH_DOWN_MIN_RPM = 1100
 const G = 9.81
 const LONG_G_PER_COUNT = 0.00169 / G // 0x1EA bytes 2-3, measured
-// 0x1EA bytes 0-1: about 0.012 m/s² per count from speed x yaw rate in steady turns on 2026-11-02 (0.008-0.025
-// between turns: camber, the sensor's dead band). Provisional; the old guess (0.00169, as longitudinal) read ~7x low.
-const LAT_G_PER_COUNT = 0.012 / G
-const YAW_DEG_PER_COUNT = 0.0037 // 0x091 bytes 0-1, measured against the wheel speeds (±5 %)
+// Lateral G is speed x yaw rate: 0x1EA bytes 0-1 read zero inside about ±1.5 m/s² and are not proportional
+// outside it (DIAG-PLAN, drive of 2026-11-03). + = pushed left; + yaw (0x091) is a right turn, per the GPS heading.
+const YAW_DEG_PER_COUNT = 0.0037 // 0x091 bytes 0-1, against the wheel speeds (±5 %); the GPS heading gave 0.00406
+const YAW_REST = 0x8022 // 0x091 at a standstill
 const MMHG_TO_BAR = 0.00133322
 // Driver's brake pressure, 0x1A4 bytes 0-1: the sheet's points (raw -> MPa). Zero up to 106: at rest our car
 // reads 101-105, which would otherwise show as 0.1-0.2 MPa with no foot on the pedal.
@@ -47,8 +52,21 @@ const interp = (points, x) => {
   return yb + ((x - xb) * (yb - ya)) / (xb - xa)
 }
 
+const wheels = d => {
+  const w = d.readBigUInt64BE(0)
+  const at = s => Number((w >> BigInt(s)) & 0x7fffn) / 100
+  return { fl: at(49), fr: at(34), rl: at(19), rr: at(4) } // measured order FL, FR, RL, RR
+}
+
+// -(speed x yaw rate) / g from 0x091 and the four wheel speeds; null without either.
+const latG = (yawFrame, w) => {
+  if (!yawFrame || !w) return null
+  const v = (w.fl + w.fr + w.rl + w.rr) / 4 / 3.6
+  return -(v * (((be16(yawFrame, 0) - YAW_REST) * YAW_DEG_PER_COUNT * Math.PI) / 180)) / G
+}
+
 const estimateGear = (rpm, transKmh, clutchUp) => {
-  if (!clutchUp || transKmh < 5 || rpm < 800) return null
+  if (transKmh < 5 || rpm < 800 || (!clutchUp && rpm <= CLUTCH_DOWN_MIN_RPM)) return null
   const r = rpm / transKmh
   let best = null
   GEAR_RATIOS.forEach((g, i) => {
@@ -101,14 +119,10 @@ const decode = (frames, now, atmMmHg = null) => {
     torqueEst: pick(0x13c, d => s16(be16(d, 0))), // raw, unit unknown; -1 for 2-3 s after lifting off
     torqueReq: pick(0x13c, d => s16(be16(d, 2))),
     steeringDeg: pick(0x156, d => s16(be16(d, 0)) / 10),
-    yawDegPerS: pick(0x091, d => (be16(d, 0) - 0x8000) * YAW_DEG_PER_COUNT),
-    latG: pick(0x1ea, d => s16(be16(d, 0)) * LAT_G_PER_COUNT),
+    yawDegPerS: pick(0x091, d => (be16(d, 0) - YAW_REST) * YAW_DEG_PER_COUNT),
+    latG: latG(f[0x091], f[0x1d0] ? wheels(f[0x1d0]) : null),
     longG: pick(0x1ea, d => s16(be16(d, 2)) * LONG_G_PER_COUNT),
-    wheelKmh: pick(0x1d0, d => {
-      const w = d.readBigUInt64BE(0)
-      const at = s => Number((w >> BigInt(s)) & 0x7fffn) / 100
-      return { fl: at(49), fr: at(34), rl: at(19), rr: at(4) } // measured order FL, FR, RL, RR
-    }),
+    wheelKmh: pick(0x1d0, wheels),
     clutchUp,
     brakePedal: pick(0x17c, d => bit(d[6], 5)),
     handbrake: pick(0x1a6, d => bit(d[0], 2)),
