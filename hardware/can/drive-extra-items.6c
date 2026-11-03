@@ -1,4 +1,4 @@
-# DIAG-PLAN stage 6c: the 52 engine identifiers from pass B, read on every engine-data drive while this
+# S660-diagnostics.md stage 6c: the 52 engine identifiers from pass B, read on every engine-data drive while this
 # file is installed as /persist/can/drive-extra-items. Delete that file to stop.
 10:2600 10:2601 10:2610 10:2611 10:2612 10:2613 10:2615 10:2620 10:2621 10:2622 10:2623 10:2625 10:2630
 10:2660 10:2661 10:2662 10:2663 10:2664 10:2665 10:2668 10:266C 10:266D 10:266F 10:2673 10:2676 10:2679

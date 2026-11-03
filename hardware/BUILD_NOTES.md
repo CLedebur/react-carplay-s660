@@ -2954,13 +2954,13 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   `provision.sh` PHASE 4c, with `s660-diag`, into `/usr/local/sbin/`). It re-reads the setting every 2 s. A recording
   **starts when the car's broadcast is heard and stops 10 s after it goes quiet**, so every ignition-on is one recording,
   however many stops a trip has (the one-boot arming used on 2026-11-02 missed the last leg of a three-stop errand,
-  DIAG-PLAN). Only 11-bit frames count as the car: our own OBD requests are 29-bit and the host sees them too.
+  references/S660-diagnostics.md). Only 11-bit frames count as the car: our own OBD requests are 29-bit and the host sees them too.
 - **Files:** `/persist/can/drives/DATE-TIME-BOOT-MODE.log` (`candump -L can0`, about 220 MB an hour) and, with engine
   data, `.jsonl` (every request and reply). The names carry 4 characters of the boot id, because the clock is only right
   once the Pi has been online. The newest are kept up to **20 GB**; the oldest are deleted first.
 - **Listen only never transmits.** **Listen + engine data** opens an `s660-diag` session (adapter `M0`, verified), reads
-  the stored and pending fault codes once, then polls 15 read-only OBD PIDs at 5 requests per second (DIAG-PLAN
-  stage 5). When the recording ends, the setting changes, or the service stops for any reason (`ExecStopPost`),
+  the stored and pending fault codes once, then polls 15 read-only OBD PIDs at 5 requests per second
+  (references/S660-diagnostics.md, stage 5). When the recording ends, the setting changes, or the service stops for any reason (`ExecStopPost`),
   `session-stop` sets the adapter back to `M1` and verifies it. `s660-diag session-start` now refuses while another
   session is open, and the recorder records listen-only if a manual session already holds the adapter.
 - **On screen:** a **Rec** pill in the title strip whenever the setting is on: dim while waiting for the car, green
@@ -2992,7 +2992,7 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
 - **Dynamics:** a row of stability chips: VSA, ABS, Agile Handling Assist, VSA OFF button, hill start hold, brake
   system, power steering (0x1A4, 0x1A6, 0x1AB, 0x1B0; mostly unverified on our car). With the engine stopped the
   "brake system" and "power steering" bits read set (ERROR / DISABLED); to be checked with the engine running.
-- **Lateral G** scale corrected to 0.012 m/s² per count (provisional, DIAG-PLAN errand); it read about 7 × low.
+- **Lateral G** scale corrected to 0.012 m/s² per count (provisional, later superseded by speed × yaw rate); it read about 7 × low.
 - **The engine data** (`s660-can.js` `engineData`, tested) is decoded from the recorder's status file and merged into
   `/api/vehicle`; all of it needs Drive recording on "Listen + engine data", and the tabs say so when it is off. The
   poll is now 22 requests at 5 per second (`s660-diag poll` takes `s03` for a whole OBD service and `60:702A` for a
@@ -3005,7 +3005,7 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
   CarPlay, so `/api/vehicle` is polled every 200 ms everywhere while it is on. It was about 2 s late on the road: the
   clutch switch says "up" a median 0.6 s after the gear is already engaged. The estimate no longer waits for it
   (the ratio within 4 %; with the pedal down, only above 1,100 rpm) and a gear settles after 300 ms: on that
-  drive's 30 shifts, about 0.7 s sooner with no more wrong gears (DIAG-PLAN, drive of 2026-11-03). **Lateral G**
+  drive's 30 shifts, about 0.7 s sooner with no more wrong gears (references/S660-diagnostics.md). **Lateral G**
   on the Vehicle panel is now speed x yaw rate; 0x1EA bytes 0-1 are not usable.
 - **Later the same day:** the pill reads just **Rec** (amber still means requests are being sent); the Engine tab's range
   card was dropped (the dash shows it); the Battery trend is shorter so its card fits the screen (scale 11.5–14.5 V,

@@ -1,5 +1,5 @@
 [Unit]
-Description=S660 stage 6 pass B, one 45-minute piece (hardware/can/DIAG-PLAN.md)
+Description=S660 stage 6 pass B, one 45-minute piece (references/S660-diagnostics.md)
 After=s660-can.service
 RequiresMountsFor=/persist
 

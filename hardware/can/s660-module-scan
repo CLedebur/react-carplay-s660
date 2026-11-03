@@ -1,5 +1,5 @@
 #!/bin/sh
-# DIAG-PLAN "module scan": ask every UDS address 0x00-0xFF (not 0x33, functional, or 0xF1, us) for its
+# S660-diagnostics.md "module scan": ask every UDS address 0x00-0xFF (not 0x33, functional, or 0xF1, us) for its
 # assembly part number, 0x22 0xF110, which every module found so far answers. One request every ~0.5 s;
 # no reply within 0.5 s = nothing there. Replies go to /persist/can/module-scan.jsonl.
 D=/usr/local/sbin/s660-diag

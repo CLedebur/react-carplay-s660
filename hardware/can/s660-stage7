@@ -1,0 +1,12 @@
+#!/bin/sh
+# DIAG-PLAN stage 7: poll the VSA/EPS identifiers until stopped; fault codes before and after.
+D=/usr/local/sbin/s660-diag
+L=/persist/can/$(date +%F-%H%M)-stage7
+export S660_DIAG_LOG=$L.jsonl
+$D session-start || exit 1
+candump -L any > "$L.log" & REC=$!
+echo "== fault codes before"; $D obd --29 03; $D obd --29 07
+$D poll 10 $(grep -v '^#' /persist/can/stage7-items) > /dev/null & POLL=$!
+finish() { kill $POLL 2>/dev/null; wait $POLL 2>/dev/null; echo "== fault codes after"; $D obd --29 03; $D obd --29 07; kill $REC; exit 0; }
+trap finish TERM INT
+wait $POLL

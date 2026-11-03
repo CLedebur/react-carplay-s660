@@ -28,7 +28,7 @@ const CLUTCH_DOWN_MIN_RPM = 1100
 const G = 9.81
 const LONG_G_PER_COUNT = 0.00169 / G // 0x1EA bytes 2-3, measured
 // Lateral G is speed x yaw rate: 0x1EA bytes 0-1 read zero inside about ±1.5 m/s² and are not proportional
-// outside it (DIAG-PLAN, drive of 2026-11-03). + = pushed left; + yaw (0x091) is a right turn, per the GPS heading.
+// outside it (references/S660-diagnostics.md, S660-CAN-bus.md 0x1EA). + = pushed left; + yaw (0x091) is a right turn, per the GPS heading.
 const YAW_DEG_PER_COUNT = 0.0037 // 0x091 bytes 0-1, against the wheel speeds (±5 %); the GPS heading gave 0.00406
 const YAW_REST = 0x8022 // 0x091 at a standstill
 const MMHG_TO_BAR = 0.00133322
