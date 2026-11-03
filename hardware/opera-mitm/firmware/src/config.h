@@ -12,6 +12,7 @@
 #define PIN_PW_OUT    3    // to head unit's PWR SW input
 #define PIN_RLY       6    // bypass relays (HIGH = energised = Pico in the path)
 #define PIN_RST       7    // CM4 RUN_PG (HIGH = held in reset)
+#define PIN_LED      22    // LED1 (GPIO25 is the Pico 2 W's wireless chip, so not the default LED pin)
 
 #define OPERA_BAUD 19200
 
@@ -22,6 +23,9 @@
 #define KNOB_KEY_PULSE_MS    25   // how long a knob click "presses" its key
 #define RELAY_ENGAGE_MS    1500   // after boot, before the relays pull the Pico into the path
 #define WATCHDOG_MS        2000
+#define LED_BLINK_MS        500   // LED1 half-period in HEADUNIT mode
+#define LED_FLICKER_MS       60   // LED1 inverted this long for each panel message
+#define CONSOLE_LINE_MAX     16   // longest console command line
 
 // HID keycodes for CarPlay mode (Chromium sees a plain USB keyboard).
 // The web app maps these to CarPlay commands; keep them boring and unambiguous.

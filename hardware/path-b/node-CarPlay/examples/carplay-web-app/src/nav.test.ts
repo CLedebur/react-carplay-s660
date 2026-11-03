@@ -71,8 +71,8 @@ test('push on a tab enters it, a loop of its own controls; Back steps out onto t
   expect(ui.focus).toBe('tab:options')
   ui = nativeKey(ui, 'knobPush').ui
   expect(ui.focus).toBe('opt:autoRunCarplay')
-  expect(focusRing(ui)).toEqual(['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:gearPopup', 'opt:driveLog', 'webAdmin'])
-  for (let i = 0; i < 6; i++) ui = nativeKey(ui, 'knobCw').ui
+  expect(focusRing(ui)).toEqual(['opt:autoRunCarplay', 'opt:units', 'opt:clock', 'opt:gearPopup', 'opt:vsaPopup', 'opt:driveLog', 'webAdmin'])
+  for (let i = 0; i < 7; i++) ui = nativeKey(ui, 'knobCw').ui
   expect(ui.focus).toBe('opt:autoRunCarplay') // wraps inside the tab
   ui = nativeKey(ui, 'back').ui
   expect(ui.focus).toBe('tab:options')

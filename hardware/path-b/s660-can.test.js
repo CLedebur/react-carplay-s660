@@ -105,6 +105,26 @@ test('candump starts on demand and stops when idle', () => {
   assert.strictEqual(killed, 1)
 })
 
+test('AHA, VSA and ABS interventions are counted as they start', () => {
+  const { EventEmitter } = require('node:events')
+  let out
+  const fake = () => {
+    const c = new EventEmitter()
+    c.stdout = out = new EventEmitter()
+    c.kill = () => {}
+    return c
+  }
+  const v = createVehicle({ spawnFn: fake, clock: () => NOW })
+  assert.deepStrictEqual(v.snapshot().vsaEvents, { agile: 0, active: 0, abs: 0 })
+  const rest = '(1) can0 1A4#006A000000000027\n'
+  const aha = '(1) can0 1A4#006A000080000027\n' // byte 4 bit 7
+  const abs = '(1) can0 1A4#006A020000000027\n' // byte 2 bit 1
+  out.emit('data', aha) // already on when the first frame arrives: not counted
+  out.emit('data', rest + aha + aha + rest + aha + rest + abs)
+  assert.deepStrictEqual(v.snapshot().vsaEvents, { agile: 2, active: 0, abs: 1 })
+  v.stop()
+})
+
 test('engine data from the recorder status: PIDs, fault codes and the cluster, only while fresh', () => {
   const now = 1000
   const st = {

@@ -3,7 +3,8 @@
 Open-source CarPlay head unit for the Honda S660. Hardware: Raspberry Pi Compute
 Module 4 (CM4) + Oratek TOFU carrier board. CarPlay runs as `carplay-web-app` in the Pi's
 system Chromium under `cage`. That stack ("Path B" in the notes) is the **only** supported
-one, and new work builds on it. The MITM physical controls and the CAN-bus connection come next.
+one, and new work builds on it. The MITM physical controls (§37) and the CAN-bus connection (§34, §40,
+`references/S660-diagnostics.md`) are in place.
 
 **Path A (the Electron `react-carplay` fork this repo began as) was RETIRED on 2026-10-07**
 (BUILD_NOTES §32). Its source is gone from the tree and lives at the git tag `path-a-final`:
@@ -55,8 +56,8 @@ The stack (BUILD_NOTES §8.5; the retired/shelved alternatives are §32 and §27
   Boot is tuned (BUILD_NOTES §24): measured software reboots reach the kiosk service
   ~2.4 s after kernel start, following ~5.6 s of firmware time; Chromium starts ~3.5 s
   after the kernel. These are internal timestamps, not cold-power-to-first-paint measurements. Display
-  forced to the car panel's 720x480@59.94 via an EDID override; the 1.875:1 glass stretches it, so iOS renders 848x480 (16:9, Waze's
-  limit) and the web app squeezes it into 720 (§22.8) (`drm.edid_firmware`; cage
+  forced to the car panel's 720x480@59.94 via an EDID override; the 1.875:1 glass stretches it, so iOS renders 896x480 by default (the
+  glass's own shape; 848 is still a setting) and the web app squeezes it into 720 (§22.8, §39.3) (`drm.edid_firmware`; cage
   ignores `video=`), and NetworkManager
   deliberately requests startup 20 s after Linux starts (timer coalescing can delay it).
   Host Bluetooth is REQUIRED for the trackpad and starts at 15 s; a service delay also

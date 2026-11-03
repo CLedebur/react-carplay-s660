@@ -6,8 +6,9 @@
 //     PWR SW line is mirrored, so the stock controls work as if we weren't here.
 //  Back held + Power tapped → toggle mode (the Power tap is never passed to the head unit).
 //  Power held 3 s → pulse the CM4's RUN pin (hard reset; Overlay FS makes that safe).
-//  A USB CDC console (/dev/ttyACM*) logs everything and takes one-letter commands
-//  (b = reboot into BOOTSEL, used by build.sh flash).
+//  A USB CDC console (/dev/ttyACM*) logs everything and takes commands, one per line ('?' lists
+//  them; "bootsel" is used by build.sh flash).
+//  LED1: on in CARPLAY mode, blinking in HEADUNIT mode, a short flicker for each panel message.
 //
 // See hardware/opera-mitm/tap-board.md for the wiring and BUILD_NOTES §30 for the protocol.
 
@@ -195,8 +196,19 @@ static void pw_service(void) {
     if (rst_active && absolute_time_diff_us(get_absolute_time(), rst_until) <= 0) { gpio_put(PIN_RST, 0); rst_active = false; }
 }
 
+// ---- LED1 ------------------------------------------------------------------------------------
+static absolute_time_t led_flick_until;
+
+static void led_flicker(void) { led_flick_until = make_timeout_time_ms(LED_FLICKER_MS); }
+static void led_service(void) {
+    bool on = mode == MODE_CARPLAY || (to_ms_since_boot(get_absolute_time()) / LED_BLINK_MS) % 2 == 0;
+    if (absolute_time_diff_us(get_absolute_time(), led_flick_until) > 0) on = !on;
+    gpio_put(PIN_LED, on);
+}
+
 // ---- panel messages ------------------------------------------------------------------------
 static void on_panel_event(const opera_event_t *ev) {
+    led_flicker();
     switch (ev->kind) {
     case OPERA_EV_KNOB_CW:  if (mode == MODE_CARPLAY) knob_pending_cw++;  log_line("KNOB cw");  break;
     case OPERA_EV_KNOB_CCW: if (mode == MODE_CARPLAY) knob_pending_ccw++; log_line("KNOB ccw"); break;
@@ -252,23 +264,36 @@ static void status(void) {
          gpio_get(PIN_RLY), tud_mounted(), held.nkeys);
 }
 
+// A command is a whole line that is exactly one of these words. Single characters used to be
+// commands, and a Pi tty with echo on sent the console's own log text back: the Pico then ran it
+// (fake Power to the head unit, a CM4 reset, BOOTSEL; 2026-10-31). No log line is a bare command
+// word, so an echo now does nothing, and the actions that touch the car or the CM4 are long words.
+static void console_command(const char *cmd) {
+    if (!strcmp(cmd, "s") || !strcmp(cmd, "status")) status();
+    else if (!strcmp(cmd, "carplay")) set_mode(MODE_CARPLAY, "console");
+    else if (!strcmp(cmd, "headunit")) set_mode(MODE_HEADUNIT, "console");
+    else if (!strcmp(cmd, "toggle")) set_mode(mode == MODE_CARPLAY ? MODE_HEADUNIT : MODE_CARPLAY, "console");
+    else if (!strcmp(cmd, "reset-cm4")) cm4_reset_pulse("console");
+    else if (!strcmp(cmd, "fake-power")) { gpio_put(PIN_PW_OUT, 1); sleep_ms(200); gpio_put(PIN_PW_OUT, 0); log_line("fake PWR press sent"); }
+    else if (!strcmp(cmd, "test-key")) { hid_set_key(HID_KEY_ENTER, true); hid_service(); sleep_ms(30); hid_set_key(HID_KEY_ENTER, false); log_line("test key sent"); }
+    // The firmware's own USB descriptors have no picotool reset interface, so `picotool -f`
+    // cannot reach it: build.sh flash sends this instead. Relays drop until the new image runs.
+    else if (!strcmp(cmd, "bootsel")) { log_line("rebooting into BOOTSEL"); sleep_ms(100); reset_usb_boot(0, 0); }
+    else if (!strcmp(cmd, "?")) log_line("commands, one per line: s|status carplay headunit toggle reset-cm4 fake-power test-key bootsel");
+}
+
 static void console_service(void) {
+    static char line[CONSOLE_LINE_MAX + 1];
+    static size_t len = 0;
+    static bool overflow = false;     // a line too long to be a command: drop it to its end
     while (tud_cdc_available()) {
         char c = (char)tud_cdc_read_char();
-        switch (c) {
-        case 'c': set_mode(MODE_CARPLAY, "console"); break;
-        case 'h': set_mode(MODE_HEADUNIT, "console"); break;
-        case 't': set_mode(mode == MODE_CARPLAY ? MODE_HEADUNIT : MODE_CARPLAY, "console"); break;
-        case 's': status(); break;
-        case 'r': cm4_reset_pulse("console"); break;
-        case 'p': gpio_put(PIN_PW_OUT, 1); sleep_ms(200); gpio_put(PIN_PW_OUT, 0); log_line("fake PWR press sent"); break;
-        case 'k': hid_set_key(HID_KEY_ENTER, true); hid_service(); sleep_ms(30); hid_set_key(HID_KEY_ENTER, false); log_line("test key sent"); break;
-        // The firmware's own USB descriptors have no picotool reset interface, so `picotool -f`
-        // cannot reach it: build.sh flash sends this instead. Relays drop until the new image runs.
-        case 'b': log_line("rebooting into BOOTSEL"); sleep_ms(100); reset_usb_boot(0, 0); break;
-        case '?': log_line("c=carplay h=headunit t=toggle s=status r=reset-cm4 p=fake-power k=test-key b=bootsel"); break;
-        default: break;
-        }
+        if (c == '\r' || c == '\n') {
+            line[len] = 0;
+            if (!overflow && len) console_command(line);
+            len = 0; overflow = false;
+        } else if (len < CONSOLE_LINE_MAX) line[len++] = c;
+        else overflow = true;
     }
 }
 
@@ -302,14 +327,22 @@ static void uart_setup(void) {
 }
 
 static void gpio_setup(void) {
-    const uint outs[] = {PIN_PW_OUT, PIN_RLY, PIN_RST};
+    const uint outs[] = {PIN_PW_OUT, PIN_RLY, PIN_RST, PIN_LED};
     for (size_t i = 0; i < sizeof outs / sizeof outs[0]; i++) { gpio_init(outs[i]); gpio_put(outs[i], 0); gpio_set_dir(outs[i], GPIO_OUT); }
     gpio_init(PIN_PW_IN); gpio_set_dir(PIN_PW_IN, GPIO_IN); gpio_pull_down(PIN_PW_IN);
     adc_init(); adc_gpio_init(PIN_CONT_ADC);
 }
 
+// Why the Pico last started, read before watchdog_enable() overwrites the evidence.
+static const char *boot_reason(void) {
+    if (watchdog_enable_caused_reboot()) return "watchdog timeout (the firmware hung)";
+    if (watchdog_caused_reboot()) return "watchdog reboot";
+    return "power-on, reset button or a new image";   // picotool's reboot after a flash lands here too
+}
+
 int main(void) {
     gpio_setup();          // outputs low before anything else
+    const char *why = boot_reason();
     uart_setup();
     opera_parser_init(&parser);
     tusb_init();
@@ -321,7 +354,7 @@ int main(void) {
     while (true) {
         watchdog_update();
         tud_task();
-        if (!hello && tud_cdc_connected()) { hello = true; log_line("OPERA MITM up; '?' for commands"); status(); }
+        if (!hello && tud_cdc_connected()) { hello = true; log_line("OPERA MITM up (%s); '?' for commands", why); status(); }
         if (!relay_done && absolute_time_diff_us(boot, get_absolute_time()) > (int64_t)RELAY_ENGAGE_MS * 1000) {
             gpio_put(PIN_RLY, 1); relay_done = true; log_line("relays engaged");
         }
@@ -331,5 +364,6 @@ int main(void) {
         back_service();
         hid_service();
         console_service();
+        led_service();
     }
 }

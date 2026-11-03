@@ -3037,3 +3037,29 @@ and logins are SSH key only. Anything that runs code as `s660` is root by design
 - **Choosing:** push on the row opens a **picker**: every paint, one per row with its swatch, the saved one ticked. The
   knob walks the list (it scrolls), push picks, Back keeps the old colour (`nav.ts`, tested). Screenshot it with
   `?view=settings.display.picker`.
+
+## 43. 2026-11-03 — AHA / VSA pop-up (Settings > Options)
+
+- **What it shows:** `AHA`, `VSA` or `ABS` in the highlight colour, top left (the gear pop-up is top right), over any
+  page, for **`vsaPopup`** seconds (0–5, default 2, 0 = off) after the car intervenes. AHA is Agile Handling Assist,
+  the corner braking that the 2026-11-03 drive showed 29 times (references/S660-diagnostics.md, VSA 0x4072).
+- **How:** `s660-can.js` counts each intervention as it **starts**, from 0x1A4 (byte 4 bit 7 AHA, byte 2 bit 0 VSA
+  braking, byte 2 bit 1 ABS), and `/api/vehicle` returns the counts as `vsaEvents`. An AHA lasts 1–2 s and could fall
+  between two 200 ms polls, so the screen watches the counts rise, not the bits. `vsaPopup.ts` (pure, tested) treats
+  the first counts as a baseline, names the stronger intervention if two start together (ABS > VSA > AHA), and takes a
+  count that falls (the CAN service restarted) as a new baseline. The Vehicle data is polled fast while either pop-up is on.
+- Not yet seen in the car: needs a drive with corners.
+
+## 44. 2026-11-03 — Pico firmware: whole-line console, LED1, restart reason
+
+- **The console takes whole lines only.** A command is a line that is exactly one word: `s` / `status`, `carplay`,
+  `headunit`, `toggle`, `reset-cm4`, `fake-power`, `test-key`, `bootsel`, `?`. Before, every single character was a
+  command, and on 2026-10-31 a Pi tty with echo on sent the Pico's own log text back to it (fake Power to the head unit,
+  a CM4 reset, BOOTSEL). No log line is a bare command word, so an echo now does nothing. Checked after the flash: `p`,
+  `r`, `b` and an echoed STATUS line did nothing; `s` and `?` answered. `build.sh flash` sends `bootsel` with echo off
+  (older firmware rebooted on its first letter, `b`).
+- **LED1 (GP22):** on in CarPlay mode, blinking (1 Hz) in head-unit mode, a 60 ms flicker for each panel message.
+- **Restart reason** on the console greeting: watchdog timeout (the firmware hung), watchdog reboot, or power-on /
+  reset button / a new image.
+- Still open, and harmless while **J2 (the CM4 reset cable) is not connected**: the RP2350 E9 false `car=1` (§35).
+  Fix it (a lower R4, or a firmware workaround) before J2 goes in.
